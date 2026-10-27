@@ -1,0 +1,18 @@
+# Same as data.yaml but with deliberate defects, to demonstrate validation.
+provider: synthetic
+symbols: [SPY, QQQ]
+session_date: 2026-10-20
+start_time: "09:30:00"
+duration_s: 600
+allowed_data_age_ms: 2000
+
+synthetic:
+  seed: 11
+  initial_prices: {SPY: 580.0, QQQ: 500.0}
+  anomalies:
+    duplicate_rate: 0.01
+    out_of_order_rate: 0.005
+    crossed_quote_rate: 0.005
+    missing_field_rate: 0.005
+    stale_gaps: 2
+    stale_gap_s: 5.0

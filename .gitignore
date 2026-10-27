@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets — never commit credentials or tokens
+.env
+*.token
+secrets/
+
+# Market data — never commit licensed data
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Generated run outputs
+artifacts/checkpoints/*
+artifacts/reports/*
+!artifacts/checkpoints/.gitkeep
+!artifacts/reports/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,30 @@
+# Market data configuration (Phase 1: synthetic only — no API keys, no network).
+provider: synthetic
+symbols: [SPY, QQQ, IWM]
+timezone: America/New_York
+feed: synthetic-l1
+session_date: 2026-10-20        # a weekday; holidays/early closes are not modeled yet
+start_time: "09:30:00"
+duration_s: 1800                # 30 minutes of simulated session
+allowed_data_age_ms: 2000       # quote gaps longer than this are flagged as stale
+license_notes: Synthetic data generated locally; no license restrictions.
+
+synthetic:
+  seed: 7
+  initial_prices: {SPY: 580.0, QQQ: 500.0, IWM: 220.0}
+  tick_size: 0.01
+  volatility_bps_per_sqrt_s: 1.5
+  mean_quote_interval_ms: 200
+  trade_probability: 0.3
+  min_spread_ticks: 1
+  max_spread_ticks: 3
+  min_size: 100
+  max_size: 2000
+  feed_latency_ms: 2.0
+  feed_jitter_ms: 1.0
+  anomalies:            # set non-zero to exercise validation (see configs/data_with_anomalies.yaml)
+    duplicate_rate: 0.0
+    out_of_order_rate: 0.0
+    crossed_quote_rate: 0.0
+    missing_field_rate: 0.0
+    stale_gaps: 0

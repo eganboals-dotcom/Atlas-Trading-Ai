@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atlas-trading-ai"
+version = "0.1.0"
+description = "Research platform for evolving and evaluating algorithmic trading agents in a realistic, deterministic market simulator."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+# Exact pins; the full transitive lock lives in requirements-lock.txt.
+dependencies = [
+    "numpy==2.5.4",
+    "pydantic==2.14.1",
+    "PyYAML==6.0.3",
+    "tzdata==2026.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "hypothesis==6.170.12",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
