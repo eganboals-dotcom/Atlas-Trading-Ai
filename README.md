@@ -399,6 +399,12 @@ hours, so they run in their own window or in the background.
 * **Bot names.** Each bot's `name` in the config (Liquidity, Regime, MomentumEvo,
   Momentum, MeanRevert, Random) is what appears on the leaderboard, in reports and in
   the fund ledger.
+* **Market-data recording.** Every quote and trade the session receives is saved to
+  `data/raw/alpaca_iex_live/<date>.csv`. At the close the day is also written as a Parquet
+  session in `data/processed/alpaca_iex_live/`, with a manifest, ready for training and
+  walk-forward testing with the existing tools. The data stays on your PC (`data/` is
+  git-ignored). A recording failure only switches recording off; trading continues. A
+  full day is about 6 MB of CSV plus 1 MB of Parquet.
 * **The bots are in the repo.** The evolved bots' frozen parameters live in
   [bots/live_lineup_v1.json](bots/live_lineup_v1.json), and [bots/README.md](bots/README.md)
   explains each bot. A test ensures configs never depend on untracked files.

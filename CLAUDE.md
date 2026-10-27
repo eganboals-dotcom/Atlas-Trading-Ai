@@ -18,6 +18,9 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 - **Permanent bots.** `Flip` (coin flip) and `Hold` (buy-and-hold benchmark) are in every paper session
   (`PERMANENT_BASELINES` in `src/atlas/paper/session.py`). Never remove them; they are the yardsticks
   every strategy is judged against.
+- **Recorded data stays local.** Live sessions save market data under `data/` (git-ignored). Never commit it;
+  Alpaca's data terms apply. It is the real-market dataset for training new bots (`ParquetProvider` on
+  `data/processed/alpaca_iex_live`).
 - **Personal info.** Never commit `.env`, keys, account numbers, local paths, or the user's email. Commits use the
   GitHub noreply address set in this repo's git config.
 - **Frozen bots.** Bots don't train during paper sessions. Training happens offline (`evolve`,

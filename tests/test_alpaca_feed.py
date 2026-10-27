@@ -283,3 +283,54 @@ def test_leaderboard_window_api_is_read_only_and_page_is_offline(tmp_path: Path)
     page = HTML.read_text(encoding="utf-8")
     assert not re.search(r"https?://", page)  # no CDN, fonts, or any network resource
     assert "pywebview.api.live" in page
+
+
+def recording_session(tmp_path: Path, minutes: int = 3) -> PaperSession:
+    from atlas.paper.config import RecordConfig
+
+    fake = FakeAlpaca(datetime.combine(DAY, time(9, 29, 55), tzinfo=MARKET_TZ))
+    cfg = live_config(tmp_path).model_copy(update={"record": RecordConfig(enabled=True, dataset="rec_test",
+                                                                          root=tmp_path / "data")})
+    return PaperSession(cfg, sim_config(stale_quote_ms=30_000.0), risk_config(stale_data_ms=30_000), base_dir=REPO,
+                        feed=feed(fake, minutes=minutes))
+
+
+def test_recorder_saves_exactly_what_the_session_received(tmp_path: Path) -> None:
+    from atlas.data.providers import ParquetProvider, load_raw
+    from atlas.paper.recorder import read_raw_csv
+
+    s = recording_session(tmp_path)
+    report = s.run()
+    raw = tmp_path / "data" / "raw" / "rec_test" / "2026-06-01.csv"
+    events = read_raw_csv(raw)
+    assert len(events) == report["counters"]["events"] > 100
+    assert report["recording"]["events"] == len(events) and report["recording"]["session"]["rows"] == len(events)
+    pq = ParquetProvider(tmp_path / "data" / "processed" / "rec_test")
+    assert pq.sessions() == [DAY]
+    assert load_raw(pq.session_ref(DAY)) == events  # lossless round trip, hash-checked by the provider
+    manifest = json.loads((tmp_path / "data" / "processed" / "rec_test" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["sessions"][0]["quotes"] > 0 and manifest["sessions"][0]["trades"] > 0
+    assert "IEX" in manifest["fidelity"] and "never" not in manifest["license_notes"].lower()
+
+
+def test_recorder_failure_never_stops_trading(tmp_path: Path, monkeypatch) -> None:
+    from atlas.paper.recorder import MarketDataRecorder
+
+    calls = {"n": 0}
+    real = MarketDataRecorder.record
+
+    def flaky(self, event):
+        calls["n"] += 1
+        if calls["n"] == 50:
+            raise OSError("disk full")
+        return real(self, event)
+
+    monkeypatch.setattr(MarketDataRecorder, "record", flaky)
+    s = recording_session(tmp_path)
+    report = s.run()
+    assert report["counters"]["events"] > 100  # the session ran to the close
+    assert "disk full" in report["recording"]["error"]
+    alerts = (s.dir / "alerts.jsonl").read_text(encoding="utf-8")
+    assert "recording_off" in alerts and report["kill_switch"] is None
+    for a in s.accounts:
+        a.broker.portfolio.assert_reconciled()

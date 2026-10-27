@@ -533,6 +533,11 @@ class PaperSession:
         }
         if provisional_fund:  # so a day is never lost if the process dies and is not resumed
             self._settle_fund(final=False, note="provisional: in progress (open positions valued at mid)")
+        if getattr(self, "recorder", None) is not None and not self.recorder.error:
+            try:
+                self.recorder.flush()
+            except Exception as exc:  # recording must never stop trading
+                self._recorder_failed(exc)
         tmp = self.dir / "state.json.tmp"
         tmp.write_text(json.dumps(state, default=str), encoding="utf-8")
         os.replace(tmp, self.dir / "state.json")
@@ -570,6 +575,7 @@ class PaperSession:
         self.health_checks()
         if self.resume:
             self._restore(0)
+        self.recorder = self._start_recorder()
         if on_ready is not None:
             on_ready(self)
         validator = StreamValidator(self.risk_cfg.stale_data_ms, order_scope="symbol_type")
@@ -602,6 +608,49 @@ class PaperSession:
         """The feed's own clock when it has one (live feeds), so outages get real durations."""
         clock = getattr(self.feed, "clock_ns", None)
         return max(market.now_ns, clock()) if clock else market.now_ns
+
+    # -- market-data recording (isolated: any failure disables it, trading continues) --------
+
+    def _start_recorder(self):
+        rc = self.cfg.record
+        if not rc.enabled:
+            return None
+        from atlas.paper.recorder import MarketDataRecorder
+
+        try:
+            return MarketDataRecorder(rc.root, rc.dataset, self.session_date,
+                                      source="alpaca-iex" if self.cfg.feed.kind == "alpaca" else "replay",
+                                      license_notes="Alpaca market data (IEX), recorded for personal research; check "
+                                                    "Alpaca's data terms before sharing or redistributing")
+        except Exception as exc:
+            self.alerts.raise_("warning", "recording_off", f"market-data recording disabled: {exc}", 0)
+            return None
+
+    def _record(self, event: MarketEvent) -> None:
+        if self.recorder.error:
+            return
+        try:
+            self.recorder.record(event)
+        except Exception as exc:
+            self._recorder_failed(exc)
+
+    def _recorder_failed(self, exc: BaseException) -> None:
+        self.recorder.fail(exc)
+        self.alerts.raise_("warning", "recording_off", f"market-data recording disabled ({exc}); trading continues", 0)
+
+    def _finish_recording(self) -> None:
+        self.recording = None
+        r = getattr(self, "recorder", None)
+        if r is None or r.error:
+            self.recording = {"enabled": r is not None, "error": r.error if r else None}
+            return
+        try:
+            entry = r.finalize(self.symbols)
+            self.recording = {"enabled": True, "events": r.rows, "raw": str(r.raw_path),
+                              "processed": str(r.processed_dir), "session": entry}
+        except Exception as exc:
+            self.recording = {"enabled": True, "error": f"finalize failed: {exc}", "raw": str(r.raw_path)}
+            self.alerts.raise_("warning", "recording_off", self.recording["error"], 0)
 
     def _stop_requested(self) -> bool:
         stop = self.dir / STOP_FILE
@@ -642,6 +691,8 @@ class PaperSession:
                 break
             processed += 1
             self.counters["events"] += 1
+            if self.recorder is not None:
+                self._record(event)
             t = event.receive_ts if event.receive_ts is not None else event.event_ts
             first_ts = t if first_ts is None else first_ts
 
@@ -812,6 +863,7 @@ class PaperSession:
         for reason in list(self.safe):
             self._clear_safe(reason, now)
         self._flush(now, provisional_fund=False)  # the settlement above is the day's real one
+        self._finish_recording()
         self._write_live(now, f"stopped by {self.stopped_by}" if getattr(self, "stopped_by", None) else "ended")
         from atlas.paper.report import write_daily_report
 

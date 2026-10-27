@@ -135,6 +135,14 @@ class FundConfig(Strict):
     flatten_at_close: bool = True  # sell open positions at the bid at the close, so each day settles in cash
 
 
+class RecordConfig(Strict):
+    """Save the market data the session receives (see ``atlas.paper.recorder``). Stays local; never committed."""
+
+    enabled: bool = False
+    dataset: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]+$")] = "alpaca_iex_live"
+    root: Path = Path("data")  # raw/<dataset>/<date>.csv and processed/<dataset>/ (git-ignored)
+
+
 class DashboardConfig(Strict):
     """Read-only live page, opened in the browser when a session starts (``paper --open-dashboard``)."""
 
@@ -160,3 +168,4 @@ class PaperConfig(Strict):
     state_flush_events: PosI = 500
     dashboard: DashboardConfig = Field(default_factory=lambda: DashboardConfig())
     fund: FundConfig | None = None  # None: every account starts with the simulator's initial_cash
+    record: RecordConfig = Field(default_factory=lambda: RecordConfig())

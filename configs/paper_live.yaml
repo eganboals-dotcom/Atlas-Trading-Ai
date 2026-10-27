@@ -44,6 +44,10 @@ shadows:
 # The ledger is artifacts/paper/fund_ledger.json. `--reset-fund` archives it and splits afresh.
 fund: {total_capital: 100000, flatten_at_close: true}
 
+# Save every quote and trade received (data/raw/alpaca_iex_live/<date>.csv, plus a daily Parquet session in
+# data/processed/alpaca_iex_live/ for training and testing). Local only: data/ is never committed.
+record: {enabled: true, dataset: alpaca_iex_live}
+
 agent_limits: {max_position_shares: 1000, max_order_shares: 500, max_position_frac: 0.5}
 decision_interval_ms: 2000        # polled data: decide at most every 2 s
 alerts: {console: true, file: true}

@@ -457,6 +457,13 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
             checks.append(("browser page", True, f"dashboard on http://localhost:{cfg.dashboard.port}"))
         except ImportError as exc:
             checks.append(("browser page", False, f"install the dashboard extra: {exc}"))
+    if cfg.record.enabled:
+        target = cfg.record.root / "raw" / cfg.record.dataset
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            checks.append(("recording", True, f"market data will be saved to {target} (local only, never committed)"))
+        except OSError as exc:
+            checks.append(("recording", True, f"cannot write {target} ({exc}); the session will trade without recording"))
     if cfg.fund is not None:
         import json as _json
 
