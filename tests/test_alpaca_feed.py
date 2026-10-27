@@ -207,3 +207,79 @@ def test_terminal_leaderboard_renders_and_watch_once(tmp_path: Path, capsys) -> 
     assert "\x1b[" not in text  # no color codes when color is off
     assert main(["paper-watch", "--session-dir", str(s.dir), "--once"]) == EXIT_OK
     assert "LEADERBOARD" in capsys.readouterr().out
+
+
+def fund_session(tmp_path: Path, day: date, minutes: int = 4, **cfg_updates) -> PaperSession:
+    fake = FakeAlpaca(datetime.combine(day, time(9, 29, 55), tzinfo=MARKET_TZ))
+    cfg = live_config(tmp_path).model_copy(update={"fund": __import__("atlas.paper.config", fromlist=["FundConfig"])
+                                                   .FundConfig(total_capital=90_000), **cfg_updates})
+    f = AlpacaPollingFeed(["SPY", "QQQ"], day, fake.fetch, start=time(9, 30), end=time(9, 30 + minutes),
+                          clock=fake.clock, sleep=fake.sleep)
+    return PaperSession(cfg, sim_config(stale_quote_ms=30_000.0), risk_config(stale_data_ms=30_000), base_dir=REPO,
+                        feed=f)
+
+
+def test_fund_splits_equally_flattens_at_close_and_compounds(tmp_path: Path) -> None:
+    from atlas.paper.fund import FundLedger
+
+    day1 = fund_session(tmp_path, DAY)
+    day1.run()
+    bots = [a for a in day1.accounts if a.role != "benchmark"]
+    assert len(bots) == 3
+    assert all(a.broker.portfolio.initial_cash == pytest.approx(30_000) for a in day1.accounts)  # 90k / 3 bots
+    assert all(not any(p.quantity for p in a.broker.portfolio.positions.values()) for a in day1.accounts)
+    ledger = json.loads((tmp_path / "paper" / "fund_ledger.json").read_text(encoding="utf-8"))
+    d1 = ledger["days"][0]
+    assert d1["final"] is True and set(d1["bots"]) == {"champion", "shadow-1", "shadow-2"}
+    ends = {b: v["end"] for b, v in d1["bots"].items()}
+    assert any(abs(e - 30_000) > 0.01 for e in ends.values())  # someone made or lost money
+
+    day2 = fund_session(tmp_path, date(2026, 6, 2))
+    day2.run()
+    starts = {a.account_id: a.broker.portfolio.initial_cash for a in day2.accounts if a.role != "benchmark"}
+    assert starts == pytest.approx(ends)  # each bot starts day 2 with exactly what it ended day 1 with
+    bench = next(a for a in day2.accounts if a.role == "benchmark")
+    assert bench.broker.portfolio.initial_cash == pytest.approx(30_000)  # benchmark: fresh share daily
+    live = data.load_live(day2.dir)
+    assert live["fund"]["days_settled"] == 2
+    assert live["fund"]["equity"] == pytest.approx(sum(a["equity"] for a in live["accounts"] if a["role"] != "benchmark"))
+    champ = next(a for a in live["accounts"] if a["account"] == "champion")
+    assert champ["inception_capital"] == pytest.approx(30_000)
+    assert champ["total_pnl"] == pytest.approx(champ["equity"] - 30_000)
+    assert len(FundLedger(tmp_path / "paper" / "fund_ledger.json", 90_000).data["days"]) == 2
+
+
+def test_fund_refuses_a_changed_lineup_until_reset(tmp_path: Path) -> None:
+    from atlas.paper.config import CandidateSource
+    from atlas.paper.session import HealthCheckError
+
+    fund_session(tmp_path, DAY, minutes=2).run()
+    changed = fund_session(tmp_path, date(2026, 6, 2), minutes=2,
+                           candidate=CandidateSource(source="baseline", baseline="baseline_buy_hold"))
+    with pytest.raises(HealthCheckError, match="lineup"):
+        changed.health_checks()
+    changed.reset_fund = True
+    changed.dir.mkdir(parents=True, exist_ok=True)
+    changed.health_checks()
+    archived = list((tmp_path / "paper").glob("fund_ledger.*.json"))
+    assert len(archived) == 1
+
+
+def test_leaderboard_window_api_is_read_only_and_page_is_offline(tmp_path: Path) -> None:
+    import inspect
+    import re
+
+    from atlas.dashboard.window import HTML, Api
+
+    s = fund_session(tmp_path, DAY, minutes=2)
+    s.run()
+    api = Api(s.dir)
+    public = [n for n, _ in inspect.getmembers(api, inspect.ismethod) if not n.startswith("_")]
+    assert public == ["live"]  # the page can only read the snapshot
+    d = api.live()
+    assert d["live"]["fund"]["bots"] == 3 and len(d["rows"]) == 4 and d["age"] >= 0
+    assert d["live"]["quotes"].keys() == {"SPY", "QQQ"}
+    assert Api(tmp_path / "missing").live() is None
+    page = HTML.read_text(encoding="utf-8")
+    assert not re.search(r"https?://", page)  # no CDN, fonts, or any network resource
+    assert "pywebview.api.live" in page

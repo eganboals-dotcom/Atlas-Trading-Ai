@@ -38,7 +38,8 @@ def load_live(session_dir: Path) -> dict[str, Any] | None:
 
 def leaderboard(live: dict[str, Any]) -> list[dict[str, Any]]:
     """Bots ranked by net P&L (best first). The benchmark is shown but not ranked."""
-    bots = sorted((a for a in live["accounts"] if a["role"] != "benchmark"), key=lambda a: -a["net_pnl"])
+    key = "total_pnl" if live.get("fund") else "net_pnl"  # fund mode: rank by P&L since inception
+    bots = sorted((a for a in live["accounts"] if a["role"] != "benchmark"), key=lambda a: -a.get(key, a["net_pnl"]))
     rows = [{"rank": i + 1, **a} for i, a in enumerate(bots)]
     rows += [{"rank": None, **a} for a in live["accounts"] if a["role"] == "benchmark"]
     return rows

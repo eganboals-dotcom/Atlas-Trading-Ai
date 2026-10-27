@@ -66,6 +66,7 @@ def write_daily_report(session: PaperSession) -> dict[str, Any]:
         "alerts": session.alerts.count,
         "restarts": getattr(session, "restarts", 0),
         "accounts": accounts,
+        "fund": None if session.fund is None else session.fund.data,
         "disclaimer": DISCLAIMER,
     }
     (session.dir / "daily_report.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")

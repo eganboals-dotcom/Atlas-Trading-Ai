@@ -2,7 +2,7 @@
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
 ``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
-``train-ppo`` (Phase 4); ``paper``, ``paper-check``, ``paper-watch``, ``paper-stop``, ``paper-kill``, ``dashboard``
+``train-ppo`` (Phase 4); ``paper``, ``paper-check``, ``paper-window``, ``paper-watch``, ``paper-stop``, ``paper-kill``, ``dashboard``
 (Phase 5); ``readiness`` (Phase 6).
 """
 
@@ -269,14 +269,25 @@ def _cmd_paper(args: argparse.Namespace) -> int:
 
     path, cfg, sim, risk = _load_paper(args.config)
     session = PaperSession(cfg, sim, risk, base_dir=path.parent, resume=args.resume,
-                           reset_kill_switch=args.reset_kill_switch)
+                           reset_kill_switch=args.reset_kill_switch, reset_fund=args.reset_fund)
     if args.auto_resume and (session.dir / "state.json").exists():
         session.resume = True  # same day, same config: continue the session instead of refusing
 
     def on_ready(s: PaperSession) -> None:
         print(f"paper session {s.dir.name}: startup checks passed; feed={cfg.feed.kind}; "
               f"{len(s.accounts)} accounts; simulated orders only", file=sys.stderr)
-        if args.watch or cfg.dashboard.watch_window:
+        mode = "terminal" if args.watch else cfg.dashboard.window
+        if mode == "app":
+            from atlas.dashboard.window import open_app_window, window_available
+
+            if window_available():
+                open_app_window(s.dir)
+                print("leaderboard: opened in its own window (read-only)", file=sys.stderr)
+            else:
+                mode = "terminal"
+                print("leaderboard window needs pywebview (pip install -e .[window]); using the terminal view",
+                      file=sys.stderr)
+        if mode == "terminal":
             from atlas.dashboard.terminal import open_window
 
             open_window(s.dir)
@@ -353,6 +364,14 @@ def _cmd_paper_status(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_paper_window(args: argparse.Namespace) -> int:
+    from atlas.dashboard.window import run_window, window_available
+
+    if not window_available():
+        raise ConfigError("the leaderboard window needs pywebview: pip install -e .[window]")
+    return run_window(_session_dir(args))
+
+
 def _cmd_paper_watch(args: argparse.Namespace) -> int:
     from atlas.dashboard.terminal import watch
 
@@ -409,13 +428,25 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
             checks.append(("startup checks", False, str(exc)))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    try:
-        import plotly  # noqa: F401
-        import streamlit  # noqa: F401
+    if cfg.dashboard.window == "app":
+        from atlas.dashboard.window import window_available
 
-        checks.append(("live page", True, f"dashboard available on http://localhost:{cfg.dashboard.port}"))
-    except ImportError as exc:
-        checks.append(("live page", False, f"install the dashboard extra: {exc}"))
+        checks.append(("leaderboard window", True, "native window ready" if window_available() else
+                       "pywebview missing (pip install -e .[window]); the terminal view will be used instead"))
+    elif cfg.dashboard.window == "terminal":
+        checks.append(("leaderboard window", True, "terminal view (paper-watch)"))
+    if cfg.dashboard.open_on_start:
+        try:
+            import plotly  # noqa: F401
+            import streamlit  # noqa: F401
+
+            checks.append(("browser page", True, f"dashboard on http://localhost:{cfg.dashboard.port}"))
+        except ImportError as exc:
+            checks.append(("browser page", False, f"install the dashboard extra: {exc}"))
+    if cfg.fund is not None:
+        bots = len(cfg.shadows) + 1
+        checks.append(("fund", True, f"${cfg.fund.total_capital:,.2f} across {bots} bots "
+                       f"(${cfg.fund.total_capital / bots:,.2f} each on day 1, then compounding)"))
     if cfg.feed.kind == "alpaca" and cfg.feed.alpaca is not None:
         now = datetime.now(MARKET_TZ)
         a = cfg.feed.alpaca
@@ -535,7 +566,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--open-dashboard", action="store_true", help="open the live page in the browser")
     p.add_argument("--auto-resume", action="store_true", help="resume today's session if it already exists")
     p.add_argument("--watch", action="store_true", help="open the leaderboard in a new terminal window")
+    p.add_argument("--reset-fund", action="store_true", help="archive the fund ledger and split capital afresh")
     p.set_defaults(func=_cmd_paper)
+
+    p = sub.add_parser("paper-window", help="Open the live leaderboard window for a paper session.")
+    p.add_argument("--session-dir")
+    p.add_argument("--config", help="paper config; targets today's session")
+    p.set_defaults(func=_cmd_paper_window)
 
     p = sub.add_parser("paper-watch", help="Live leaderboard in this terminal (refreshes every 2 s).")
     p.add_argument("--session-dir")

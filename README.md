@@ -369,6 +369,7 @@ window, and re-running it the same day resumes the session. Or use the commands 
 ```bash
 python -m atlas.cli paper-check --config configs/paper_live.yaml     # preflight; does not trade
 python -m atlas.cli paper --config configs/paper_live.yaml --auto-resume    # opens the leaderboard window
+python -m atlas.cli paper-window --config configs/paper_live.yaml    # reopen the leaderboard window
 python -m atlas.cli paper-watch --config configs/paper_live.yaml     # live leaderboard in this terminal
 python -m atlas.cli paper-status --config configs/paper_live.yaml    # one-shot leaderboard
 python -m atlas.cli paper-stop --config configs/paper_live.yaml      # clean, resumable stop
@@ -380,10 +381,26 @@ hours, so they run in their own window or in the background.
 **What happens when you run it:**
 * **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
   bots load.
-* **A leaderboard window opens** in its own terminal (`paper-watch`), refreshed every
-  2 seconds. It shows the ranking by net P&L against buy-and-hold, each bot's P&L,
-  fills, positions and halt status, and the recent simulated trades. It stays open
-  with the final standings after the close.
+* **The leaderboard window opens.** It is a native dark trading-screen window
+  (`paper-window`; Edge WebView2, no web server, no internet resources) and refreshes
+  every second. It shows:
+  * fund equity, today's and total P&L, the leader, trade count, and comparison against
+    buy-and-hold
+  * a live SPY/QQQ ticker
+  * ranked bots with each one's capital, equity, today's and total P&L, sparkline, fills,
+    positions and status
+  * an equity chart and a live trade feed
+
+  It stays open with the final standings after the close. Without the `window` extra,
+  the terminal view (`paper-watch`) is used instead.
+* **Fund.** `fund.total_capital` (here $100,000) is split equally across the 6 bots on
+  day 1, $16,666.67 each, and each bot trades only its own share. At the close, open
+  positions are sold at the bid, after costs. Each bot starts the next day with exactly
+  what it ended with, so its capital grows and shrinks with its own P&L. The ledger is
+  `artifacts/paper/fund_ledger.json`. Changing the bot lineup requires `--reset-fund`,
+  which archives the old ledger rather than deleting it. The benchmark gets a fresh
+  equal share each day. Atlas does not read your Alpaca balance; it only reads market
+  data.
 * **Trading hours.** The session waits for 09:30 ET, trades until 16:00 ET, then writes
   the daily report.
 

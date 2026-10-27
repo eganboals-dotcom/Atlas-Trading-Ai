@@ -126,11 +126,19 @@ class AlertsConfig(Strict):
     file: bool = True
 
 
+class FundConfig(Strict):
+    """Equal capital per bot, compounding daily (see ``atlas.paper.fund``)."""
+
+    total_capital: PosF
+    ledger: Path | None = None  # default: <output_dir>/fund_ledger.json
+    flatten_at_close: bool = True  # sell open positions at the bid at the close, so each day settles in cash
+
+
 class DashboardConfig(Strict):
     """Read-only live page, opened in the browser when a session starts (``paper --open-dashboard``)."""
 
     open_on_start: bool = False  # browser page (http://localhost:<port>)
-    watch_window: bool = False  # terminal leaderboard in its own console window
+    window: Literal["app", "terminal", "none"] = "none"  # app: native leaderboard window; terminal: console view
     port: Annotated[int, Field(ge=1024, le=65535)] = 8501
     live_snapshot_ms: Annotated[float, Field(ge=500)] = 2_000.0  # how often live.json is refreshed
 
@@ -150,3 +158,4 @@ class PaperConfig(Strict):
     output_dir: Path = Path("artifacts/paper")
     state_flush_events: PosI = 500
     dashboard: DashboardConfig = Field(default_factory=lambda: DashboardConfig())
+    fund: FundConfig | None = None  # None: every account starts with the simulator's initial_cash

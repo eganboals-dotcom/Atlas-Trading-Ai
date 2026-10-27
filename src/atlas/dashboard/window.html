@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Live Paper Trading</title>
+<style>
+  :root {
+    --bg: #06080c; --panel: #0c1016; --panel2: #10151d; --line: #1a212c; --line2: #232c3a;
+    --text: #e8edf3; --muted: #7a8596; --dim: #4b5566;
+    --green: #1ee68f; --green-bg: rgba(30,230,143,.10); --red: #ff4d6a; --red-bg: rgba(255,77,106,.10);
+    --amber: #ffb547; --amber-bg: rgba(255,181,71,.12); --blue: #5aa9ff; --violet: #a78bfa;
+    --gold: #f5c84c; --silver: #c9d1dc; --bronze: #d08a5b;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 13px; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .up { color: var(--green); } .down { color: var(--red); } .flat { color: var(--muted); }
+  .app { display: grid; grid-template-rows: 52px auto 1fr 28px; height: 100vh; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 18px; padding: 0 18px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0a0e14, #06080c); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .14em; font-size: 14px; }
+  .logo { width: 22px; height: 22px; border-radius: 6px; background: conic-gradient(from 210deg, var(--green), var(--blue), var(--violet), var(--green));
+    box-shadow: 0 0 18px rgba(30,230,143,.35); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 11px;
+    font-weight: 600; letter-spacing: .06em; border: 1px solid var(--line2); color: var(--muted); background: var(--panel); }
+  .chip.live { color: var(--green); border-color: rgba(30,230,143,.35); background: var(--green-bg); }
+  .chip.warn { color: var(--amber); border-color: rgba(255,181,71,.35); background: var(--amber-bg); }
+  .chip.bad { color: var(--red); border-color: rgba(255,77,106,.35); background: var(--red-bg); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .chip.live .dot { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(30,230,143,.6); } 70% { box-shadow: 0 0 0 7px rgba(30,230,143,0); } 100% { box-shadow: 0 0 0 0 rgba(30,230,143,0); } }
+  .ticker { display: flex; gap: 10px; margin-left: 8px; }
+  .tick { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--line); }
+  .tick b { font-size: 12px; letter-spacing: .04em; } .tick .num { font-size: 12px; }
+  .spacer { flex: 1; }
+  .clock { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .clock b { color: var(--text); font-weight: 600; }
+
+  /* hero stats */
+  .hero { display: grid; grid-template-columns: 1.5fr repeat(5, 1fr); gap: 1px; background: var(--line);
+    border-bottom: 1px solid var(--line); }
+  .stat { background: var(--bg); padding: 14px 18px; }
+  .stat .label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  .stat .value { font-size: 22px; font-weight: 600; margin-top: 6px; }
+  .stat.big .value { font-size: 30px; letter-spacing: -.01em; }
+  .stat .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+  /* main grid */
+  .main { display: grid; grid-template-columns: 1fr 360px; gap: 12px; padding: 12px; min-height: 0; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; min-height: 0; }
+  .panel h2 { margin: 0; padding: 12px 14px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .panel h2 .right { margin-left: auto; color: var(--dim); letter-spacing: .04em; text-transform: none; font-weight: 500; }
+
+  /* leaderboard */
+  .board { overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { position: sticky; top: 0; background: var(--panel); text-align: right; padding: 9px 12px; font-size: 10.5px; font-weight: 600;
+    color: var(--dim); letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid var(--line); z-index: 1; }
+  th:nth-child(-n+2) { text-align: left; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  td:nth-child(-n+2) { text-align: left; }
+  tr.bot:hover td { background: var(--panel2); }
+  tr.bench td { color: var(--muted); }
+  .rank { width: 26px; height: 26px; border-radius: 8px; display: inline-grid; place-items: center; font-weight: 700; font-size: 12px;
+    background: var(--panel2); color: var(--muted); border: 1px solid var(--line2); }
+  .r1 { color: #1a1300; background: var(--gold); border-color: var(--gold); box-shadow: 0 0 14px rgba(245,200,76,.45); }
+  .r2 { color: #111; background: var(--silver); border-color: var(--silver); }
+  .r3 { color: #1a0c03; background: var(--bronze); border-color: var(--bronze); }
+  .name { font-weight: 600; font-size: 13.5px; }
+  .model { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .fam { display: inline-block; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 600; margin-left: 6px;
+    background: rgba(90,169,255,.10); color: var(--blue); border: 1px solid rgba(90,169,255,.25); vertical-align: 1px; }
+  .fam.baseline { background: rgba(167,139,250,.10); color: var(--violet); border-color: rgba(167,139,250,.25); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; }
+  .pill.ok { color: var(--green); background: var(--green-bg); } .pill.halt { color: var(--red); background: var(--red-bg); }
+  .pill.work { color: var(--amber); background: var(--amber-bg); }
+  .pos { color: var(--muted); font-size: 11.5px; }
+  .pnl { font-weight: 600; } .ret { font-size: 11.5px; }
+  svg.spark { width: 120px; height: 30px; display: block; margin-left: auto; }
+  .flash-up { animation: fu 1.2s; } .flash-down { animation: fd 1.2s; }
+  @keyframes fu { from { background: rgba(30,230,143,.22); } to { background: transparent; } }
+  @keyframes fd { from { background: rgba(255,77,106,.22); } to { background: transparent; } }
+
+  /* chart */
+  .chart { flex: 0 0 230px; }
+  .chart canvas { width: 100%; height: 100%; display: block; }
+  .chart .body { position: relative; flex: 1; padding: 6px 10px 10px; min-height: 0; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+  /* trades feed */
+  .feed { overflow: auto; flex: 1; }
+  .trade { display: grid; grid-template-columns: 62px 44px 1fr auto; gap: 8px; align-items: center; padding: 8px 14px;
+    border-bottom: 1px solid var(--line); font-size: 12px; }
+  .trade.new { animation: slide .6s ease-out; }
+  @keyframes slide { from { background: rgba(90,169,255,.16); transform: translateX(6px); } to { background: transparent; transform: none; } }
+  .side { font-weight: 700; font-size: 10.5px; text-align: center; padding: 2px 0; border-radius: 5px; letter-spacing: .05em; }
+  .side.buy { color: var(--green); background: var(--green-bg); } .side.sell { color: var(--red); background: var(--red-bg); }
+  .trade .who { color: var(--muted); font-size: 11px; }
+  .empty { color: var(--dim); padding: 22px 14px; text-align: center; }
+
+  .banner { margin: 12px 12px 0; padding: 10px 14px; border-radius: 10px; font-weight: 600; display: none; }
+  .banner.warn { display: block; color: var(--amber); background: var(--amber-bg); border: 1px solid rgba(255,181,71,.3); }
+  .banner.bad { display: block; color: var(--red); background: var(--red-bg); border: 1px solid rgba(255,77,106,.3); }
+  .foot { display: flex; gap: 18px; align-items: center; padding: 0 18px; border-top: 1px solid var(--line); color: var(--dim);
+    font-size: 11px; font-family: var(--mono); }
+  .foot .sim { color: var(--muted); font-family: var(--sans); font-weight: 600; letter-spacing: .06em; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
+  .wait { display: grid; place-items: center; height: 100vh; color: var(--muted); font-size: 15px; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div id="wait" class="wait">Waiting for the session to start…</div>
+<div id="app" class="app" style="display:none">
+  <div class="top">
+    <div class="brand"><div class="logo"></div>ATLAS</div>
+    <span id="status" class="chip"><span class="dot"></span><span id="statusText">—</span></span>
+    <span class="chip">PAPER · SIMULATED FILLS</span>
+    <div id="ticker" class="ticker"></div>
+    <div class="spacer"></div>
+    <div class="clock"><span id="session"></span> · <b id="clock">--:--:--</b> ET</div>
+  </div>
+  <div>
+    <div class="hero">
+      <div class="stat big"><div class="label" id="eqLabel">Fund equity</div><div class="value num" id="equity">—</div><div class="sub" id="equitySub"></div></div>
+      <div class="stat"><div class="label">Today P&amp;L</div><div class="value num" id="dayPnl">—</div><div class="sub num" id="dayPct"></div></div>
+      <div class="stat"><div class="label">Total P&amp;L</div><div class="value num" id="totPnl">—</div><div class="sub num" id="totPct"></div></div>
+      <div class="stat"><div class="label">Leader</div><div class="value" id="leader">—</div><div class="sub num" id="leaderSub"></div></div>
+      <div class="stat"><div class="label">Trades today</div><div class="value num" id="trades">—</div><div class="sub" id="tradesSub"></div></div>
+      <div class="stat"><div class="label">vs Buy &amp; Hold</div><div class="value num" id="vsbh">—</div><div class="sub">best bot, today</div></div>
+    </div>
+    <div id="banner" class="banner"></div>
+  </div>
+  <div class="main">
+    <div class="col">
+      <div class="panel board" style="flex:1">
+        <h2>Leaderboard <span class="right" id="rankBy"></span></h2>
+        <table>
+          <thead><tr><th style="width:48px">#</th><th>Bot</th><th>Capital</th><th>Equity</th><th>Today</th><th>Total</th>
+            <th>Trend</th><th>Fills</th><th>Positions</th><th>Status</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="panel chart">
+        <h2>Equity — today <span class="legend" id="legend"></span></h2>
+        <div class="body"><canvas id="chart"></canvas></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="panel" style="flex:1">
+        <h2>Live trades <span class="right" id="feedCount"></span></h2>
+        <div class="feed" id="feed"><div class="empty">No trades yet</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="sim">SIMULATED ORDERS ONLY — NO ORDER IS SENT TO ANY BROKER</span>
+    <span class="spacer"></span><span id="counters"></span><span id="age"></span>
+  </div>
+</div>
+<script>
+const COLORS = ["#1ee68f", "#5aa9ff", "#a78bfa", "#f5c84c", "#ff8a4c", "#ff4d6a", "#2dd4bf", "#e879f9"];
+const money = (x, sign = true) => (x == null ? "—" : (sign && x > 0 ? "+" : x < 0 ? "−" : "") + "$" +
+  Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const plainMoney = x => x == null ? "—" : "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (x, digits = 2) => x == null ? "" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toFixed(digits) + "%";
+const cls = x => x > 0.004 ? "up" : x < -0.004 ? "down" : "flat";
+const etTime = ns => ns ? new Date(ns / 1e6).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false }) : "--:--:--";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let lastPnl = {}, seenTrades = new Set(), colorOf = {};
+
+function spark(curve, start) {
+  if (!curve || curve.length < 2) return '<svg class="spark"></svg>';
+  const ys = curve.map(p => p[1]), lo = Math.min(...ys, start), hi = Math.max(...ys, start), w = 120, h = 30;
+  const x = i => (i / (curve.length - 1)) * w, y = v => hi === lo ? h / 2 : h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
+  const pts = curve.map((p, i) => x(i).toFixed(1) + "," + y(p[1]).toFixed(1)).join(" ");
+  const col = ys[ys.length - 1] >= start ? "var(--green)" : "var(--red)";
+  const base = y(start).toFixed(1);
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line x1="0" x2="${w}" y1="${base}" y2="${base}" stroke="#2a3342" stroke-dasharray="2 3"/>
+    <polyline fill="none" stroke="${col}" stroke-width="1.6" points="${pts}"/></svg>`;
+}
+
+function drawChart(accounts) {
+  const c = document.getElementById("chart"), box = c.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  c.width = (box.width - 20) * dpr; c.height = (box.height - 16) * dpr; c.style.height = (box.height - 16) + "px";
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  const W = c.width / dpr, H = c.height / dpr, padL = 64, padB = 18;
+  const series = accounts.filter(a => a.equity_curve && a.equity_curve.length > 1)
+    .map(a => ({ a, pts: a.equity_curve.map(p => [p[0], p[1] - a.start_capital]) }));
+  if (!series.length) { g.fillStyle = "#4b5566"; g.font = "12px Segoe UI"; g.fillText("Waiting for data…", padL, H / 2); return; }
+  let t0 = Infinity, t1 = -Infinity, lo = 0, hi = 0;
+  series.forEach(s => s.pts.forEach(([t, v]) => { t0 = Math.min(t0, t); t1 = Math.max(t1, t); lo = Math.min(lo, v); hi = Math.max(hi, v); }));
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const m = (hi - lo) * .12; hi += m; lo -= m;
+  const X = t => padL + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - padL - 8), Y = v => 6 + (hi - v) / (hi - lo) * (H - padB - 10);
+  g.strokeStyle = "#161c26"; g.fillStyle = "#4b5566"; g.font = "10.5px Consolas"; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, yy = Y(v);
+    g.beginPath(); g.moveTo(padL, yy); g.lineTo(W - 8, yy); g.stroke(); g.fillText(money(v), 4, yy + 3); }
+  g.strokeStyle = "#2a3342"; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(padL, Y(0)); g.lineTo(W - 8, Y(0)); g.stroke(); g.setLineDash([]);
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => { const s = etTime(t).slice(0, 5); g.fillText(s, Math.min(X(t) - (i ? 14 : 0), W - 40), H - 4); });
+  series.forEach(s => {
+    const col = colorOf[s.a.account] || "#7a8596";
+    g.strokeStyle = col; g.lineWidth = s.a.role === "benchmark" ? 1.2 : 1.8; g.globalAlpha = s.a.role === "benchmark" ? .55 : 1;
+    if (s.a.role === "benchmark") g.setLineDash([4, 4]);
+    g.beginPath(); s.pts.forEach(([t, v], i) => i ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v))); g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1;
+  });
+}
+
+function render(d) {
+  document.getElementById("wait").style.display = "none";
+  document.getElementById("app").style.display = "grid";
+  const live = d.live, fund = live.fund, accounts = live.accounts, rows = d.rows;
+  accounts.forEach((a, i) => { if (!colorOf[a.account]) colorOf[a.account] = a.role === "benchmark" ? "#7a8596" : COLORS[Object.keys(colorOf).length % COLORS.length]; });
+
+  // status
+  const st = document.getElementById("status"), stt = document.getElementById("statusText"), banner = document.getElementById("banner");
+  let mode = "live", label = "LIVE";
+  if (live.kill) { mode = "bad"; label = "KILL SWITCH"; }
+  else if (live.safe && live.safe.length) { mode = "warn"; label = "SAFE STATE"; }
+  else if (live.status !== "running") { mode = ""; label = live.status.toUpperCase(); }
+  else if (d.age > 15) { mode = "warn"; label = "NO DATA " + Math.round(d.age) + "s"; }
+  st.className = "chip " + mode; stt.textContent = label;
+  if (live.kill) { banner.className = "banner bad"; banner.textContent = "Kill switch engaged — " + live.kill; }
+  else if (live.safe && live.safe.length) { banner.className = "banner warn"; banner.textContent = "Safe state, no new orders: " + live.safe.join(", "); }
+  else banner.className = "banner";
+
+  document.getElementById("session").textContent = live.session;
+  document.getElementById("clock").textContent = etTime(live.market_now);
+  const tk = live.quotes || {};
+  document.getElementById("ticker").innerHTML = Object.keys(tk).map(s => {
+    const q = tk[s], mid = (q.bid + q.ask) / 2;
+    return `<div class="tick"><b>${esc(s)}</b><span class="num">${mid.toFixed(2)}</span><span class="num flat" style="font-size:11px">${q.bid.toFixed(2)} / ${q.ask.toFixed(2)}</span></div>`;
+  }).join("");
+
+  // hero
+  const bots = accounts.filter(a => a.role !== "benchmark");
+  const bench = accounts.find(a => a.role === "benchmark");
+  const equity = fund ? fund.equity : bots.reduce((s, a) => s + a.equity, 0);
+  const start = fund ? fund.start_today : bots.reduce((s, a) => s + a.start_capital, 0);
+  const incep = fund ? fund.total_capital : start;
+  const day = equity - start, tot = equity - incep;
+  document.getElementById("eqLabel").textContent = fund ? "Fund equity" : "Combined equity";
+  document.getElementById("equity").textContent = plainMoney(equity);
+  document.getElementById("equitySub").textContent = fund ? `${fund.bots} bots · ${plainMoney(fund.total_capital)} start · day ${fund.days_settled + (live.status === "running" ? 1 : 0)}` : `${bots.length} bots`;
+  const dp = document.getElementById("dayPnl"); dp.textContent = money(day); dp.className = "value num " + cls(day);
+  document.getElementById("dayPct").textContent = pct(day / start);
+  const tp = document.getElementById("totPnl"); tp.textContent = money(tot); tp.className = "value num " + cls(tot);
+  document.getElementById("totPct").textContent = pct(tot / incep) + " since start";
+  const leader = rows.find(r => r.rank === 1);
+  if (leader) { document.getElementById("leader").textContent = leader.account;
+    const lsub = document.getElementById("leaderSub"); lsub.textContent = money(leader.total_pnl ?? leader.net_pnl) + " total"; lsub.className = "sub num " + cls(leader.total_pnl ?? leader.net_pnl); }
+  const fills = bots.reduce((s, a) => s + a.fills, 0);
+  document.getElementById("trades").textContent = fills.toLocaleString();
+  document.getElementById("tradesSub").textContent = `${live.counters.events.toLocaleString()} market events`;
+  const best = Math.max(...bots.map(a => a.vs_benchmark));
+  const vb = document.getElementById("vsbh"); vb.textContent = isFinite(best) ? pct(best) : "—"; vb.className = "value num " + cls(best);
+
+  // leaderboard
+  document.getElementById("rankBy").textContent = fund ? "ranked by total P&L since the fund started" : "ranked by today's P&L";
+  document.getElementById("rows").innerHTML = rows.map(r => {
+    const isBench = r.role === "benchmark", fam = r.family.replace("baseline_", ""), base = r.family.startsWith("baseline");
+    const rank = isBench ? '<span class="rank">B</span>' : `<span class="rank ${r.rank <= 3 ? "r" + r.rank : ""}">${r.rank}</span>`;
+    const pos = Object.entries(r.positions).map(([s, q]) => `${esc(s)} ${q}`).join(" · ") || "flat";
+    const status = r.halted ? '<span class="pill halt">HALTED</span>' : r.working_orders ? '<span class="pill work">WORKING</span>' : '<span class="pill ok">ACTIVE</span>';
+    const tot = r.total_pnl ?? r.net_pnl, totRet = r.total_return ?? r.net_return;
+    const prev = lastPnl[r.account]; lastPnl[r.account] = tot;
+    const flash = prev == null || Math.abs(tot - prev) < 0.005 ? "" : (tot > prev ? "flash-up" : "flash-down");
+    return `<tr class="${isBench ? "bench" : "bot"}">
+      <td>${rank}</td>
+      <td><div class="name"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorOf[r.account]};margin-right:8px"></span>${esc(r.account)}<span class="fam ${base ? "baseline" : ""}">${esc(fam)}</span></div>
+          <div class="model">${esc(r.agent_id)}${r.halted ? " · " + esc(r.halted) : ""}</div></td>
+      <td class="num">${plainMoney(r.start_capital)}</td>
+      <td class="num">${plainMoney(r.equity)}</td>
+      <td class="num"><div class="pnl ${cls(r.net_pnl)}">${money(r.net_pnl)}</div><div class="ret flat">${pct(r.net_return)}</div></td>
+      <td class="num ${flash}"><div class="pnl ${cls(tot)}">${money(tot)}</div><div class="ret flat">${pct(totRet)}</div></td>
+      <td>${spark(r.equity_curve, r.start_capital)}</td>
+      <td class="num">${r.fills}</td>
+      <td class="pos">${pos}</td>
+      <td>${status}</td></tr>`;
+  }).join("");
+
+  document.getElementById("legend").innerHTML = accounts.map(a => `<span><i style="background:${colorOf[a.account]}"></i>${esc(a.account)}</span>`).join("");
+  drawChart(accounts);
+
+  // trades feed
+  const feed = document.getElementById("feed"), trades = live.recent_trades || [];
+  document.getElementById("feedCount").textContent = trades.length ? `latest ${trades.length}` : "";
+  if (!trades.length) feed.innerHTML = '<div class="empty">No trades yet</div>';
+  else {
+    const first = seenTrades.size === 0;
+    feed.innerHTML = trades.map(t => {
+      const key = t.account + t.ts + t.symbol + t.side + t.qty, isNew = !first && !seenTrades.has(key);
+      seenTrades.add(key);
+      return `<div class="trade ${isNew ? "new" : ""}"><span class="num flat">${etTime(t.ts)}</span>
+        <span class="side ${t.side}">${t.side.toUpperCase()}</span>
+        <span><b>${t.qty} ${esc(t.symbol)}</b> <span class="who">· ${esc(t.account)}</span></span>
+        <span class="num">${t.price.toFixed(2)}</span></div>`;
+    }).join("");
+  }
+
+  const c = live.counters;
+  document.getElementById("counters").textContent = `events ${c.events} · dropped ${c.dropped_events} · disconnects ${c.disconnects} · clock ${c.clock_anomalies} · risk rejects ${c.risk_rejections}`;
+  document.getElementById("age").textContent = `updated ${Math.round(d.age)}s ago`;
+}
+
+async function tick() {
+  try {
+    const d = await window.pywebview.api.live();
+    if (d && d.live) render(d);
+  } catch (e) { console.error(e); }
+}
+window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); });
+window.addEventListener("resize", () => tick());
+</script>
+</body>
+</html>

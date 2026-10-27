@@ -17,6 +17,9 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
   checkpoints while a session runs. Risk limits are the user's to change.
 - **Frozen bots.** Bots don't train during paper sessions. Training happens offline (`evolve`,
   `walkforward`, `train-ppo`).
+- **Fund.** Each bot trades only its share of `fund.total_capital`. Its capital compounds day to day through
+  `artifacts/paper/fund_ledger.json`. Never edit the ledger by hand. Use `--reset-fund` only when the user asks
+  for a fresh split; it archives the old ledger.
 - **Honest results.** The bots were evolved on synthetic data. Don't describe paper P&L as evidence of
   an edge.
 
@@ -38,7 +41,8 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
    own window. If the user asks you to start it, run it as a **background** process so it is not killed by a
    tool timeout:
    `.venv/Scripts/python.exe -m atlas.cli --log-level WARNING paper --config configs/paper_live.yaml --auto-resume`
-   It waits for the open by itself and opens the live leaderboard in its own terminal window (read-only).
+   It waits for the open by itself and opens the live leaderboard window (a native, read-only app window).
+   Reopen it any time with `paper-window --config configs/paper_live.yaml`.
 3. **Monitor.** This is read-only. Use `paper-status` for a one-shot leaderboard; `paper-watch` is the live,
    refreshing view, and is what the leaderboard window runs:
    `.venv/Scripts/python.exe -m atlas.cli paper-status --config configs/paper_live.yaml`

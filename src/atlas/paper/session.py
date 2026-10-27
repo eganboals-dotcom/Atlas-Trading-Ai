@@ -44,7 +44,7 @@ from atlas.data.events import MarketEvent, Quote, Trade
 from atlas.data.providers import make_provider
 from atlas.data.validation import IssueKind, StreamValidator
 from atlas.environment.market_state import MarketView, PortfolioState
-from atlas.environment.orders import OrderIntent, OrderStatus, Side
+from atlas.environment.orders import OrderIntent, OrderStatus, Side, SimOrder
 from atlas.logging_utils import get_logger
 from atlas.paper.broker import PaperBroker
 from atlas.paper.config import CandidateSource, PaperConfig, RiskConfig
@@ -87,9 +87,13 @@ def resolve_candidate(src: CandidateSource) -> AgentRecord:
     return AgentRecord.from_dict(champions[src.rank]["record"])
 
 
-def make_broker(account_id: str, sim: SimulatorConfig, seed: int, audit) -> BrokerExecution:
+def make_broker(account_id: str, sim: SimulatorConfig, seed: int, audit,
+                initial_cash: float | None = None) -> BrokerExecution:
     """The only broker factory in paper mode. It can only ever build a PaperBroker."""
-    broker = PaperBroker(account_id, sim, seed, audit)
+    from atlas.environment.portfolio import Portfolio
+
+    broker = PaperBroker(account_id, sim, seed, audit,
+                         Portfolio(initial_cash) if initial_cash is not None else None)
     ensure_not_live(broker)
     return broker
 
@@ -138,6 +142,7 @@ class Account:
     equity_curve: list[tuple[int, float]] = field(default_factory=list)
     decision_wall_ns: deque = field(default_factory=lambda: deque(maxlen=20_000))
     next_curve_ts: int = 0
+    inception_capital: float | None = None  # fund mode: the bot's day-1 share
 
 
 class AuditLog:
@@ -194,7 +199,8 @@ class Alerts:
 
 class PaperSession:
     def __init__(self, cfg: PaperConfig, sim: SimulatorConfig, risk: RiskConfig, base_dir: Path = Path("."),
-                 feed: LiveFeed | None = None, resume: bool = False, reset_kill_switch: bool = False) -> None:
+                 feed: LiveFeed | None = None, resume: bool = False, reset_kill_switch: bool = False,
+                 reset_fund: bool = False) -> None:
         if cfg.mode != "paper" or cfg.live_orders_enabled is not False:  # defense in depth; config already forbids
             raise LiveTradingDisabledError("paper session requires mode=paper and live_orders_enabled=false")
         self.cfg, self.sim, self.risk_cfg = cfg, sim, risk
@@ -205,6 +211,8 @@ class PaperSession:
         self._feed_override = feed
         self.resume = resume
         self.reset_kill_switch = reset_kill_switch
+        self.reset_fund = reset_fund
+        self.fund = None
         self.symbols: list[str] = []
         self.accounts: list[Account] = []
         self.safe: dict[str, int] = {}  # reason -> since ts
@@ -245,8 +253,9 @@ class PaperSession:
         self.audit = AuditLog(self.dir / "audit.jsonl")
         self.alerts = Alerts(self.dir / "alerts.jsonl", self.cfg.alerts.console, self.cfg.alerts.file)
         self.kill = KillSwitch(self.dir)
-        for i, (role_id, src) in enumerate(sources):
-            record = resolve_candidate(src)
+        records = [(role_id, src, resolve_candidate(src)) for role_id, src in sources]
+        capital, inception = self._fund_capital(records)
+        for i, (role_id, src, record) in enumerate(records):
             try:
                 agent = create_agent(record)  # validates genome / pinned weights (model mismatch -> refuse)
             except (ValueError, KeyError, ImportError) as exc:
@@ -256,13 +265,15 @@ class PaperSession:
             strategy = AgentStrategy(agent, self.symbols, self.cfg.agent_limits,
                                      int(self.cfg.decision_interval_ms * NS_PER_MS),
                                      int(self.risk_cfg.stale_data_ms * NS_PER_MS), seed=self.sim.seed + i)
-            broker = make_broker(role_id, self.sim, self.sim.seed + 100 + i, self.audit.write)
+            broker = make_broker(role_id, self.sim, self.sim.seed + 100 + i, self.audit.write,
+                                 capital.get(role_id))
             self.accounts.append(Account(
                 role_id, role_id.split("-")[0], record,
                 {"agent_id": meta.agent_id, "family": meta.family, "genome_hash": meta.genome_hash,
                  "population_version": meta.population_version, "artifact": record.artifact,
                  "source": src.model_dump(mode="json")},
                 strategy, broker, RiskManager(self.risk_cfg, role_id, broker.portfolio.equity),
+                inception_capital=inception.get(role_id),
             ))
         try:
             self.feed.connect()
@@ -318,7 +329,10 @@ class PaperSession:
             p = a.broker.portfolio
             ret = p.equity / p.initial_cash - 1
             step = max(1, len(a.equity_curve) // 1_500)
+            inception = a.inception_capital or p.initial_cash
             accounts.append({
+                "start_capital": p.initial_cash, "inception_capital": inception,
+                "total_pnl": p.equity - inception, "total_return": p.equity / inception - 1,
                 "account": a.account_id, "role": a.role, "agent_id": a.model["agent_id"],
                 "family": a.model["family"], "equity": p.equity, "cash": p.cash, "net_pnl": p.equity - p.initial_cash,
                 "net_return": ret, "vs_benchmark": ret - bench_ret, "realized_pnl": p.realized_pnl,
@@ -337,9 +351,69 @@ class PaperSession:
             "symbols": self.symbols, "safe": list(self.safe), "kill": self.kill.reason if hasattr(self, "kill") else None,
             "counters": self.counters, "accounts": accounts, "recent_trades": trades[:100], "simulated": True,
         }
+        market = getattr(self, "_market", None)
+        if market is not None:
+            snap["quotes"] = {s: {"bid": q.bid, "ask": q.ask, "ts": q.event_ts, "stale": market.is_stale(s)}
+                              for s in self.symbols if (q := market.quote(s)) is not None}
+        bots = [x for x in accounts if x["role"] != "benchmark"]
+        if self.fund is not None and bots:
+            snap["fund"] = {
+                "total_capital": self.cfg.fund.total_capital, "bots": len(bots),
+                "start_today": sum(x["start_capital"] for x in bots), "equity": sum(x["equity"] for x in bots),
+                "day_pnl": sum(x["net_pnl"] for x in bots), "total_pnl": sum(x["total_pnl"] for x in bots),
+                "days_settled": self.fund.days_traded(),
+            }
         tmp = self.dir / "live.json.tmp"
         tmp.write_text(json.dumps(snap, default=str), encoding="utf-8")
         os.replace(tmp, self.dir / "live.json")
+
+    def _fund_capital(self, records) -> tuple[dict[str, float], dict[str, float]]:
+        """Fund mode: each bot's capital for today, and at inception. Empty dicts otherwise."""
+        f = self.cfg.fund
+        if f is None:
+            return {}, {}
+        from atlas.paper.fund import FundError, FundLedger
+
+        path = f.ledger or (self.cfg.output_dir / "fund_ledger.json")
+        self.fund = FundLedger(path, f.total_capital)
+        if self.reset_fund and (archived := self.fund.archive()):
+            print(f"fund ledger archived to {archived}; starting a new fund", file=sys.stderr)
+        bots = {role: rec.agent_id for role, _, rec in records if role != "benchmark"}
+        try:
+            start, inception, bench = self.fund.start_capitals(bots, self.session_date)
+        except FundError as exc:
+            raise HealthCheckError(str(exc)) from exc
+        return {**start, "benchmark": bench}, {**inception, "benchmark": bench}
+
+    def _flatten_at_close(self, now: int, quote_at) -> None:
+        """Sell every open position at the latest bid (after costs), so the day settles in cash."""
+        from atlas.environment.replay import execute_ioc
+
+        for a in self.accounts:
+            p = a.broker.portfolio
+            for sym in sorted(p.positions):
+                qty = p.positions[sym].quantity
+                quote = quote_at(sym, now)
+                if not qty or quote is None:
+                    continue
+                order = SimOrder(a.broker.next_order_id, OrderIntent(sym, Side.SELL, qty), now, now)
+                a.broker.next_order_id += 1
+                order.transition(now, OrderStatus.PROPOSED)
+                order.transition(now, OrderStatus.ACCEPTED)
+                record = execute_ioc(order, quote, now, a.broker.costs, 1.0, 1 << 62, p)
+                a.broker.orders.append(order)
+                self.audit.write({"account": a.account_id, **record, "type": "eod_flatten", "symbol": sym,
+                                  "qty": qty, "simulated": True,
+                                  "fill_assumption": "closing sale at the last received bid, full size"})
+
+    def _settle_fund(self, final: bool) -> None:
+        if self.fund is None:
+            return
+        results = {a.account_id: {"start": a.broker.portfolio.initial_cash, "end": a.broker.portfolio.equity}
+                   for a in self.accounts if a.role != "benchmark"}
+        note = "settled at the close (positions sold at the bid)" if final else \
+            f"provisional: session stopped by {self.stopped_by}; open positions valued at mid"
+        self.fund.settle(self.session_date, results, final, note)
 
     def _check_model_symbols(self, role_id: str, record: AgentRecord) -> None:
         if record.family != "ppo" or not record.artifact:
@@ -431,6 +505,7 @@ class PaperSession:
         stale_ns = int(self.risk_cfg.stale_data_ms * NS_PER_MS)
         skew_ns = int(self.risk_cfg.max_clock_skew_ms * NS_PER_MS)
         market = MarketView(self.symbols, stale_ns)
+        self._market = market  # read-only reference for the live snapshot's quote ticker
         history: dict[str, deque[Quote]] = {s: deque(maxlen=512) for s in self.symbols}
 
         def quote_at(symbol: str, ts: int) -> Quote | None:
@@ -628,8 +703,13 @@ class PaperSession:
                 a.strategy.on_order_update(o)
             for o in a.broker.cancel_all(now, "session ended before simulated arrival"):
                 a.strategy.on_order_update(o)
+        ended = not getattr(self, "stopped_by", None)
+        if self.fund is not None and ended and self.cfg.fund.flatten_at_close:
+            self._flatten_at_close(now, quote_at)
+        for a in self.accounts:
             a.equity_curve.append((now, a.broker.portfolio.equity))
             a.broker.portfolio.assert_reconciled()
+        self._settle_fund(final=ended)
         for reason in list(self.safe):
             self._clear_safe(reason, now)
         self._flush(now)

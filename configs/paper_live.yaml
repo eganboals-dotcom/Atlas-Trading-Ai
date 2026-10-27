@@ -35,9 +35,14 @@ shadows:
   - {source: baseline, baseline: baseline_mean_reversion}
   - {source: baseline, baseline: baseline_random}
 
+# Fund: $100,000 split equally across the 6 bots on day 1 ($16,666.67 each). Each bot trades only its share;
+# at the close its positions are sold at the bid, and it starts the next day with whatever it ended with.
+# The ledger is artifacts/paper/fund_ledger.json. `--reset-fund` archives it and splits afresh.
+fund: {total_capital: 100000, flatten_at_close: true}
+
 agent_limits: {max_position_shares: 1000, max_order_shares: 500, max_position_frac: 0.5}
 decision_interval_ms: 2000        # polled data: decide at most every 2 s
 alerts: {console: true, file: true}
 output_dir: artifacts/paper
 state_flush_events: 200
-dashboard: {watch_window: true, open_on_start: false, port: 8501, live_snapshot_ms: 2000}  # leaderboard window; browser page off
+dashboard: {window: app, open_on_start: false, port: 8501, live_snapshot_ms: 1000}  # native leaderboard window; browser page off

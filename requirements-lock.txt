@@ -1,13 +1,16 @@
-# Full pinned environment for Python 3.12 (generated with pip freeze), including the optional rl and dashboard extras.
+# Full pinned environment for Python 3.12 (generated with pip freeze), including the optional rl, dashboard, and window extras.
 # Install: pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu && pip install -e . --no-deps
 altair==6.3.0
 annotated-types==0.8.0
 anyio==4.15.1
 attrs==26.1.0
+bottle==0.13.4
 certifi==2026.10.23
+cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.0
 cloudpickle==3.1.2
+clr_loader==0.3.1
 colorama==0.4.6
 Farama-Notifications==0.0.6
 filelock==4.2.4
@@ -34,7 +37,9 @@ pluggy==1.7.0
 polars==2.1.0
 polars-runtime-32==2.1.0
 protobuf==7.36.2
+proxy_tools==0.1.0
 pyarrow==26.0.0
+pycparser==3.12
 pydantic==2.14.1
 pydantic_core==2.50.1
 pydeck==0.9.3
@@ -42,6 +47,8 @@ Pygments==2.21.0
 pytest==9.1.1
 python-dateutil==3.0.0
 python-multipart==0.0.32
+pythonnet==3.2.1
+pywebview==6.2.1
 PyYAML==6.0.3
 referencing==0.37.0
 requests==2.34.2
