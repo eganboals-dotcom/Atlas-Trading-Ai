@@ -202,3 +202,18 @@ def test_bots_can_be_named_and_reserved_names_are_refused(tmp_path: Path) -> Non
     clash = session(tmp_path / "b", shadows=[{"source": "baseline", "baseline": "baseline_random", "name": "flip"}])
     with pytest.raises(HealthCheckError, match="unique"):
         clash.health_checks()
+
+
+def test_replace_file_waits_out_a_reader_holding_the_target(tmp_path):
+    # On Windows the leaderboard window reading live.json used to crash the session's os.replace.
+    import threading
+
+    from atlas.paper.session import replace_file
+
+    target, tmp = tmp_path / "live.json", tmp_path / "live.json.tmp"
+    target.write_text("old", encoding="utf-8")
+    tmp.write_text("new", encoding="utf-8")
+    fh = target.open(encoding="utf-8")
+    threading.Timer(0.2, fh.close).start()
+    replace_file(tmp, target)
+    assert target.read_text(encoding="utf-8") == "new"

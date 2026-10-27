@@ -118,6 +118,22 @@ def config_fingerprint(cfg: PaperConfig, sim: SimulatorConfig, risk: RiskConfig)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def replace_file(tmp: Path, target: Path, attempts: int = 50) -> None:
+    """os.replace that tolerates Windows sharing violations.
+
+    A reader (the leaderboard window polls live.json every second) holding the target open
+    makes os.replace fail with PermissionError on Windows. Retry briefly instead of crashing.
+    """
+    for i in range(attempts):
+        try:
+            os.replace(tmp, target)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.02)
+
+
 LOCK_FILE = "RUNNING.lock"
 
 
@@ -434,7 +450,10 @@ class PaperSession:
             }
         tmp = self.dir / "live.json.tmp"
         tmp.write_text(json.dumps(snap, default=str), encoding="utf-8")
-        os.replace(tmp, self.dir / "live.json")
+        try:
+            replace_file(tmp, self.dir / "live.json")
+        except PermissionError as exc:  # the snapshot is display-only: never let it stop trading
+            log.warning("live snapshot not updated: %s", exc)
 
     def _fund_capital(self, records) -> tuple[dict[str, float], dict[str, float]]:
         """Fund mode: each bot's capital for today, and at inception. Empty dicts otherwise."""
@@ -540,7 +559,7 @@ class PaperSession:
                 self._recorder_failed(exc)
         tmp = self.dir / "state.json.tmp"
         tmp.write_text(json.dumps(state, default=str), encoding="utf-8")
-        os.replace(tmp, self.dir / "state.json")
+        replace_file(tmp, self.dir / "state.json")
 
     # -- safe state & kill --------------------------------------------------------------
 
