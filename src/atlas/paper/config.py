@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -66,13 +66,42 @@ class FaultConfig(Strict):
     crash_at_event: int | None = None
 
 
+class AlpacaFeedConfig(Strict):
+    """Alpaca market data, read-only (see ``atlas.feeds.alpaca``). Keys come from the environment or .env."""
+
+    feed: Literal["iex"] = "iex"  # free plan: real-time IEX
+    poll_interval_ms: Annotated[float, Field(ge=250)] = 1_000.0
+    trade_poll_every: Annotated[int, Field(ge=1)] = 2  # 60 quote + 30 trade calls/min < 200/min limit
+    start_time: time = time(9, 30)
+    end_time: time = time(16, 0)
+    wait_for_open: bool = True
+    env_file: Path = Path(".env")
+
+    @model_validator(mode="after")
+    def _window(self) -> AlpacaFeedConfig:
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        if 60_000 / self.poll_interval_ms * (1 + 1 / self.trade_poll_every) > 190:
+            raise ValueError("polling would exceed Alpaca's 200 requests/minute free-plan limit")
+        return self
+
+
 class FeedConfig(Strict):
-    kind: Literal["replay"]  # the only feed implemented; a vendor streaming adapter is unresolved
-    data_source: DataSourceConfig
-    session_date: date
-    speed: Annotated[float, Field(ge=0)] = 0.0  # 0 = virtual clock (as fast as possible); 1 = real time
+    kind: Literal["replay", "alpaca"]
+    data_source: DataSourceConfig | None = None  # replay only
+    session_date: date | None = None  # replay: required; alpaca: defaults to today (US/Eastern) and must be today
+    speed: Annotated[float, Field(ge=0)] = 0.0  # replay: 0 = virtual clock (as fast as possible); 1 = real time
     first_quote_timeout_ms: PosF = 5_000.0
-    faults: FaultConfig = FaultConfig()
+    faults: FaultConfig = FaultConfig()  # replay only
+    alpaca: AlpacaFeedConfig | None = None
+
+    @model_validator(mode="after")
+    def _kind(self) -> FeedConfig:
+        if self.kind == "replay" and (self.data_source is None or self.session_date is None):
+            raise ValueError("replay feed needs data_source and session_date")
+        if self.kind == "alpaca" and self.alpaca is None:
+            raise ValueError("alpaca feed needs an `alpaca:` section")
+        return self
 
 
 class CandidateSource(Strict):
@@ -97,10 +126,18 @@ class AlertsConfig(Strict):
     file: bool = True
 
 
+class DashboardConfig(Strict):
+    """Read-only live page, opened in the browser when a session starts (``paper --open-dashboard``)."""
+
+    open_on_start: bool = False
+    port: Annotated[int, Field(ge=1024, le=65535)] = 8501
+    live_snapshot_ms: Annotated[float, Field(ge=500)] = 2_000.0  # how often live.json is refreshed
+
+
 class PaperConfig(Strict):
     mode: Literal["paper"]
     live_orders_enabled: Literal[False]
-    session_name: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]+$")]
+    session_name: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.{}-]+$")]  # "{date}" -> session date
     simulator_config: Path
     risk_config: Path
     feed: FeedConfig
@@ -111,3 +148,4 @@ class PaperConfig(Strict):
     alerts: AlertsConfig = AlertsConfig()
     output_dir: Path = Path("artifacts/paper")
     state_flush_events: PosI = 500
+    dashboard: DashboardConfig = Field(default_factory=lambda: DashboardConfig())

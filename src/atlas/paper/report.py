@@ -52,7 +52,7 @@ def write_daily_report(session: PaperSession) -> dict[str, Any]:
         x["excess_return_vs_benchmark"] = x["net_return"] - bench["net_return"]
     report = {
         "session": session.cfg.session_name,
-        "session_date": session.cfg.feed.session_date.isoformat(),
+        "session_date": session.session_date.isoformat(),
         "atlas_version": __version__,
         "config_fingerprint": session.fingerprint,
         "mode": "paper",

@@ -250,8 +250,23 @@ def _cmd_paper(args: argparse.Namespace) -> int:
     risk = load_config(_resolve(cfg.risk_config, path), RiskConfig)
     session = PaperSession(cfg, sim, risk, base_dir=path.parent, resume=args.resume,
                            reset_kill_switch=args.reset_kill_switch)
+    def on_ready(s: PaperSession) -> None:
+        print(f"paper session {s.dir.name}: startup checks passed; feed={cfg.feed.kind}; "
+              f"{len(s.accounts)} accounts; simulated orders only", file=sys.stderr)
+        if args.open_dashboard or cfg.dashboard.open_on_start:
+            from atlas.dashboard.launch import launch
+
+            url = launch(cfg.output_dir, s.dir.name, cfg.dashboard.port)
+            print(f"live page: {url} (read-only; keeps running after the session ends)", file=sys.stderr)
+        if cfg.feed.kind == "alpaca":
+            print("waiting for the market to open if needed; stop any time with Ctrl+C or paper-kill",
+                  file=sys.stderr)
+
     try:
-        report = session.run()
+        report = session.run(on_ready=on_ready)
+    except KeyboardInterrupt:
+        print("interrupted: state was flushed periodically; rerun with --resume to continue", file=sys.stderr)
+        return EXIT_CRASH
     except (HealthCheckError, LiveTradingDisabledError) as exc:
         print(f"paper session refused to start: {exc}", file=sys.stderr)
         return EXIT_CONFIG
@@ -266,6 +281,17 @@ def _cmd_paper(args: argparse.Namespace) -> int:
         "accounts": {a["account"]: {"net_return_bps": a["net_return"] * 1e4, "fills": a["fills"],
                                     "halted": a["halted"]} for a in report["accounts"]},
     }, indent=2))
+    return EXIT_OK
+
+
+def _cmd_dashboard(args: argparse.Namespace) -> int:
+    import time
+
+    from atlas.dashboard.launch import launch
+
+    url = launch(Path(args.paper_dir), None, args.port)
+    print(f"live page: {url} (read-only)")
+    time.sleep(5)  # let the browser open before this command exits
     return EXIT_OK
 
 
@@ -375,7 +401,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", required=True)
     p.add_argument("--resume", action="store_true", help="continue a session after a crash or stop")
     p.add_argument("--reset-kill-switch", action="store_true", help="operator reset after reviewing a kill")
+    p.add_argument("--open-dashboard", action="store_true", help="open the live page in the browser")
     p.set_defaults(func=_cmd_paper)
+
+    p = sub.add_parser("dashboard", help="Open the read-only live page (leaderboard, P&L, trades).")
+    p.add_argument("--paper-dir", default="artifacts/paper")
+    p.add_argument("--port", type=int, default=8501)
+    p.set_defaults(func=_cmd_dashboard)
 
     p = sub.add_parser("paper-kill", help="Engage the kill switch of a paper session.")
     p.add_argument("--session-dir", required=True)

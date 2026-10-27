@@ -28,6 +28,29 @@ def load_state(session_dir: Path) -> dict[str, Any] | None:
     return load_json(session_dir / "state.json")
 
 
+def load_live(session_dir: Path) -> dict[str, Any] | None:
+    """The running session's frequently refreshed snapshot (``live.json``)."""
+    try:
+        return load_json(session_dir / "live.json")
+    except (json.JSONDecodeError, OSError):  # mid-replace on some filesystems; next refresh succeeds
+        return None
+
+
+def leaderboard(live: dict[str, Any]) -> list[dict[str, Any]]:
+    """Bots ranked by net P&L (best first). The benchmark is shown but not ranked."""
+    bots = sorted((a for a in live["accounts"] if a["role"] != "benchmark"), key=lambda a: -a["net_pnl"])
+    rows = [{"rank": i + 1, **a} for i, a in enumerate(bots)]
+    rows += [{"rank": None, **a} for a in live["accounts"] if a["role"] == "benchmark"]
+    return rows
+
+
+def list_live_sessions(paper_dir: Path) -> list[Path]:
+    if not paper_dir.is_dir():
+        return []
+    return sorted((p for p in paper_dir.iterdir() if (p / "live.json").is_file()),
+                  key=lambda p: (p / "live.json").stat().st_mtime, reverse=True)
+
+
 def load_report(session_dir: Path) -> dict[str, Any] | None:
     return load_json(session_dir / "daily_report.json")
 

@@ -1,0 +1,17 @@
+# Risk limits for paper trading on live Alpaca (IEX) prices. EVERY field is required.
+# Orders are simulated by Atlas's internal paper broker; no order is ever sent to Alpaca or anyone else.
+allowed_symbols: [SPY, QQQ]
+max_position_shares: 1000
+max_position_value: 50000
+max_order_shares: 500
+max_order_value: 25000
+max_gross_exposure: 0.8
+max_net_exposure: 0.8
+max_daily_loss: 0.01            # halt a bot at -1% on the day
+max_drawdown: 0.015
+max_orders_per_minute: 30
+stale_data_ms: 30000            # polled IEX quotes: no quote change for 30 s -> safe state
+max_clock_skew_ms: 3000         # allows for normal PC clock drift; startup refuses a worse clock
+clock_recovery_events: 20
+reconnect_max_retries: 5
+reconnect_backoff_ms: 2000      # linear: 2 s, 4 s, 6 s, ...

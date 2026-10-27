@@ -33,15 +33,19 @@ def test_loaders_read_a_session(tmp_path: Path) -> None:
     assert data.list_sessions(tmp_path / "missing") == []
 
 
-def test_streamlit_app_renders(tmp_path: Path) -> None:
+def test_streamlit_app_renders(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("streamlit")
     pytest.importorskip("plotly")
+    import sys
+
     from streamlit.testing.v1 import AppTest
 
     s = session(tmp_path)
     s.run()
+    monkeypatch.setattr(sys, "argv", ["app.py", "--paper-dir", str(s.dir.parent),
+                                      "--reports-dir", str(tmp_path / "none")])
     at = AppTest.from_file(str(REPO / "src/atlas/dashboard/app.py"), default_timeout=60)
-    at.cli_args = ["--paper-dir", str(s.dir.parent), "--reports-dir", str(tmp_path / "none")]
     at.run()
     assert not at.exception
-    assert [h.value for h in at.subheader][:2] == ["Accounts", "Equity"]
+    heads = [h.value for h in at.subheader]
+    assert "Leaderboard" in heads and "Accounts" in heads  # live tab (from live.json) and history tab

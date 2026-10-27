@@ -1,0 +1,43 @@
+# Paper trading on LIVE market prices from Alpaca (free plan: real-time IEX quotes and trades).
+# Market data only: Atlas reads prices from data.alpaca.markets and never sends an order anywhere.
+# Every order and fill is simulated by Atlas's internal paper broker.
+#
+# Setup (once): create an Alpaca *paper* account, generate its API keys, and put them in .env:
+#     APCA_API_KEY_ID=...
+#     APCA_API_SECRET_KEY=...
+# Run (any time before or during market hours; it waits for 09:30 ET and stops at 16:00 ET):
+#     python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard
+mode: paper
+live_orders_enabled: false
+session_name: live_{date}
+simulator_config: configs/simulator.yaml
+risk_config: configs/risk_live.yaml
+
+feed:
+  kind: alpaca
+  first_quote_timeout_ms: 60000
+  alpaca:
+    feed: iex
+    poll_interval_ms: 1000        # latest quotes every second
+    trade_poll_every: 2           # latest trades every 2 s  (90 requests/min; free limit is 200)
+    start_time: "09:30:00"
+    end_time: "16:00:00"
+    wait_for_open: true
+    env_file: .env
+
+# Six bots plus the automatic buy-and-hold benchmark. All are frozen: nothing trains during the session.
+# NOTE: these champions were evolved on synthetic data, so their live results are not evidence of an edge.
+candidate: {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 0}
+shadows:
+  - {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 1}
+  - {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 2}
+  - {source: baseline, baseline: baseline_momentum}
+  - {source: baseline, baseline: baseline_mean_reversion}
+  - {source: baseline, baseline: baseline_random}
+
+agent_limits: {max_position_shares: 1000, max_order_shares: 500, max_position_frac: 0.5}
+decision_interval_ms: 2000        # polled data: decide at most every 2 s
+alerts: {console: true, file: true}
+output_dir: artifacts/paper
+state_flush_events: 200
+dashboard: {open_on_start: true, port: 8501, live_snapshot_ms: 2000}

@@ -29,7 +29,7 @@ import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ from atlas.paper.broker import PaperBroker
 from atlas.paper.config import CandidateSource, PaperConfig, RiskConfig
 from atlas.paper.feed import FeedDisconnected, LiveFeed, ReplayLiveFeed
 from atlas.paper.risk import KillSwitch, RiskManager
-from atlas.timeutils import NS_PER_MS, NS_PER_S
+from atlas.timeutils import MARKET_TZ, NS_PER_MS, NS_PER_S
 
 log = get_logger(__name__)
 STATE_VERSION = 1
@@ -106,6 +106,20 @@ def config_fingerprint(cfg: PaperConfig, sim: SimulatorConfig, risk: RiskConfig)
         "risk": risk.model_dump(mode="json"),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def today_market_date() -> date:
+    return datetime.now(MARKET_TZ).date()
+
+
+def session_date_for(cfg: PaperConfig, feed: LiveFeed | None) -> date:
+    """Replays use the configured date; live feeds trade today (US/Eastern) only."""
+    if cfg.feed.kind == "replay":
+        assert cfg.feed.session_date is not None
+        return cfg.feed.session_date
+    if feed is not None and getattr(feed, "session_date", None):
+        return feed.session_date
+    return cfg.feed.session_date or today_market_date()
 
 
 # ------------------------------------------------------------------ accounts
@@ -183,7 +197,8 @@ class PaperSession:
         if cfg.mode != "paper" or cfg.live_orders_enabled is not False:  # defense in depth; config already forbids
             raise LiveTradingDisabledError("paper session requires mode=paper and live_orders_enabled=false")
         self.cfg, self.sim, self.risk_cfg = cfg, sim, risk
-        self.dir = cfg.output_dir / cfg.session_name
+        self.session_date = session_date_for(cfg, feed)
+        self.dir = cfg.output_dir / cfg.session_name.replace("{date}", self.session_date.isoformat())
         self.fingerprint = config_fingerprint(cfg, sim, risk)
         self.base_dir = base_dir
         self._feed_override = feed
@@ -248,14 +263,82 @@ class PaperSession:
                  "source": src.model_dump(mode="json")},
                 strategy, broker, RiskManager(self.risk_cfg, role_id, broker.portfolio.equity),
             ))
-        self.feed.connect()
+        try:
+            self.feed.connect()
+        except FeedDisconnected as exc:
+            raise HealthCheckError(f"market-data feed unavailable at startup: {exc}") from exc
+        except PermissionError as exc:  # rejected or missing market-data credentials
+            raise HealthCheckError(str(exc)) from exc
+        offset = getattr(self.feed, "clock_offset_ms", None)
+        if offset is not None and offset > self.risk_cfg.max_clock_skew_ms:
+            raise HealthCheckError(f"local clock is {offset:.0f} ms behind the exchange timestamps (limit "
+                                   f"{self.risk_cfg.max_clock_skew_ms:.0f} ms); sync the system clock first")
 
     def _make_feed(self) -> LiveFeed:
+        if self.cfg.feed.kind == "alpaca":
+            return self._make_alpaca_feed()
         provider = make_provider(self.cfg.feed.data_source, self.base_dir)
         if self.cfg.feed.session_date not in provider.sessions():
             raise HealthCheckError(f"feed session {self.cfg.feed.session_date} not available from the data source")
         return ReplayLiveFeed(provider.session_ref(self.cfg.feed.session_date), self.cfg.feed.speed,
                               self.cfg.feed.faults)
+
+    def _make_alpaca_feed(self) -> LiveFeed:
+        from atlas.feeds.alpaca import AlpacaAuthError, AlpacaPollingFeed, http_fetch, load_credentials
+
+        a = self.cfg.feed.alpaca
+        assert a is not None
+        if self.session_date != today_market_date():
+            raise HealthCheckError(f"live feed session_date {self.session_date} is not today "
+                                   f"({today_market_date()}, US/Eastern)")
+        if self.session_date.weekday() >= 5:
+            raise HealthCheckError(f"{self.session_date} is a weekend; the market is closed")
+        try:
+            creds = load_credentials(a.env_file if a.env_file.is_absolute() else Path.cwd() / a.env_file)
+        except AlpacaAuthError as exc:
+            raise HealthCheckError(str(exc)) from exc
+        symbols = [s for s in self.risk_cfg.allowed_symbols if s in self._live_symbols()]
+        return AlpacaPollingFeed(symbols, self.session_date, http_fetch(creds), a.feed, a.poll_interval_ms,
+                                 a.trade_poll_every, a.start_time, a.end_time, a.wait_for_open)
+
+    def _live_symbols(self) -> list[str]:
+        ds = self.cfg.feed.data_source
+        return list(ds.symbols) if ds is not None and ds.symbols else list(self.risk_cfg.allowed_symbols)
+
+    def _write_live(self, now: int | None, status: str) -> None:
+        """Small, frequently refreshed snapshot for the live page (read-only consumers)."""
+        if not getattr(self, "accounts", None):
+            return
+        accounts = []
+        bench = next((a for a in self.accounts if a.role == "benchmark"), None)
+        bench_ret = (bench.broker.portfolio.equity / bench.broker.portfolio.initial_cash - 1) if bench else 0.0
+        trades = []
+        for a in self.accounts:
+            p = a.broker.portfolio
+            ret = p.equity / p.initial_cash - 1
+            step = max(1, len(a.equity_curve) // 1_500)
+            accounts.append({
+                "account": a.account_id, "role": a.role, "agent_id": a.model["agent_id"],
+                "family": a.model["family"], "equity": p.equity, "cash": p.cash, "net_pnl": p.equity - p.initial_cash,
+                "net_return": ret, "vs_benchmark": ret - bench_ret, "realized_pnl": p.realized_pnl,
+                "unrealized_pnl": p.unrealized_pnl, "fees": p.fees_paid, "fills": len(p.fills),
+                "positions": {s: q.quantity for s, q in p.positions.items() if q.quantity},
+                "working_orders": len(a.broker.working_orders), "halted": a.risk.halted,
+                "risk_rejections": sum(a.risk.rejections.values()),
+                "equity_curve": a.equity_curve[::step][-1_500:],
+            })
+            trades += [{"account": a.account_id, "ts": f.ts, "symbol": f.symbol, "side": str(f.side),
+                        "qty": f.quantity, "price": f.price, "fee": f.fee} for f in p.fills[-50:]]
+        trades.sort(key=lambda t: t["ts"], reverse=True)
+        snap = {
+            "session": self.dir.name, "session_date": self.session_date.isoformat(), "status": status,
+            "updated_wall": datetime.now(UTC).isoformat(), "market_now": now, "feed": self.cfg.feed.kind,
+            "symbols": self.symbols, "safe": list(self.safe), "kill": self.kill.reason if hasattr(self, "kill") else None,
+            "counters": self.counters, "accounts": accounts, "recent_trades": trades[:100], "simulated": True,
+        }
+        tmp = self.dir / "live.json.tmp"
+        tmp.write_text(json.dumps(snap, default=str), encoding="utf-8")
+        os.replace(tmp, self.dir / "live.json")
 
     def _check_model_symbols(self, role_id: str, record: AgentRecord) -> None:
         if record.family != "ppo" or not record.artifact:
@@ -334,11 +417,17 @@ class PaperSession:
 
     # -- main loop ------------------------------------------------------------------------
 
-    def run(self) -> dict[str, Any]:
+    def run(self, on_ready: Any = None) -> dict[str, Any]:
+        """Run the session. ``on_ready(session)`` is called once startup checks have passed."""
         self.health_checks()
         if self.resume:
             self._restore(0)
+        if on_ready is not None:
+            on_ready(self)
         validator = StreamValidator(self.risk_cfg.stale_data_ms, order_scope="symbol_type")
+        next_kill_check = next_live = 0.0
+        live_every = self.cfg.dashboard.live_snapshot_ms / 1_000
+        self._write_live(None, "waiting for market data")
         stale_ns = int(self.risk_cfg.stale_data_ms * NS_PER_MS)
         skew_ns = int(self.risk_cfg.max_clock_skew_ms * NS_PER_MS)
         market = MarketView(self.symbols, stale_ns)
@@ -355,7 +444,8 @@ class PaperSession:
             return None
 
         while True:
-            if processed % 256 == 0 and (reason := self.kill.poll_file()):
+            wall = time.monotonic()
+            if (processed % 256 == 0 or wall >= next_kill_check) and (reason := self.kill.poll_file()):
                 self._engage_kill(reason, market.now_ns)
             try:
                 event = self.feed.next_event()
@@ -454,6 +544,11 @@ class PaperSession:
 
             if processed % self.cfg.state_flush_events == 0:
                 self._flush(market.now_ns)
+            if wall >= next_kill_check:
+                next_kill_check = wall + 1.0
+            if wall >= next_live:
+                next_live = wall + live_every
+                self._write_live(market.now_ns, "running")
 
         return self._finish(market, quote_at)
 
@@ -519,6 +614,7 @@ class PaperSession:
         for reason in list(self.safe):
             self._clear_safe(reason, now)
         self._flush(now)
+        self._write_live(now, "ended")
         from atlas.paper.report import write_daily_report
 
         report = write_daily_report(self)

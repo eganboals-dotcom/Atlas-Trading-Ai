@@ -279,9 +279,11 @@ streamlit run src/atlas/dashboard/app.py -- --paper-dir artifacts/paper --report
   present and valid (none has a default). Unknown keys, such as credential fields, are
   rejected.
 * **Broker.** The only broker factory builds a `PaperBroker`, and the session refuses any
-  broker whose `is_live` is not `False`. No live-broker module exists, no source file
-  imports a network client or reads credentials from the environment, and a full
-  session runs with sockets disabled (all tested).
+  broker whose `is_live` is not `False`. No live-broker module exists. Only the
+  read-only market-data module (`feeds/alpaca.py`) may use the network or read keys, and
+  it can only send GET requests to two data endpoints. No trading host or orders path
+  appears anywhere in the source, and a replay session runs with sockets disabled (all
+  tested).
 * **Health checks.** Before starting, it checks that:
   * the candidate checkpoint loads, and its genome or pinned weights match
   * the population or schema version matches
@@ -334,12 +336,68 @@ crash, `--resume`:
   that check, so drills can be resumed.
 
 **Feeds** ([feed.py](src/atlas/paper/feed.py)):
-* **Interface.** `LiveFeed` is the interface a vendor stream would implement. Only
-  `ReplayLiveFeed` exists for now.
+* **Interface.** `LiveFeed` is the interface every feed implements. There are two: the
+  live Alpaca data feed (see below) and `ReplayLiveFeed`.
 * **Speed.** `speed: 0` runs on a virtual clock as fast as possible; `speed: 1` runs in
   real time.
 * **Fault injection.** It can simulate disconnects and failed reconnects, data gaps,
   a clock going backwards, timestamps from the future, and crashes, for drills.
+
+### Paper trading on live prices (Alpaca)
+
+Paper trading on **live market prices** from Alpaca: six frozen bots plus a
+buy-and-hold benchmark, with a live page that opens automatically. **Market data only.**
+Atlas reads prices from two GET endpoints on `data.alpaca.markets` and contains no code
+that can place an order at Alpaca or anywhere else. Every order and fill is simulated by
+Atlas's internal paper broker.
+
+**One-time setup**
+1. Create a free Alpaca account and open its **paper trading** account. Generate the
+   paper account's API keys there; paper accounts get their own keys.
+2. Copy `.env.example` to `.env` (git-ignored) and fill in `APCA_API_KEY_ID` and
+   `APCA_API_SECRET_KEY`.
+3. Make sure the PC clock is synced (Windows: Settings → Time & language → Sync now).
+   Startup refuses a clock more than 3 s behind exchange time.
+4. Have an evolution checkpoint. The bots come from
+   `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`; create it with
+   `python -m atlas.cli evolve --config configs/evolution.yaml` if it is missing.
+
+**Each trading day** (start it any time before or during market hours):
+
+```bash
+python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard
+```
+
+**What happens when you run it:**
+* **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
+  bots load.
+* **The live page opens** at `http://localhost:8501`.
+* **Trading hours.** The session waits for 09:30 ET, trades until 16:00 ET, then writes
+  the daily report.
+
+**The live page**, refreshed every 2 seconds:
+* a leaderboard ranking the bots by net P&L, against buy-and-hold
+* each bot's realized and unrealized P&L, fees, fills, positions and halt status
+* P&L over time
+* recent simulated trades
+* a per-bot detail view
+
+**Stopping and restarting:**
+* Stop with Ctrl+C or `paper-kill`.
+* Continue the same day with `--resume`.
+* Reopen the page any time with `python -m atlas.cli dashboard`.
+
+**Feed details** ([alpaca.py](src/atlas/feeds/alpaca.py)), checked against Alpaca's
+official docs on 2026-10-26:
+* **Data:** the free plan provides real-time **IEX** quotes and trades. IEX's top of book
+  is usually wider than the national best bid/offer, so paper fills are conservative.
+* **Polling:** latest quotes every second and trades every 2 s, which is 90 requests a
+  minute against a 200 per minute limit. Only changed quotes and new trades are used.
+* **Risk settings** (`configs/risk_live.yaml`) are tuned for polled data: a 30 s stale
+  limit, 2 s decisions and a 3 s clock tolerance.
+
+**These bots were evolved on synthetic data,** so their live results show how the system
+behaves, not whether a strategy has an edge.
 
 ### Readiness review
 
@@ -396,6 +454,7 @@ The suites cover:
 | `test_paper_cannot_trade_live.py` | config accepts only `mode: paper` with live orders off, rejects missing safety settings and credential fields, refuses configs that bypassed validation, accepts only `PaperBroker`, no live-broker module, no network imports or environment credentials, a full session with sockets disabled and every fill marked simulated |
 | `test_paper_session.py` | accounts, audit and daily report; deterministic sessions; crash then resume with nothing skipped or duplicated and working orders cancelled; resume refused on changed config |
 | `test_readiness.py` | current evidence scores NOT READY, missing evidence reported as MISSING, gates pass only with complete positive evidence and sign-offs, a reused holdout fails, all 9 failure drills pass, unknown sign-offs rejected |
+| `test_alpaca_feed.py` | Alpaca feed against a fake API and clock: exact nanosecond timestamps, keys from the environment or `.env` and never printed, waits for the open and stops at the close, emits only new data, stays under the rate limit, disconnects and reconnects; a full live session with the leaderboard snapshot; live dates must be today; the live page renders |
 | `test_dashboard.py` | the dashboard imports nothing that can trade, file loaders, the Streamlit app renders |
 | `test_learning.py` (skipped without the `rl` extra) | step-by-step engine matches the callback engine, normalizer fitted on given sessions only, environment spaces, reward adding up to the realized log return, sessions cycled, observations unaffected by future data, deterministic PPO with full diagnostics, frozen and pinned policy agent (parallel equals serial, tampered weights refused), PPO in walk-forward never promoted automatically, explicit PPO candidate through the holdout |
 
@@ -627,9 +686,9 @@ It took about 1 s on the virtual clock.
 * **No PPO hyperparameter search.** A tuned search would be one more selection trial
   and would need its own walk-forward accounting.
 * **PPO uses base costs only.** It trains under the base cost scenario.
-* **No vendor feed yet.** Paper mode runs on a replayed feed. Message formats,
-  entitlements, timestamp semantics and rate limits must be verified from the
-  vendor's official documentation before an adapter is written.
+* **Polled IEX data.** The live feed polls Alpaca's IEX quotes; it is not a streamed
+  consolidated feed. Quotes are up to about a second old when used, and IEX shows only
+  IEX's own book.
 * **Silence is detected late.** A feed that goes completely silent is noticed when the
   next event arrives; the safe state is then backdated to the moment data went stale. A
   real-time vendor adapter must deliver heartbeats or time out so a silent feed is
@@ -647,7 +706,8 @@ It took about 1 s on the virtual clock.
 ```
 configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml,
                    walkforward.yaml, walkforward_parquet.yaml, walkforward_ppo.yaml,
-                   import_synthetic_demo.yaml, paper.yaml, risk.yaml, readiness.yaml
+                   import_synthetic_demo.yaml, paper.yaml, risk.yaml, paper_live.yaml, risk_live.yaml,
+                   readiness.yaml
 src/atlas/
   cli.py           command-line entry point
   config.py        typed, strict configuration models
@@ -660,6 +720,7 @@ src/atlas/
   evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
   learning/        Gymnasium env, observation normalizer, PPO trainer, frozen policy agent, seed stability
   brokers/         broker interface only (no live adapter exists)
+  feeds/           Alpaca market-data feed (read-only; the only module allowed network access)
   paper/           paper config, live-feed interface + replay feed, paper broker, risk manager, session, report
   dashboard/       read-only Streamlit app and file loaders
   readiness.py     Phase 6 review: evidence, failure drills, gates, broker open items

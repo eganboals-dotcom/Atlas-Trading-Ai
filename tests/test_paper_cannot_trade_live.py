@@ -90,25 +90,52 @@ def test_no_live_broker_module_exists() -> None:
     assert set(brokers.__all__) == {"BrokerExecution", "LiveTradingDisabledError"}
 
 
-def test_no_source_module_imports_a_network_client() -> None:
-    offenders = []
-    for path in SRC.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            names = []
-            if isinstance(node, ast.Import):
-                names = [a.name for a in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                names = [node.module]
-            for n in names:
-                if n.split(".")[0] in NETWORK_MODULES:
-                    offenders.append(f"{path.relative_to(SRC)}: {n}")
+DATA_ONLY_MODULE = Path("feeds") / "alpaca.py"  # the single module allowed to touch the network
+
+
+def _imports(path: Path) -> list[str]:
+    names = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            names += [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.append(node.module)
+    return names
+
+
+def test_only_the_market_data_module_imports_a_network_client() -> None:
+    offenders = [f"{p.relative_to(SRC)}: {n}" for p in SRC.rglob("*.py") if p.relative_to(SRC) != DATA_ONLY_MODULE
+                 for n in _imports(p) if n.split(".")[0] in NETWORK_MODULES]
     assert offenders == []
+    allowed = {n.split(".")[0] for n in _imports(SRC / DATA_ONLY_MODULE)} & NETWORK_MODULES
+    assert allowed == {"urllib"}  # stdlib HTTP only; no broker SDKs, no sockets, no websockets
 
 
-def test_no_source_module_reads_credentials_from_the_environment() -> None:
+def test_only_the_market_data_module_reads_the_environment() -> None:
     hits = [str(p.relative_to(SRC)) for p in SRC.rglob("*.py")
-            if "os.environ" in (t := p.read_text(encoding="utf-8")) or "getenv" in t]
+            if ("os.environ" in (t := p.read_text(encoding="utf-8")) or "getenv" in t)
+            and p.relative_to(SRC) != DATA_ONLY_MODULE]
+    assert hits == []
+
+
+def test_market_data_module_can_only_GET_two_read_only_endpoints() -> None:
+    from atlas.feeds import alpaca
+
+    text = (SRC / DATA_ONLY_MODULE).read_text(encoding="utf-8")
+    assert alpaca.DATA_HOST == "https://data.alpaca.markets"
+    assert alpaca.ALLOWED_PATHS == {"/v2/stocks/quotes/latest", "/v2/stocks/trades/latest"}
+    assert 'method="GET"' in text and "POST" not in text and "DELETE" not in text and "PATCH" not in text
+    fetch = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"))
+    for bad in ("/v2/orders", "/v2/positions", "/v2/account"):
+        with pytest.raises(PermissionError):
+            fetch(bad, {})
+
+
+def test_no_trading_host_or_order_endpoint_appears_in_source() -> None:
+    forbidden = ("api.alpaca.markets", "paper-api.alpaca.markets", "/v2/orders", "/v1/orders",
+                 "trader/v1", "accounts/{", "/orders")
+    hits = [(str(p.relative_to(SRC)), f) for p in SRC.rglob("*.py") for f in forbidden
+            if f in p.read_text(encoding="utf-8").replace("data.alpaca.markets", "")]
     assert hits == []
 
 
