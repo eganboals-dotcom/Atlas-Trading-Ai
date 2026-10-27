@@ -2,7 +2,7 @@
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
 ``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
-``train-ppo`` (Phase 4); ``paper``, ``paper-kill`` (Phase 5).
+``train-ppo`` (Phase 4); ``paper``, ``paper-kill`` (Phase 5); ``readiness`` (Phase 6).
 """
 
 from __future__ import annotations
@@ -277,6 +277,28 @@ def _cmd_paper_kill(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_readiness(args: argparse.Namespace) -> int:
+    import yaml
+
+    from atlas.readiness import ReadinessConfig, build_review
+
+    path = Path(args.config)
+    if not path.is_file():
+        raise ConfigError(f"config file not found: {path}")
+    try:
+        cfg = ReadinessConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    except ValueError as exc:
+        raise ConfigError(f"{path}: invalid readiness config:\n{exc}") from exc
+    if args.skip_drills or args.skip_tests:
+        cfg = cfg.model_copy(update={"run_drills": cfg.run_drills and not args.skip_drills,
+                                     "run_tests": cfg.run_tests and not args.skip_tests})
+    review, out_dir = build_review(cfg)
+    print(json.dumps({"verdict": review["verdict"], "gate_counts": review["gate_counts"],
+                      "report": str(out_dir / "readiness_report.md"),
+                      "docs": str(cfg.docs_path) if cfg.docs_path else None}, indent=2))
+    return EXIT_OK
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from atlas.evaluation.report import write_markdown
 
@@ -359,6 +381,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--session-dir", required=True)
     p.add_argument("--reason", default="operator kill")
     p.set_defaults(func=_cmd_paper_kill)
+
+    p = sub.add_parser("readiness", help="Readiness review: evidence, failure drills, gates (enables nothing).")
+    p.add_argument("--config", required=True)
+    p.add_argument("--skip-drills", action="store_true")
+    p.add_argument("--skip-tests", action="store_true")
+    p.set_defaults(func=_cmd_readiness)
 
     p = sub.add_parser("report", help="Rebuild and print the Markdown report for a walk-forward run.")
     p.add_argument("--run-id", required=True)

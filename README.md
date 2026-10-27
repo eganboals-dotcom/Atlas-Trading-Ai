@@ -13,7 +13,7 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 5 — paper trading
+## Status: Phase 6 — readiness review
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -21,8 +21,9 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 | 2 | Agent interface, 50 non-RL agents, baselines, evolution, lineage | Done |
 | 3 | Historical data, walk-forward evaluation, metrics | Done |
 | 4 | PPO policy family | Done |
-| 5 | Live-data paper trading, risk manager, dashboard | **Done (awaiting review)** |
-| 6–8 | Readiness review, disabled broker adapter, live activation | Not started; each needs separate approval |
+| 5 | Live-data paper trading, risk manager, dashboard | Done |
+| 6 | Readiness review (no live trading) | **Done (awaiting review)**: verdict NOT READY |
+| 7–8 | Disabled broker adapter, live activation | Not started; each needs separate explicit approval |
 
 ## Setup
 
@@ -340,6 +341,36 @@ crash, `--resume`:
 * **Fault injection.** It can simulate disconnects and failed reconnects, data gaps,
   a clock going backwards, timestamps from the future, and crashes, for drills.
 
+### Readiness review
+
+```bash
+# Collect evidence, run the failure drills and the test suite, score the gates, write the report
+python -m atlas.cli readiness --config configs/readiness.yaml
+```
+
+The latest review is committed at [docs/READINESS_REVIEW.md](docs/READINESS_REVIEW.md).
+Its current verdict is **NOT READY**: 4 required gates pass, 9 fail, 5 have no
+evidence yet, and 4 await a human sign-off.
+
+**What it checks** ([readiness.py](src/atlas/readiness.py)):
+* **Data fidelity:** real licensed data, timestamp provenance, point-in-time universe.
+* **Out-of-sample results:** base and pessimistic confidence intervals above zero,
+  beating cash, enough sessions, selection gap.
+* **Outer holdout:** evaluated exactly once for the frozen design.
+* **Paper trading:** sessions on a live feed, at least 20 sessions, net P&L.
+* **Risk incidents.**
+* **Operational reliability:** 9 failure drills against the shipped paper config, the
+  full test suite, latency, and the vendor feed adapter.
+* **Broker capabilities:** 10 unverified items, each with its official documentation
+  link.
+* **Governance:** independent risk, legal/regulatory/tax, broker terms, and runbook
+  sign-offs. These are recorded in `configs/readiness.yaml` with reviewer, date and
+  document.
+
+Missing evidence counts as **MISSING**, never as a pass. The verdict is "READY FOR HUMAN
+REVIEW" only if every required gate passes. Even then it **enables nothing**: a broker
+adapter (Phase 7) and real money (Phase 8) each need separate explicit approval.
+
 ## Test
 
 ```bash
@@ -364,6 +395,7 @@ The suites cover:
 | `test_risk_controls.py` | every per-order rule; daily-loss and drawdown halts; every risk field required, invalid values rejected, limits immutable; session-level halts, stale-feed and clock-anomaly safe states, bounded reconnects, kill switch on exhausted retries, manual kill that blocks orders and survives restart, disallowed symbols, model mismatch |
 | `test_paper_cannot_trade_live.py` | config accepts only `mode: paper` with live orders off, rejects missing safety settings and credential fields, refuses configs that bypassed validation, accepts only `PaperBroker`, no live-broker module, no network imports or environment credentials, a full session with sockets disabled and every fill marked simulated |
 | `test_paper_session.py` | accounts, audit and daily report; deterministic sessions; crash then resume with nothing skipped or duplicated and working orders cancelled; resume refused on changed config |
+| `test_readiness.py` | current evidence scores NOT READY, missing evidence reported as MISSING, gates pass only with complete positive evidence and sign-offs, a reused holdout fails, all 9 failure drills pass, unknown sign-offs rejected |
 | `test_dashboard.py` | the dashboard imports nothing that can trade, file loaders, the Streamlit app renders |
 | `test_learning.py` (skipped without the `rl` extra) | step-by-step engine matches the callback engine, normalizer fitted on given sessions only, environment spaces, reward adding up to the realized log return, sessions cycled, observations unaffected by future data, deterministic PPO with full diagnostics, frozen and pinned policy agent (parallel equals serial, tampered weights refused), PPO in walk-forward never promoted automatically, explicit PPO candidate through the holdout |
 
@@ -615,7 +647,7 @@ It took about 1 s on the virtual clock.
 ```
 configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml,
                    walkforward.yaml, walkforward_parquet.yaml, walkforward_ppo.yaml,
-                   import_synthetic_demo.yaml, paper.yaml, risk.yaml
+                   import_synthetic_demo.yaml, paper.yaml, risk.yaml, readiness.yaml
 src/atlas/
   cli.py           command-line entry point
   config.py        typed, strict configuration models
@@ -630,9 +662,10 @@ src/atlas/
   brokers/         broker interface only (no live adapter exists)
   paper/           paper config, live-feed interface + replay feed, paper broker, risk manager, session, report
   dashboard/       read-only Streamlit app and file loaders
+  readiness.py     Phase 6 review: evidence, failure drills, gates, broker open items
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)
 artifacts/         checkpoints/ reports/ (generated, git-ignored)
-docs/              project specification
+docs/              project specification, READINESS_REVIEW.md
 ```

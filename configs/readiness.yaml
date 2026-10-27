@@ -1,0 +1,27 @@
+# Phase 6 readiness review. It reads research and paper artifacts, runs paper-mode failure
+# drills, and scores explicit gates. It enables nothing: no broker adapter and no live trading.
+walkforward_reports_dir: artifacts/reports/walkforward
+walkforward_experiment: wf_synthetic_v1     # the frozen design under review (latest run of this experiment)
+ppo_experiment: wf_synthetic_ppo_v1         # supplementary comparison
+paper_dir: artifacts/paper
+holdout_ledger: artifacts/holdout_ledger.jsonl
+paper_config: configs/paper.yaml            # drills run against this configuration
+run_drills: true
+run_tests: true
+
+criteria:
+  min_oos_sessions: 60          # out-of-sample validation sessions
+  min_oos_ci_lower_bps: 0.0     # base AND pessimistic CI lower bounds must clear this
+  min_paper_sessions: 20        # forward paper sessions on a LIVE feed (replays do not count)
+  max_selection_gap_bps: 1.0
+
+# Human sign-offs. Each needs {reviewer, date, document, outcome: approved|rejected}.
+# Until one is recorded, its gate stays PENDING and the verdict cannot be READY.
+signoffs:
+  independent_risk_review: null
+  legal_regulatory_tax_review: null
+  broker_terms_review: null
+  operator_runbook_review: null
+
+output_dir: artifacts/readiness
+docs_path: docs/READINESS_REVIEW.md
