@@ -174,6 +174,9 @@ class AlpacaPollingFeed(LiveFeed):
         self._delivered += 1
         return self._buffer.pop(0)
 
+    def clock_ns(self) -> int:
+        return self._clock()
+
     @property
     def position(self) -> int:
         return self._delivered
@@ -191,15 +194,27 @@ class AlpacaPollingFeed(LiveFeed):
         if not self._connected:
             raise FeedDisconnected("feed not connected")
         try:
-            quotes = self._fetch(QUOTES_PATH, self._params()).get("quotes", {}) or {}
-            trades = {}
+            raw_quotes = self._fetch(QUOTES_PATH, self._params())
+            raw_trades: Any = {}
             if self._polls % self.trade_every == 0:
-                trades = self._fetch(TRADES_PATH, self._params()).get("trades", {}) or {}
+                raw_trades = self._fetch(TRADES_PATH, self._params())
         except FeedDisconnected:
             self._connected = False
             raise
         self._polls += 1
         received = self._clock()
+        try:
+            quotes = raw_quotes.get("quotes") or {}
+            trades = (raw_trades.get("trades") or {}) if raw_trades else {}
+            events = self._parse(quotes, trades, received)
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:  # malformed response: transient
+            raise FeedDisconnected(f"malformed Alpaca response: {exc!r}") from exc
+        # One response = one arrival instant; keep source order within it, nudging receive_ts so the
+        # local clock never runs backwards between events.
+        events.sort(key=lambda e: e.event_ts)
+        self._buffer.extend(dataclasses.replace(e, receive_ts=received + k) for k, e in enumerate(events))
+
+    def _parse(self, quotes: dict[str, Any], trades: dict[str, Any], received: int) -> list[MarketEvent]:
         events: list[MarketEvent] = []
         for sym, q in quotes.items():
             if sym not in self.symbols or not q.get("t"):
@@ -224,7 +239,4 @@ class AlpacaPollingFeed(LiveFeed):
             events.append(Trade(symbol=sym, event_ts=t, receive_ts=received, source=self.source,
                                 price=float(tr.get("p") or 0.0), size=int(tr.get("s") or 0),
                                 timestamp_kind=TimestampKind.VENDOR, conditions=tuple(tr.get("c") or ())))
-        # One response = one arrival instant; keep source order within it, nudging receive_ts so the
-        # local clock never runs backwards between events.
-        events.sort(key=lambda e: e.event_ts)
-        self._buffer.extend(dataclasses.replace(e, receive_ts=received + k) for k, e in enumerate(events))
+        return events

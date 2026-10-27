@@ -13,5 +13,5 @@ max_orders_per_minute: 30
 stale_data_ms: 30000            # polled IEX quotes: no quote change for 30 s -> safe state
 max_clock_skew_ms: 3000         # allows for normal PC clock drift; startup refuses a worse clock
 clock_recovery_events: 20
-reconnect_max_retries: 5
-reconnect_backoff_ms: 2000      # linear: 2 s, 4 s, 6 s, ...
+reconnect_max_retries: 30       # with the backoff below this rides out ~11 minutes of lost internet
+reconnect_backoff_ms: 2000      # linear: 2 s, 4 s, 6 s, ... capped at 30 s per attempt

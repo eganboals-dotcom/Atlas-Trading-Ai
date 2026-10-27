@@ -54,6 +54,7 @@ from atlas.timeutils import MARKET_TZ, NS_PER_MS, NS_PER_S
 
 log = get_logger(__name__)
 STATE_VERSION = 1
+MAX_BACKOFF_MS = 30_000.0
 STOP_FILE = "STOP"  # graceful, resumable stop requested by `paper-stop` (unlike KILL, which halts trading)
 
 
@@ -111,6 +112,62 @@ def config_fingerprint(cfg: PaperConfig, sim: SimulatorConfig, risk: RiskConfig)
         "risk": risk.model_dump(mode="json"),
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
+
+
+LOCK_FILE = "RUNNING.lock"
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":  # never os.kill on Windows: it terminates the process
+        import ctypes
+
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def acquire_lock(session_dir: Path) -> None:
+    lock = session_dir / LOCK_FILE
+    if lock.exists():
+        try:
+            pid = int(lock.read_text(encoding="utf-8").strip() or 0)
+        except ValueError:
+            pid = 0
+        if pid != os.getpid() and pid_alive(pid):
+            raise HealthCheckError(f"session {session_dir.name} is already running (process {pid}); use that window, "
+                                   "or stop it first with paper-stop")
+    lock.write_text(str(os.getpid()), encoding="utf-8")
+
+
+def release_lock(session_dir: Path) -> None:
+    lock = session_dir / LOCK_FILE
+    try:
+        if lock.exists() and lock.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            lock.unlink()
+    except OSError:
+        pass
+
+
+def keep_awake(on: bool) -> bool:
+    """Ask Windows not to sleep while a live session runs (released when it ends). No-op elsewhere."""
+    if os.name != "nt":
+        return False
+    import ctypes
+
+    es_continuous, es_system_required = 0x80000000, 0x00000001
+    flags = es_continuous | (es_system_required if on else 0)
+    return bool(ctypes.windll.kernel32.SetThreadExecutionState(flags)) and on
 
 
 def today_market_date() -> date:
@@ -250,6 +307,7 @@ class PaperSession:
         sources += [(f"shadow-{i + 1}", s) for i, s in enumerate(self.cfg.shadows)]
         sources += [("benchmark", CandidateSource(source="baseline", baseline="baseline_buy_hold"))]
         self.dir.mkdir(parents=True, exist_ok=True)
+        acquire_lock(self.dir)  # one process per session: a second launcher refuses instead of corrupting files
         self.audit = AuditLog(self.dir / "audit.jsonl")
         self.alerts = Alerts(self.dir / "alerts.jsonl", self.cfg.alerts.console, self.cfg.alerts.file)
         self.kill = KillSwitch(self.dir)
@@ -328,7 +386,7 @@ class PaperSession:
         for a in self.accounts:
             p = a.broker.portfolio
             ret = p.equity / p.initial_cash - 1
-            step = max(1, len(a.equity_curve) // 1_500)
+            step = max(1, len(a.equity_curve) // 600)
             inception = a.inception_capital or p.initial_cash
             accounts.append({
                 "start_capital": p.initial_cash, "inception_capital": inception,
@@ -340,16 +398,16 @@ class PaperSession:
                 "positions": {s: q.quantity for s, q in p.positions.items() if q.quantity},
                 "working_orders": len(a.broker.working_orders), "halted": a.risk.halted,
                 "risk_rejections": sum(a.risk.rejections.values()),
-                "equity_curve": a.equity_curve[::step][-1_500:],
+                "equity_curve": a.equity_curve[::step][-600:],
             })
             trades += [{"account": a.account_id, "ts": f.ts, "symbol": f.symbol, "side": str(f.side),
-                        "qty": f.quantity, "price": f.price, "fee": f.fee} for f in p.fills[-50:]]
+                        "qty": f.quantity, "price": f.price, "fee": f.fee} for f in p.fills[-40:]]
         trades.sort(key=lambda t: t["ts"], reverse=True)
         snap = {
             "session": self.dir.name, "session_date": self.session_date.isoformat(), "status": status,
             "updated_wall": datetime.now(UTC).isoformat(), "market_now": now, "feed": self.cfg.feed.kind,
             "symbols": self.symbols, "safe": list(self.safe), "kill": self.kill.reason if hasattr(self, "kill") else None,
-            "counters": self.counters, "accounts": accounts, "recent_trades": trades[:100], "simulated": True,
+            "counters": self.counters, "accounts": accounts, "recent_trades": trades[:60], "simulated": True,
         }
         market = getattr(self, "_market", None)
         if market is not None:
@@ -406,13 +464,14 @@ class PaperSession:
                                   "qty": qty, "simulated": True,
                                   "fill_assumption": "closing sale at the last received bid, full size"})
 
-    def _settle_fund(self, final: bool) -> None:
-        if self.fund is None:
+    def _settle_fund(self, final: bool, note: str | None = None) -> None:
+        if self.fund is None or self.counters["events"] == 0:  # no market data: nothing traded, nothing to settle
             return
         results = {a.account_id: {"start": a.broker.portfolio.initial_cash, "end": a.broker.portfolio.equity}
                    for a in self.accounts if a.role != "benchmark"}
-        note = "settled at the close (positions sold at the bid)" if final else \
-            f"provisional: session stopped by {self.stopped_by}; open positions valued at mid"
+        note = note or ("settled at the close (positions sold at the bid)" if final else
+                        f"provisional: session stopped by {getattr(self, 'stopped_by', None)}; open positions "
+                        "valued at mid")
         self.fund.settle(self.session_date, results, final, note)
 
     def _check_model_symbols(self, role_id: str, record: AgentRecord) -> None:
@@ -449,7 +508,7 @@ class PaperSession:
         self.alerts.raise_("warning", "restart", f"resumed from event {state['feed_position']}; working orders "
                            "at shutdown were cancelled", now)
 
-    def _flush(self, market_now: int) -> None:
+    def _flush(self, market_now: int, provisional_fund: bool = True) -> None:
         state = {
             "version": STATE_VERSION, "config_fingerprint": self.fingerprint, "session": self.cfg.session_name,
             "feed_position": self.feed.position, "market_now": market_now, "kill": self.kill.reason,
@@ -460,6 +519,8 @@ class PaperSession:
             "audit_offset": self.audit.flush(),
             "alerts_offset": self.alerts.offset(),
         }
+        if provisional_fund:  # so a day is never lost if the process dies and is not resumed
+            self._settle_fund(final=False, note="provisional: in progress (open positions valued at mid)")
         tmp = self.dir / "state.json.tmp"
         tmp.write_text(json.dumps(state, default=str), encoding="utf-8")
         os.replace(tmp, self.dir / "state.json")
@@ -515,11 +576,20 @@ class PaperSession:
             return None
 
         self.stopped_by: str | None = None
+        awake = keep_awake(self.cfg.feed.kind != "replay")
         try:
             self._loop(validator, stale_ns, skew_ns, market, history, quote_at, live_every)
         except KeyboardInterrupt:  # Ctrl+C: stop gracefully so the day can be resumed
             self.stopped_by = "operator (Ctrl+C)"
+        finally:
+            if awake:
+                keep_awake(False)
         return self._finish(market, quote_at)
+
+    def _feed_now(self, market: MarketView) -> int:
+        """The feed's own clock when it has one (live feeds), so outages get real durations."""
+        clock = getattr(self.feed, "clock_ns", None)
+        return max(market.now_ns, clock()) if clock else market.now_ns
 
     def _stop_requested(self) -> bool:
         stop = self.dir / STOP_FILE
@@ -546,13 +616,16 @@ class PaperSession:
                 event = self.feed.next_event()
             except FeedDisconnected as exc:
                 self.counters["disconnects"] += 1
-                self._enter_safe("feed disconnected", market.now_ns)
-                if not self._reconnect(market.now_ns, str(exc)):
-                    self._engage_kill(f"feed lost: {self.risk_cfg.reconnect_max_retries} reconnect attempts failed",
-                                      market.now_ns)
+                self._enter_safe("feed disconnected", self._feed_now(market))
+                if not self._reconnect(self._feed_now(market), str(exc)):
+                    reason = getattr(self, "fatal_feed_error", None) or                         f"feed lost: {self.risk_cfg.reconnect_max_retries} reconnect attempts failed"
+                    self._engage_kill(reason, market.now_ns)
                     break
-                self._clear_safe("feed disconnected", market.now_ns)
+                self._clear_safe("feed disconnected", self._feed_now(market))
                 continue
+            except PermissionError as exc:  # e.g. market-data keys revoked mid-session
+                self._engage_kill(f"market-data credentials rejected: {exc}", market.now_ns)
+                break
             if event is None:
                 break
             processed += 1
@@ -648,16 +721,21 @@ class PaperSession:
 
     def _reconnect(self, ts: int, error: str) -> bool:
         self.audit.write({"type": "disconnect", "ts": ts, "error": error})
+        real_time = self.cfg.feed.kind != "replay" or self.cfg.feed.speed > 0
         for attempt in range(1, self.risk_cfg.reconnect_max_retries + 1):
             self.counters["reconnect_attempts"] += 1
-            if self.cfg.feed.speed > 0:
-                time.sleep(self.risk_cfg.reconnect_backoff_ms * attempt / 1_000)
+            if real_time:  # linear backoff, capped, so a short network outage is ridden out
+                time.sleep(min(self.risk_cfg.reconnect_backoff_ms * attempt, MAX_BACKOFF_MS) / 1_000)
             try:
                 self.feed.reconnect()
                 self.audit.write({"type": "reconnected", "ts": ts, "attempt": attempt})
                 return True
             except FeedDisconnected as exc:
                 self.audit.write({"type": "reconnect_failed", "ts": ts, "attempt": attempt, "error": str(exc)})
+            except PermissionError as exc:  # credentials rejected: retrying cannot help
+                self.audit.write({"type": "reconnect_failed", "ts": ts, "attempt": attempt, "error": str(exc)})
+                self.fatal_feed_error = str(exc)
+                return False
         return False
 
     def _decide(self, a: Account, market: MarketView, now: int) -> None:
@@ -668,9 +746,17 @@ class PaperSession:
         state = PortfolioState.of(p.cash, p.equity, positions)
         snapshot = a.strategy.snapshot(now)
         t0 = time.perf_counter_ns()
-        targets = a.strategy.agent.act(a.strategy.agent.observe(snapshot, state, now))
+        try:
+            targets = a.strategy.agent.act(a.strategy.agent.observe(snapshot, state, now))
+            intents = a.strategy.intents_for(targets, snapshot, state)
+        except Exception as exc:  # a faulty bot must not take the session (or the other bots) down
+            a.risk.halted = f"agent error: {type(exc).__name__}: {exc}"
+            for o in a.broker.cancel_all(now, a.risk.halted):
+                a.strategy.on_order_update(o)
+            self.audit.write({"type": "agent_error", "ts": now, "account": a.account_id, "error": repr(exc)})
+            self.alerts.raise_("critical", "agent_error", a.risk.halted, now, a.account_id)
+            return
         a.decision_wall_ns.append(time.perf_counter_ns() - t0)
-        intents = a.strategy.intents_for(targets, snapshot, state)
         if not intents:
             return
         self.audit.write({
@@ -709,13 +795,15 @@ class PaperSession:
         for a in self.accounts:
             a.equity_curve.append((now, a.broker.portfolio.equity))
             a.broker.portfolio.assert_reconciled()
-        self._settle_fund(final=ended)
+        self._settle_fund(final=ended, note=(f"settled early after kill switch ({self.kill.reason}); positions sold "
+                                             "at the last bid") if ended and self.kill.engaged else None)
         for reason in list(self.safe):
             self._clear_safe(reason, now)
-        self._flush(now)
+        self._flush(now, provisional_fund=False)  # the settlement above is the day's real one
         self._write_live(now, f"stopped by {self.stopped_by}" if getattr(self, "stopped_by", None) else "ended")
         from atlas.paper.report import write_daily_report
 
         report = write_daily_report(self)
         self.audit.close()
+        release_lock(self.dir)
         return report

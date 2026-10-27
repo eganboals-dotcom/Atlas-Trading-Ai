@@ -67,3 +67,7 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
 - *Weekend/holiday*: the market is closed. Holidays are not in the calendar, so on a holiday the session
   just sees no fresh data and stays in safe state.
 - *Port 8501 busy* (browser page only): an earlier page is still running; open http://localhost:8501.
+- *"already running (process N)"*: today's session is already running in another window. Use that window; don't
+  start a second one.
+- *Safe state "feed disconnected"*: normal during network blips. The session retries with backoff for about
+  11 minutes before the kill switch engages. Check the user's internet connection.

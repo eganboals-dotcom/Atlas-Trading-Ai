@@ -297,9 +297,20 @@ def _cmd_paper(args: argparse.Namespace) -> int:
 
             url = launch(cfg.output_dir, s.dir.name, cfg.dashboard.port)
             print(f"live page: {url} (read-only; keeps running after the session ends)", file=sys.stderr)
-        if cfg.feed.kind == "alpaca":
-            print("waiting for the market to open if needed. Stop cleanly with Ctrl+C or "
-                  f"`python -m atlas.cli paper-stop --config {path.as_posix()}`", file=sys.stderr)
+        if cfg.feed.kind == "alpaca" and cfg.feed.alpaca is not None:
+            from datetime import datetime
+
+            from atlas.timeutils import MARKET_TZ
+
+            now = datetime.now(MARKET_TZ).time()
+            if now >= cfg.feed.alpaca.end_time:
+                print("the market is already closed for today: this session ends immediately. "
+                      "Start it tomorrow before 09:30 ET.", file=sys.stderr)
+            else:
+                when = "trading until" if now >= cfg.feed.alpaca.start_time else \
+                    f"waiting for {cfg.feed.alpaca.start_time:%H:%M} ET, then trading until"
+                print(f"{when} {cfg.feed.alpaca.end_time:%H:%M} ET. Keep this window open. Stop cleanly with Ctrl+C "
+                      f"or `python -m atlas.cli paper-stop --config {path.as_posix()}`", file=sys.stderr)
 
     try:
         report = session.run(on_ready=on_ready)
@@ -403,7 +414,10 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
     checks: list[tuple[str, bool, str]] = [("config", True, f"{path} valid; mode=paper, live orders disabled")]
     tmp = Path(tempfile.mkdtemp(prefix="atlas-check-"))
     try:
-        probe = cfg.model_copy(update={"output_dir": tmp, "alerts": cfg.alerts.model_copy(update={"console": False})})
+        update: dict = {"output_dir": tmp, "alerts": cfg.alerts.model_copy(update={"console": False})}
+        if cfg.fund is not None:  # check against the real ledger (read-only: the preflight never settles)
+            update["fund"] = cfg.fund.model_copy(update={"ledger": cfg.fund.ledger or cfg.output_dir / "fund_ledger.json"})
+        probe = cfg.model_copy(update=update)
         session = PaperSession(probe, sim, risk, base_dir=path.parent)
         try:
             session.health_checks()
@@ -444,9 +458,19 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
         except ImportError as exc:
             checks.append(("browser page", False, f"install the dashboard extra: {exc}"))
     if cfg.fund is not None:
+        import json as _json
+
         bots = len(cfg.shadows) + 1
-        checks.append(("fund", True, f"${cfg.fund.total_capital:,.2f} across {bots} bots "
-                       f"(${cfg.fund.total_capital / bots:,.2f} each on day 1, then compounding)"))
+        ledger = cfg.fund.ledger or cfg.output_dir / "fund_ledger.json"
+        if ledger.is_file():
+            days = _json.loads(ledger.read_text(encoding="utf-8")).get("days", [])
+            last = days[-1] if days else None
+            detail = (f"ledger has {len(days)} day(s); fund at ${last['fund_end']:,.2f} after {last['date']}"
+                      if last else "ledger exists, no days settled yet")
+        else:
+            detail = (f"new fund: ${cfg.fund.total_capital:,.2f} across {bots} bots "
+                      f"(${cfg.fund.total_capital / bots:,.2f} each), compounding daily")
+        checks.append(("fund", True, detail))
     if cfg.feed.kind == "alpaca" and cfg.feed.alpaca is not None:
         now = datetime.now(MARKET_TZ)
         a = cfg.feed.alpaca

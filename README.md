@@ -412,6 +412,24 @@ hours, so they run in their own window or in the background.
 * recent simulated trades
 * a per-bot detail view
 
+**Reliability for an all-day run:**
+* **Network trouble.** Reconnects back off (2 s, 4 s, 6 s and so on, capped at 30 s per
+  attempt), so about 11 minutes of lost internet is ridden out in safe state. Only
+  after that does the kill switch engage.
+* **Bad responses.** Malformed responses and rate-limit replies count as temporary
+  feed hiccups.
+* **Bot errors.** A bot that raises an error is halted on its own; the others keep
+  trading.
+* **Sleep.** The PC is kept awake while a live session runs; the screen can still turn
+  off.
+* **Saving progress.** A provisional fund entry is saved about once a minute, so a day
+  is never lost even if the window is closed and never resumed.
+* **Duplicate launches.** Only one process can run a session; a second launcher
+  refuses instead of corrupting files.
+* **Tested:** a full simulated day (09:30-16:00 at real polling cadence) with a 4-minute
+  outage, malformed responses and rate-limit errors. It finished without a kill, used
+  about 62 s of CPU in total and 52 MB of memory, and averaged 89 requests a minute.
+
 **Stopping and restarting:**
 * Stop cleanly with Ctrl+C or `paper-stop`; use `paper-kill` only as an emergency halt.
 * Continue the same day with `--resume`.

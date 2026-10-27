@@ -150,3 +150,28 @@ def test_paper_status_and_check_commands(tmp_path: Path, capsys) -> None:
     assert main(["paper-status", "--config", str(path)]) == EXIT_OK
     out = capsys.readouterr().out
     assert "champion" in out and "benchmark" in out and "simulated orders only" in out
+
+
+def test_second_process_cannot_run_the_same_session(tmp_path: Path) -> None:
+    import os
+    import subprocess
+    import sys as _sys
+
+    from atlas.paper.session import LOCK_FILE, pid_alive
+
+    s = session(tmp_path)
+    s.dir.mkdir(parents=True, exist_ok=True)
+    other = subprocess.Popen([_sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        (s.dir / LOCK_FILE).write_text(str(other.pid), encoding="utf-8")
+        assert pid_alive(other.pid)
+        with pytest.raises(HealthCheckError, match="already running"):
+            s.health_checks()
+    finally:
+        other.kill()
+        other.wait()
+    assert not pid_alive(other.pid)
+    s2 = session(tmp_path)  # stale lock from a dead process: taken over
+    s2.run()
+    assert not (s2.dir / LOCK_FILE).exists()  # released at the end
+    assert pid_alive(os.getpid())
