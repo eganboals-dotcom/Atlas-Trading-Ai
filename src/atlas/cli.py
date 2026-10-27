@@ -384,7 +384,11 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
                 detail += "; latest " + "; ".join(f"{s} {q['bid']}/{q['ask']}" for s, q in quotes.items())
             checks.append(("market data + keys", True, detail))
             offset = getattr(feed, "clock_offset_ms", None)
-            if offset is not None:
+            if offset is not None and offset < -60_000:
+                checks.append(("clock", True, f"latest quote is {-offset / 60_000:.0f} min old (market closed), so "
+                               "the PC clock can't be verified now; every quote is checked against it during the "
+                               "session. Sync it anyway: Settings > Time & language > Sync now"))
+            elif offset is not None:
                 checks.append(("clock", True, f"latest exchange timestamp is {offset:+.0f} ms vs this PC "
                                f"(limit +{risk.max_clock_skew_ms:.0f} ms)"))
             checks.append(("bots", True, ", ".join(f"{a.account_id}={a.model['agent_id']} ({a.model['family']})"
