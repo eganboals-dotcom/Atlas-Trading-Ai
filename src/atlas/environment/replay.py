@@ -218,20 +218,15 @@ class ReplayEngine:
             "quote_age_ms": None if visible is None else (now - visible.event_ts) / NS_PER_MS,
         }
         if intent.symbol not in self.symbols:
-            self._reject(order, now, f"unknown symbol {intent.symbol}")
+            reject(order, now, f"unknown symbol {intent.symbol}")
         elif market.is_stale(intent.symbol):
             # Never trade off a stale or missing quote; there is no forward-filling.
-            self._reject(order, now, "stale or missing quote at decision")
+            reject(order, now, "stale or missing quote at decision")
         else:
             order.transition(now, OrderStatus.ACCEPTED)
         record.update(status=str(order.status), reason=order.reject_reason, arrival_ts=order.arrival_ts)
         audit.append(record)
         return order
-
-    @staticmethod
-    def _reject(order: SimOrder, ts: int, reason: str) -> None:
-        order.reject_reason = reason
-        order.transition(ts, OrderStatus.REJECTED)
 
     def _execute(
         self,
@@ -241,64 +236,87 @@ class ReplayEngine:
         portfolio: Portfolio,
         audit: list[dict[str, Any]],
     ) -> None:
-        intent = order.intent
-        quote = venue.quote_at(intent.symbol, now)
-        record: dict[str, Any] = {"type": "execution", "ts": now, "order_id": order.order_id}
+        quote = venue.quote_at(order.intent.symbol, now)
+        audit.append(execute_ioc(order, quote, now, self.costs, self.config.fill.max_participation,
+                                 self._stale_ns, portfolio))
 
-        if quote is None or now - quote.event_ts > self._stale_ns:
-            self._reject(order, now, "no fresh venue quote at arrival")
+
+def reject(order: SimOrder, ts: int, reason: str) -> None:
+    order.reject_reason = reason
+    order.transition(ts, OrderStatus.REJECTED)
+
+
+def limit_ok(intent: OrderIntent, price: float) -> bool:
+    assert intent.limit_price is not None
+    if intent.side is Side.BUY:
+        return price <= intent.limit_price
+    return price >= intent.limit_price
+
+
+def execute_ioc(
+    order: SimOrder,
+    quote: Quote | None,
+    now: int,
+    costs: CostModel,
+    max_participation: float,
+    stale_ns: int,
+    portfolio: Portfolio,
+) -> dict[str, Any]:
+    """Execute one arriving IOC order against ``quote`` (the market at arrival). Shared by the
+    backtest engine and the paper broker so both use exactly the same fill model.
+
+    Returns the audit record; mutates ``order`` and ``portfolio``.
+    """
+    intent = order.intent
+    record: dict[str, Any] = {"type": "execution", "ts": now, "order_id": order.order_id}
+
+    if quote is None or now - quote.event_ts > stale_ns:
+        reject(order, now, "no fresh venue quote at arrival")
+    else:
+        assert quote.bid is not None and quote.ask is not None
+        assert quote.bid_size is not None and quote.ask_size is not None
+        record.update(venue_bid=quote.bid, venue_ask=quote.ask, venue_quote_ts=quote.event_ts)
+        price = costs.execution_price(intent.side, quote.bid, quote.ask)
+        displayed = quote.ask_size if intent.side is Side.BUY else quote.bid_size
+        available = max(0, math.floor(displayed * max_participation))
+
+        if intent.order_type is OrderType.LIMIT and not limit_ok(intent, price):
+            # IOC limit that does not cross the (slipped) far side expires unfilled.
+            # Touching the last trade price is never enough to fill.
+            order.transition(now, OrderStatus.EXPIRED)
+            order.reject_reason = "limit not marketable at arrival"
         else:
-            assert quote.bid is not None and quote.ask is not None
-            assert quote.bid_size is not None and quote.ask_size is not None
-            record.update(venue_bid=quote.bid, venue_ask=quote.ask, venue_quote_ts=quote.event_ts)
-            price = self.costs.execution_price(intent.side, quote.bid, quote.ask)
-            displayed = quote.ask_size if intent.side is Side.BUY else quote.bid_size
-            available = max(0, math.floor(displayed * self.config.fill.max_participation))
-
-            if intent.order_type is OrderType.LIMIT and not self._limit_ok(intent, price):
-                # IOC limit that does not cross the (slipped) far side expires unfilled.
-                # Touching the last trade price is never enough to fill.
-                order.transition(now, OrderStatus.EXPIRED)
-                order.reject_reason = "limit not marketable at arrival"
+            if intent.side is Side.BUY:
+                cap = portfolio.max_affordable_qty(price, lambda q: costs.fee(Side.BUY, q, price))
             else:
-                if intent.side is Side.BUY:
-                    cap = portfolio.max_affordable_qty(price, lambda q: self.costs.fee(Side.BUY, q, price))
+                cap = portfolio.position_qty(intent.symbol)
+            qty = min(intent.quantity, available, cap)
+            if qty <= 0:
+                reason = "insufficient cash" if intent.side is Side.BUY and cap <= 0 else (
+                    "no position to sell (long-only)" if cap <= 0 else "no displayed liquidity"
+                )
+                reject(order, now, reason)
+            else:
+                fill = Fill(
+                    order_id=order.order_id,
+                    symbol=intent.symbol,
+                    side=intent.side,
+                    quantity=qty,
+                    price=price,
+                    fee=costs.fee(intent.side, qty, price),
+                    ts=now,
+                    quote_bid=quote.bid,
+                    quote_ask=quote.ask,
+                    quote_event_ts=quote.event_ts,
+                )
+                portfolio.apply_fill(fill)
+                order.filled_qty = qty
+                if qty == intent.quantity:
+                    order.transition(now, OrderStatus.FILLED)
                 else:
-                    cap = portfolio.position_qty(intent.symbol)
-                qty = min(intent.quantity, available, cap)
-                if qty <= 0:
-                    reason = "insufficient cash" if intent.side is Side.BUY and cap <= 0 else (
-                        "no position to sell (long-only)" if cap <= 0 else "no displayed liquidity"
-                    )
-                    self._reject(order, now, reason)
-                else:
-                    fill = Fill(
-                        order_id=order.order_id,
-                        symbol=intent.symbol,
-                        side=intent.side,
-                        quantity=qty,
-                        price=price,
-                        fee=self.costs.fee(intent.side, qty, price),
-                        ts=now,
-                        quote_bid=quote.bid,
-                        quote_ask=quote.ask,
-                        quote_event_ts=quote.event_ts,
-                    )
-                    portfolio.apply_fill(fill)
-                    order.filled_qty = qty
-                    if qty == intent.quantity:
-                        order.transition(now, OrderStatus.FILLED)
-                    else:
-                        order.transition(now, OrderStatus.PARTIALLY_FILLED)
-                        order.transition(now, OrderStatus.CANCELLED)  # IOC remainder
-                    record.update(fill_qty=qty, fill_price=price, fee=fill.fee, simulated=True)
+                    order.transition(now, OrderStatus.PARTIALLY_FILLED)
+                    order.transition(now, OrderStatus.CANCELLED)  # IOC remainder
+                record.update(fill_qty=qty, fill_price=price, fee=fill.fee, simulated=True)
 
-        record.update(status=str(order.status), reason=order.reject_reason, portfolio_equity=portfolio.equity)
-        audit.append(record)
-
-    @staticmethod
-    def _limit_ok(intent: OrderIntent, price: float) -> bool:
-        assert intent.limit_price is not None
-        if intent.side is Side.BUY:
-            return price <= intent.limit_price
-        return price >= intent.limit_price
+    record.update(status=str(order.status), reason=order.reject_reason, portfolio_equity=portfolio.equity)
+    return record

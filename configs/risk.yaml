@@ -1,0 +1,17 @@
+# Risk limits for paper trading. EVERY field is required: a missing or invalid value stops startup.
+# Limits are validated at startup, immutable while running, and cannot be changed by any agent.
+allowed_symbols: [SPY, QQQ, IWM]
+max_position_shares: 1000       # per symbol
+max_position_value: 50000       # per symbol, USD at the order price
+max_order_shares: 500
+max_order_value: 25000
+max_gross_exposure: 0.8         # market value / equity
+max_net_exposure: 0.8           # long-only, so equal to gross for now
+max_daily_loss: 0.01            # halt the account at -1% versus start-of-day equity
+max_drawdown: 0.015             # halt the account at -1.5% from peak equity
+max_orders_per_minute: 30
+stale_data_ms: 2000             # any symbol without a fresh quote for this long -> safe state
+max_clock_skew_ms: 1000         # events stamped further ahead of the local clock -> clock anomaly
+clock_recovery_events: 50       # consecutive good events needed to leave a clock-anomaly safe state
+reconnect_max_retries: 3        # bounded; exhausting them engages the kill switch
+reconnect_backoff_ms: 500       # linear backoff per attempt (real-time feeds only)

@@ -105,54 +105,79 @@ def _content_problems(event: MarketEvent) -> tuple[IssueKind, str] | None:
     return None
 
 
+class StreamValidator:
+    """Incremental validator: the same rules as ``validate_events``, one event at a time.
+
+    Used by paper trading, where events arrive live and cannot be validated as a batch.
+
+    ``order_scope`` sets which events must arrive in source-time order: ``"symbol"`` (all of
+    a symbol's events; the batch default) or ``"symbol_type"`` (quotes and trades of a
+    symbol checked separately). Live feeds deliver quote and trade channels independently,
+    so a trade may arrive before a quote stamped a microsecond earlier.
+    """
+
+    def __init__(self, allowed_data_age_ms: float, check_session: bool = True,
+                 order_scope: str = "symbol") -> None:
+        if order_scope not in ("symbol", "symbol_type"):
+            raise ValueError(f"unknown order_scope {order_scope!r}")
+        self.allowed_age_ns = int(allowed_data_age_ms * NS_PER_MS)
+        self.check_session = check_session
+        self.order_scope = order_scope
+        self._seen: set[tuple[Any, ...]] = set()
+        self._last_ts: dict[str, int] = {}
+        self._last_seq: dict[str, int] = {}
+        self._last_quote_ts: dict[str, int] = {}
+
+    def check(self, event: MarketEvent, index: int) -> tuple[bool, list[Issue]]:
+        """Returns (keep, issues). Dropped events never update validator state."""
+        key = (event.source, event.seq) if event.seq is not None else (event.event_type, event)
+        if key in self._seen:
+            return False, [Issue(IssueKind.DUPLICATE, index, event.symbol, f"duplicate of {key}")]
+
+        problem: tuple[IssueKind, str] | None = None
+        last_ts, last_seq = self._last_ts, self._last_seq
+        order_key = event.symbol if self.order_scope == "symbol" else f"{event.symbol}:{event.event_type}"
+        seq_key = event.source if self.order_scope == "symbol" else f"{event.source}:{event.event_type}"
+        if event.receive_ts is not None and event.receive_ts < event.event_ts:
+            problem = (IssueKind.CLOCK_ANOMALY, "receive_ts earlier than event_ts")
+        elif order_key in last_ts and event.event_ts < last_ts[order_key]:
+            problem = (
+                IssueKind.OUT_OF_ORDER,
+                f"event_ts {ns_to_iso(event.event_ts)} before previous {ns_to_iso(last_ts[order_key])}",
+            )
+        elif self.order_scope == "symbol" and event.seq is not None and seq_key in last_seq                 and event.seq <= last_seq[seq_key]:
+            problem = (IssueKind.OUT_OF_ORDER, f"seq {event.seq} not after {last_seq[event.source]}")
+        elif self.check_session and not in_regular_session(event.event_ts):
+            problem = (IssueKind.OUT_OF_SESSION, f"{ns_to_iso(event.event_ts)} outside regular session")
+        else:
+            problem = _content_problems(event)
+        if problem is not None:
+            return False, [Issue(problem[0], index, event.symbol, problem[1])]
+
+        issues: list[Issue] = []
+        self._seen.add(key)
+        last_ts[order_key] = event.event_ts
+        if event.seq is not None:
+            last_seq[seq_key] = event.seq
+        if isinstance(event, Quote):
+            prev = self._last_quote_ts.get(event.symbol)
+            if prev is not None and event.event_ts - prev > self.allowed_age_ns:
+                gap_ms = (event.event_ts - prev) / NS_PER_MS
+                issues.append(Issue(IssueKind.STALE_GAP, index, event.symbol, f"{gap_ms:.0f} ms since previous quote"))
+            self._last_quote_ts[event.symbol] = event.event_ts
+        return True, issues
+
+
 def validate_events(
     events: list[MarketEvent],
     allowed_data_age_ms: float,
     check_session: bool = True,
 ) -> ValidationReport:
-    allowed_age_ns = int(allowed_data_age_ms * NS_PER_MS)
     report = ValidationReport(total_events=len(events), valid_events=[])
-    seen: set[tuple[Any, ...]] = set()
-    last_ts: dict[str, int] = {}
-    last_seq: dict[str, int] = {}
-    last_quote_ts: dict[str, int] = {}
-
+    validator = StreamValidator(allowed_data_age_ms, check_session)
     for i, event in enumerate(events):
-        key = (event.source, event.seq) if event.seq is not None else (event.event_type, event)
-        if key in seen:
-            report.issues.append(Issue(IssueKind.DUPLICATE, i, event.symbol, f"duplicate of {key}"))
-            continue
-
-        problem: tuple[IssueKind, str] | None = None
-        if event.receive_ts is not None and event.receive_ts < event.event_ts:
-            problem = (IssueKind.CLOCK_ANOMALY, "receive_ts earlier than event_ts")
-        elif event.symbol in last_ts and event.event_ts < last_ts[event.symbol]:
-            problem = (
-                IssueKind.OUT_OF_ORDER,
-                f"event_ts {ns_to_iso(event.event_ts)} before previous {ns_to_iso(last_ts[event.symbol])}",
-            )
-        elif event.seq is not None and event.source in last_seq and event.seq <= last_seq[event.source]:
-            problem = (IssueKind.OUT_OF_ORDER, f"seq {event.seq} not after {last_seq[event.source]}")
-        elif check_session and not in_regular_session(event.event_ts):
-            problem = (IssueKind.OUT_OF_SESSION, f"{ns_to_iso(event.event_ts)} outside regular session")
-        else:
-            problem = _content_problems(event)
-
-        if problem is not None:
-            report.issues.append(Issue(problem[0], i, event.symbol, problem[1]))
-            continue
-
-        seen.add(key)
-        last_ts[event.symbol] = event.event_ts
-        if event.seq is not None:
-            last_seq[event.source] = event.seq
-        if isinstance(event, Quote):
-            prev = last_quote_ts.get(event.symbol)
-            if prev is not None and event.event_ts - prev > allowed_age_ns:
-                gap_ms = (event.event_ts - prev) / NS_PER_MS
-                report.issues.append(
-                    Issue(IssueKind.STALE_GAP, i, event.symbol, f"{gap_ms:.0f} ms since previous quote")
-                )
-            last_quote_ts[event.symbol] = event.event_ts
-        report.valid_events.append(event)
+        keep, issues = validator.check(event, i)
+        report.issues.extend(issues)
+        if keep:
+            report.valid_events.append(event)
     return report

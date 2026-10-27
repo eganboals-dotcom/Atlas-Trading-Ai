@@ -13,15 +13,15 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 4 — PPO
+## Status: Phase 5 — paper trading
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Events, synthetic data, validation, deterministic replay, costs/latency, ledger | Done |
 | 2 | Agent interface, 50 non-RL agents, baselines, evolution, lineage | Done |
 | 3 | Historical data, walk-forward evaluation, metrics | Done |
-| 4 | PPO policy family | **Done (awaiting review)** |
-| 5 | Live-data paper trading, risk manager, dashboard | Not started |
+| 4 | PPO policy family | Done |
+| 5 | Live-data paper trading, risk manager, dashboard | **Done (awaiting review)** |
 | 6–8 | Readiness review, disabled broker adapter, live activation | Not started; each needs separate approval |
 
 ## Setup
@@ -36,8 +36,9 @@ pip install -e . --no-deps
 ```
 
 The lockfile includes the optional `rl` extra (PyTorch CPU build, Gymnasium), which PPO
-needs. That is why the command adds PyTorch's package index. Everything else runs
-without it, and `test_learning.py` is skipped when PyTorch is missing.
+needs. That is why the command adds PyTorch's package index. It also includes the
+`dashboard` extra (Streamlit, Plotly). Everything else runs without them, and the
+affected tests are skipped when they are missing.
 
 No API keys or credentials are needed. Synthetic data is generated locally, and
 historical data is imported from files you supply (see "Historical data" below).
@@ -246,6 +247,99 @@ losses.
   evolution unless `final_candidate_source: ppo` is set explicitly, and doing that
   changes the design fingerprint.
 
+### Paper trading
+
+Paper mode replays a session through the live-feed interface. It uses the same
+validation, features and frozen agents as research, but orders go only through the
+independent risk manager into Atlas's internal `PaperBroker`. **Paper mode has no live
+trading endpoint, no live-order credentials, and no route that turns a paper order into
+a real order.**
+
+```bash
+# Needs an evolution checkpoint first (configs/paper.yaml points at gen_005 of `evolve`)
+python -m atlas.cli evolve --config configs/evolution.yaml
+python -m atlas.cli paper --config configs/paper.yaml
+
+# After a crash or stop: continue the same session from its last saved state
+python -m atlas.cli paper --config configs/paper.yaml --resume
+
+# Emergency stop of a running or stopped session (an operator must reset it before restarting)
+python -m atlas.cli paper-kill --session-dir artifacts/paper/paper_2026-10-19 --reason "manual review"
+python -m atlas.cli paper --config configs/paper.yaml --resume --reset-kill-switch
+
+# Read-only dashboard (accounts, P&L, costs, risk events, fills, latency, alerts, walk-forward reports)
+streamlit run src/atlas/dashboard/app.py -- --paper-dir artifacts/paper --reports-dir artifacts/reports/walkforward
+```
+
+**Safety checks at startup** ([config.py](src/atlas/paper/config.py),
+[session.py](src/atlas/paper/session.py)):
+* **Config.** The command refuses to start unless `mode` is exactly `paper`,
+  `live_orders_enabled` is exactly `false`, and every limit in `configs/risk.yaml` is
+  present and valid (none has a default). Unknown keys, such as credential fields, are
+  rejected.
+* **Broker.** The only broker factory builds a `PaperBroker`, and the session refuses any
+  broker whose `is_live` is not `False`. No live-broker module exists, no source file
+  imports a network client or reads credentials from the environment, and a full
+  session runs with sockets disabled (all tested).
+* **Health checks.** Before starting, it checks that:
+  * the candidate checkpoint loads, and its genome or pinned weights match
+  * the population or schema version matches
+  * the feed's symbols are all in `allowed_symbols`
+  * the session isn't a duplicate
+  * no kill switch is engaged
+
+**Accounts.** There is one frozen **champion**, up to five **shadows**, and an automatic
+buy-and-hold **benchmark**. Each has its own paper broker, ledger and risk state.
+
+**Paper broker** ([broker.py](src/atlas/paper/broker.py)):
+* **Order states.** proposed, accepted, partially filled, filled, cancelled, rejected
+  and expired.
+* **Same fill rules as backtests.** Orders arrive after simulated latency and fill
+  immediately-or-cancel at the top of the book. The arrival price is the latest
+  *received* quote stamped at or before the arrival time.
+
+**Risk manager** ([risk.py](src/atlas/paper/risk.py)). It checks every proposal after
+the agent, using its own immutable copy of the limits:
+* **Per order:** allowed symbols; order size in shares and dollars (reduced to fit);
+  position limit per symbol (rejected); gross and net exposure (reduced, then rejected);
+  orders per minute.
+* **Per account:** a daily-loss or drawdown breach halts the account and cancels its
+  working orders.
+* **Global safe state:** stale or missing data (including total feed silence), a feed
+  disconnect, or a clock anomaly stops all new actions and cancels working orders. Each
+  raises an alert and clears automatically once the condition clears.
+* **Reconnects:** retries are limited, and running out engages the kill switch.
+* **Kill switch:** triggered by a `KILL` file, the `paper-kill` command, or a critical
+  failure. It stays engaged across restarts.
+
+**Session outputs** (`artifacts/paper/<session>/`):
+* `audit.jsonl` — every decision (with market snapshot and quote ages), risk decision,
+  simulated order, fill (with the fill assumption, fees and resulting cash and
+  positions), cancel, data issue, clock anomaly, disconnect and kill
+* `alerts.jsonl`
+* `state.json` — saved atomically
+* `equity.csv`
+* `daily_report.{json,md}` — net P&L against the benchmark, drawdown, turnover, fills,
+  broker and risk rejections, decision latency, feed gaps, disconnects, safe-state
+  periods, and model/version identifiers
+
+**Restart.** State is saved every `state_flush_events` events and at the end. After a
+crash, `--resume`:
+* restores every ledger and risk state, and the kill switch
+* cancels orders that were working at the crash instead of assuming they filled
+* cuts the audit log back to the last save, then replays the feed from that point, so
+  nothing is skipped or written twice (tested)
+* refuses if the configuration has changed. Fault-injection settings are excluded from
+  that check, so drills can be resumed.
+
+**Feeds** ([feed.py](src/atlas/paper/feed.py)):
+* **Interface.** `LiveFeed` is the interface a vendor stream would implement. Only
+  `ReplayLiveFeed` exists for now.
+* **Speed.** `speed: 0` runs on a virtual clock as fast as possible; `speed: 1` runs in
+  real time.
+* **Fault injection.** It can simulate disconnects and failed reconnects, data gaps,
+  a clock going backwards, timestamps from the future, and crashes, for drills.
+
 ## Test
 
 ```bash
@@ -267,6 +361,10 @@ The suites cover:
 | `test_evolution.py` | exactly 50 agents per generation (5 × 10), full lineage, an interrupted-and-resumed run identical to an uninterrupted one, refusal to overwrite or resume on changed config, hold and explore policies, parallel results identical to serial |
 | `test_ingest.py` | lossless synthetic → CSV → Parquet round trip, immutable raw and processed data, refusal of tampered files, vendor column mapping, ISO timestamps, universe and corporate-action files |
 | `test_walkforward.py` | date-ordered splits with embargo and rotating validation, holdout guard and ledger (reuse refused unless forced), cost scenarios, round-trip metrics, best-of-many overfitting the selection data, a walk-forward run that never reads holdout files, then a single frozen-design holdout evaluation |
+| `test_risk_controls.py` | every per-order rule; daily-loss and drawdown halts; every risk field required, invalid values rejected, limits immutable; session-level halts, stale-feed and clock-anomaly safe states, bounded reconnects, kill switch on exhausted retries, manual kill that blocks orders and survives restart, disallowed symbols, model mismatch |
+| `test_paper_cannot_trade_live.py` | config accepts only `mode: paper` with live orders off, rejects missing safety settings and credential fields, refuses configs that bypassed validation, accepts only `PaperBroker`, no live-broker module, no network imports or environment credentials, a full session with sockets disabled and every fill marked simulated |
+| `test_paper_session.py` | accounts, audit and daily report; deterministic sessions; crash then resume with nothing skipped or duplicated and working orders cancelled; resume refused on changed config |
+| `test_dashboard.py` | the dashboard imports nothing that can trade, file loaders, the Streamlit app renders |
 | `test_learning.py` (skipped without the `rl` extra) | step-by-step engine matches the callback engine, normalizer fitted on given sessions only, environment spaces, reward adding up to the realized log return, sessions cycled, observations unaffected by future data, deterministic PPO with full diagnostics, frozen and pinned policy agent (parallel equals serial, tampered weights refused), PPO in walk-forward never promoted automatically, explicit PPO candidate through the holdout |
 
 ## How agents and evolution work
@@ -439,6 +537,30 @@ session:
 * **Slower decisions.** PPO takes about 230 µs per decision at p99, against about 24 µs
   for the rule agents. Both are measured on this machine.
 
+## What the first paper session shows
+
+This is `configs/paper.yaml`: a 30-minute synthetic session on 2026-10-19 with 23,555
+events, a champion from evolution checkpoint `gen_005`, two shadows and the benchmark.
+It took about 1 s on the virtual clock.
+
+| Account | Model | Return | vs buy & hold | Fills |
+|---|---|---|---|---|
+| champion | g003-a05 (liquidity) | −5.38 bps | +18.8 bps | 16 |
+| shadow-1 | g004-a04 (liquidity) | −5.33 bps | +18.9 bps | 16 |
+| shadow-2 | random control | −34.12 bps | −9.9 bps | 121 |
+| benchmark | buy & hold | −24.20 bps | 0 | 2 |
+
+* **The champion lost money but beat buy-and-hold.** It loses less because it holds
+  little exposure while the market falls. One synthetic day is no evidence of edge.
+* **Validation dropped 33 late quotes** that arrived after a newer quote for the same
+  symbol. The paper feed checks order separately for each symbol's quotes and trades,
+  because real feeds deliver those channels independently.
+* **Drills behave as designed:**
+  * A disconnect with two failed reconnects recovers on the third attempt.
+  * When retries run out, the kill switch engages.
+  * A crash followed by `--resume` processes the same 23,555 events as an uninterrupted
+    run.
+
 ## Known limitations
 
 * **Synthetic data only.** It tests plumbing and carries no information about real markets.
@@ -464,8 +586,8 @@ session:
   10-minute sessions.
 * **Machine-dependent latency.** Decision latency is wall-clock time on this machine. It
   excludes any network or broker latency.
-* **Limits, not a risk manager.** Agent limits clip positions and order sizes. Daily loss
-  limits, order-rate limits and the kill switch are part of the Phase 5 risk manager.
+* **Risk manager runs in paper mode only.** Backtests and walk-forward rely on agent
+  limits plus the fitness gates.
 * **Small PPO budget.** PPO trains on about 41 ten-minute episodes per fold, which is
   small for reinforcement learning. The action set is three fixed target levels with
   market orders only. The results describe this setup, not reinforcement learning in
@@ -473,15 +595,27 @@ session:
 * **No PPO hyperparameter search.** A tuned search would be one more selection trial
   and would need its own walk-forward accounting.
 * **PPO uses base costs only.** It trains under the base cost scenario.
-* **Not built yet.** Paper trading, the live data provider and the full risk manager
-  come in Phase 5.
+* **No vendor feed yet.** Paper mode runs on a replayed feed. Message formats,
+  entitlements, timestamp semantics and rate limits must be verified from the
+  vendor's official documentation before an adapter is written.
+* **Silence is detected late.** A feed that goes completely silent is noticed when the
+  next event arrives; the safe state is then backdated to the moment data went stale. A
+  real-time vendor adapter must deliver heartbeats or time out so a silent feed is
+  noticed without waiting for the next event.
+* **Paper fills are an approximation.** They use the latest *received* quote at arrival,
+  so they include feed latency. They are simulations, not executions.
+* **Agent memory resets on restart.** Positions survive a restart, but in-memory agent
+  state such as entry times starts fresh.
+* **Halted accounts keep their positions.** Nothing is flattened automatically; the
+  positions wait for manual review.
+* **Alerts go only to the console and a file.** Nothing sends messages externally.
 
 ## Repository layout
 
 ```
 configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml,
                    walkforward.yaml, walkforward_parquet.yaml, walkforward_ppo.yaml,
-                   import_synthetic_demo.yaml
+                   import_synthetic_demo.yaml, paper.yaml, risk.yaml
 src/atlas/
   cli.py           command-line entry point
   config.py        typed, strict configuration models
@@ -493,6 +627,9 @@ src/atlas/
   agents/          agent contract, features, genome operators, 5 families, baselines, adapter
   evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
   learning/        Gymnasium env, observation normalizer, PPO trainer, frozen policy agent, seed stability
+  brokers/         broker interface only (no live adapter exists)
+  paper/           paper config, live-feed interface + replay feed, paper broker, risk manager, session, report
+  dashboard/       read-only Streamlit app and file loaders
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)

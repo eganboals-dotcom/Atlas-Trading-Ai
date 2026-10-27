@@ -1,0 +1,35 @@
+# Paper trading. The paper command refuses to start unless mode is exactly `paper`,
+# live_orders_enabled is exactly `false`, and every risk setting in risk_config is present and valid.
+mode: paper
+live_orders_enabled: false
+session_name: paper_2026-10-19
+simulator_config: configs/simulator.yaml
+risk_config: configs/risk.yaml
+
+feed:
+  kind: replay                  # replayed session through the live-feed interface (no vendor adapter yet)
+  data_source:
+    kind: synthetic
+    data_config: configs/data.yaml
+    start_date: 2026-10-19      # after the evolution checkpoint's training windows (2026-10-05..07)
+    n_sessions: 1
+    duration_s: 1800
+    symbols: [SPY, QQQ]
+  session_date: 2026-10-19
+  speed: 0                      # 0 = virtual clock, as fast as possible; 1 = real time
+  first_quote_timeout_ms: 5000
+  faults: {}                    # failure drills, e.g. {disconnect_at_events: [5000], disconnect_failures: 1}
+
+# Frozen candidate: the top champion of an evolution checkpoint (run `evolve` first), or a
+# walk-forward design: {source: design, path: artifacts/reports/walkforward/<run_id>/design.json}
+candidate: {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 0}
+shadows:                        # small comparison group, each in its own paper account
+  - {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 1}
+  - {source: baseline, baseline: baseline_random}
+# A buy-and-hold benchmark account is always added automatically.
+
+agent_limits: {max_position_shares: 1000, max_order_shares: 500, max_position_frac: 0.5}
+decision_interval_ms: 500
+alerts: {console: true, file: true}
+output_dir: artifacts/paper
+state_flush_events: 500

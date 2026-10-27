@@ -26,6 +26,7 @@ data/processed/*
 artifacts/checkpoints/*
 artifacts/reports/*
 artifacts/ppo/
+artifacts/paper/
 artifacts/holdout_ledger.jsonl
 !artifacts/checkpoints/.gitkeep
 !artifacts/reports/.gitkeep

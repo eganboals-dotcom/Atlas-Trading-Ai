@@ -2,8 +2,7 @@
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
 ``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
-``train-ppo`` (Phase 4).
-Paper trading arrives in Phase 5.
+``train-ppo`` (Phase 4); ``paper``, ``paper-kill`` (Phase 5).
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from atlas.logging_utils import configure_logging, get_logger
 
 log = get_logger(__name__)
 
-EXIT_OK, EXIT_DATA_INVALID, EXIT_CONFIG = 0, 1, 2
+EXIT_OK, EXIT_DATA_INVALID, EXIT_CONFIG, EXIT_CRASH = 0, 1, 2, 3
 
 
 def _cmd_validate_data(args: argparse.Namespace) -> int:
@@ -232,6 +231,52 @@ def _cmd_train_ppo(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_paper(args: argparse.Namespace) -> int:
+    import yaml
+
+    from atlas.brokers.base import LiveTradingDisabledError
+    from atlas.paper.config import PaperConfig, RiskConfig
+    from atlas.paper.feed import SimulatedCrash
+    from atlas.paper.session import HealthCheckError, PaperSession
+
+    path = Path(args.config)
+    if not path.is_file():
+        raise ConfigError(f"config file not found: {path}")
+    try:
+        cfg = PaperConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+    except ValueError as exc:
+        raise ConfigError(f"{path}: refusing to start paper mode, invalid or unsafe config:\n{exc}") from exc
+    sim = load_config(_resolve(cfg.simulator_config, path), SimulatorConfig)
+    risk = load_config(_resolve(cfg.risk_config, path), RiskConfig)
+    session = PaperSession(cfg, sim, risk, base_dir=path.parent, resume=args.resume,
+                           reset_kill_switch=args.reset_kill_switch)
+    try:
+        report = session.run()
+    except (HealthCheckError, LiveTradingDisabledError) as exc:
+        print(f"paper session refused to start: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    except SimulatedCrash as exc:
+        print(f"paper session crashed ({exc}); state was flushed periodically — rerun with --resume",
+              file=sys.stderr)
+        return EXIT_CRASH
+    print(json.dumps({
+        "session_dir": str(session.dir),
+        "report": str(session.dir / "daily_report.md"),
+        "kill_switch": report["kill_switch"],
+        "accounts": {a["account"]: {"net_return_bps": a["net_return"] * 1e4, "fills": a["fills"],
+                                    "halted": a["halted"]} for a in report["accounts"]},
+    }, indent=2))
+    return EXIT_OK
+
+
+def _cmd_paper_kill(args: argparse.Namespace) -> int:
+    from atlas.paper.risk import request_kill
+
+    path = request_kill(Path(args.session_dir), args.reason)
+    print(f"kill switch file written: {path}")
+    return EXIT_OK
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from atlas.evaluation.report import write_markdown
 
@@ -303,6 +348,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", default="artifacts/ppo")
     p.add_argument("--workers", type=int)
     p.set_defaults(func=_cmd_train_ppo)
+
+    p = sub.add_parser("paper", help="Run a paper-trading session (simulated orders only; live orders impossible).")
+    p.add_argument("--config", required=True)
+    p.add_argument("--resume", action="store_true", help="continue a session after a crash or stop")
+    p.add_argument("--reset-kill-switch", action="store_true", help="operator reset after reviewing a kill")
+    p.set_defaults(func=_cmd_paper)
+
+    p = sub.add_parser("paper-kill", help="Engage the kill switch of a paper session.")
+    p.add_argument("--session-dir", required=True)
+    p.add_argument("--reason", default="operator kill")
+    p.set_defaults(func=_cmd_paper_kill)
 
     p = sub.add_parser("report", help="Rebuild and print the Markdown report for a walk-forward run.")
     p.add_argument("--run-id", required=True)

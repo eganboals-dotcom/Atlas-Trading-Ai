@@ -12,7 +12,7 @@ Conventions:
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from atlas.environment.orders import Fill, Side
@@ -145,6 +145,28 @@ class Portfolio:
         problems = self.reconcile()
         if problems:
             raise AccountingError("; ".join(problems))
+
+    def to_state(self) -> dict[str, Any]:
+        """Lossless serialization, used to persist paper accounts across restarts."""
+        return {
+            "initial_cash": self.initial_cash, "cash": self.cash, "fees_paid": self.fees_paid,
+            "positions": {s: [p.quantity, p.avg_cost, p.realized_pnl] for s, p in self.positions.items()},
+            "marks": dict(self.marks),
+            "fills": [{**asdict(f), "side": str(f.side)} for f in self.fills],
+            "buy_notional": self._buy_notional, "sell_notional": self._sell_notional,
+        }
+
+    @staticmethod
+    def from_state(d: dict[str, Any]) -> Portfolio:
+        p = Portfolio(d["initial_cash"])
+        p.cash, p.fees_paid = d["cash"], d["fees_paid"]
+        for s, (q, avg, rpnl) in d["positions"].items():
+            p.positions[s] = Position(q, avg, rpnl)
+        p.marks = dict(d["marks"])
+        p.fills = [Fill(**{**f, "side": Side(f["side"])}) for f in d["fills"]]
+        p._buy_notional, p._sell_notional = d["buy_notional"], d["sell_notional"]
+        p.assert_reconciled()
+        return p
 
     def snapshot(self) -> dict[str, Any]:
         return {

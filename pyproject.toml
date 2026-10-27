@@ -24,6 +24,11 @@ rl = [
     "torch==2.14.1",
     "gymnasium==1.4.0",
 ]
+# Phase 5 read-only dashboard: streamlit run src/atlas/dashboard/app.py
+dashboard = [
+    "streamlit==1.66.1",
+    "plotly==7.1.0",
+]
 dev = [
     "pytest==9.1.1",
     "hypothesis==6.170.12",

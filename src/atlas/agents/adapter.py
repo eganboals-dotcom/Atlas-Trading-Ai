@@ -101,3 +101,7 @@ class AgentStrategy:
     def on_order_update(self, order: SimOrder) -> None:
         if order.status in _TERMINAL:
             self._pending.discard(order.intent.symbol)
+
+    def release(self, symbol: str) -> None:
+        """Clear the working-order flag when a proposal never became an order (e.g. risk rejected it)."""
+        self._pending.discard(symbol)
