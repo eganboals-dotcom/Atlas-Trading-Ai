@@ -1,0 +1,32 @@
+# Nested walk-forward evaluation on 30 synthetic sessions (no files or API keys needed).
+# For the same procedure on imported Parquet data, see configs/walkforward_parquet.yaml.
+experiment_name: wf_synthetic_v1
+evolution_config: configs/evolution.yaml   # population, fitness, offspring, limits (its windows are ignored)
+
+data_source:
+  kind: synthetic
+  data_config: configs/data.yaml
+  start_date: 2026-06-01
+  n_sessions: 30
+  duration_s: 600
+  symbols: [SPY, QQQ]
+
+splits:
+  holdout_sessions: 6       # the last 6 sessions: never read by `walkforward`
+  train_sessions: 4         # evolution selects on these only
+  embargo_sessions: 1       # gap between training and validation
+  validation_sessions: 2    # out-of-sample scoring of each fold's champions
+  step_sessions: 3          # validation windows rotate forward fold by fold
+  scheme: rolling           # rolling | expanding
+
+generations_per_fold: 4
+candidates_per_fold: 3
+
+cost_scenarios:             # base and pessimistic are the emphasized evidence
+  optimistic:  {slippage_bps: 0.0, widen_bps: 0.0, latency_multiplier: 0.5}
+  base:        {}
+  pessimistic: {slippage_bps: 2.0, widen_bps: 1.0, fee_multiplier: 1.5, latency_multiplier: 2.0, max_participation: 0.25}
+
+bootstrap: {samples: 2000, seed: 7, confidence: 0.9}
+reports_dir: artifacts/reports/walkforward
+holdout_ledger: artifacts/holdout_ledger.jsonl

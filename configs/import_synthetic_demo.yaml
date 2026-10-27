@@ -1,0 +1,30 @@
+# Import raw CSVs (here: produced by `export-synthetic`) into normalized Parquet sessions.
+# For a real vendor, copy this file, point raw_dir/quotes_file/trades_file at the vendor export,
+# map the vendor's column names under `columns`, and record the license terms and timestamp provenance.
+dataset: synthetic_demo
+raw_dir: data/raw/synthetic_demo
+quotes_file: quotes.csv
+trades_file: trades.csv
+output_dir: data/processed
+source: synthetic-l1
+feed: synthetic-l1
+timezone: America/New_York
+timestamp_unit: ns          # ns | us | ms | s | iso
+timestamp_kind: synthetic   # exchange | vendor | local | synthetic
+timestamp_notes: Synthetic source clock; receive_ts simulates a 2 ms feed with jitter.
+license_notes: Synthetic data generated locally; no license restrictions.
+fidelity: Level 1 quotes + trades
+columns:                    # normalized name: raw column name
+  symbol: symbol
+  event_ts: event_ts
+  receive_ts: receive_ts
+  seq: seq
+  bid: bid
+  ask: ask
+  bid_size: bid_size
+  ask_size: ask_size
+  price: price
+  size: size
+universe_file: null         # optional CSV (date, symbol) for point-in-time membership
+corporate_actions_file: null  # optional CSV (symbol, ex_date, type, ratio, amount)
+allowed_data_age_ms: 2000

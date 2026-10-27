@@ -29,6 +29,7 @@ from atlas import __version__
 from atlas.agents.base import POPULATION_VERSION, AgentRecord
 from atlas.agents.baselines import baseline_records
 from atlas.config import DataConfig, EvolutionConfig, SimulatorConfig
+from atlas.data.providers import SessionRef
 from atlas.evolution.archive import Archives
 from atlas.evolution.evaluation import AgentEvaluation, Evaluator
 from atlas.evolution.fitness import FitnessResult, fitness_fingerprint, score
@@ -93,26 +94,30 @@ class EvolutionState:
         )
 
 
-def config_fingerprint(evo: EvolutionConfig, sim: SimulatorConfig, data: DataConfig) -> str:
-    """Everything that affects results. Run length and worker count are excluded."""
+def config_fingerprint(evo: EvolutionConfig, sim: SimulatorConfig, data: DataConfig,
+                       sessions: list[SessionRef]) -> str:
+    """Everything that affects results. Run length, worker count, and output paths are excluded."""
     payload = {
         "evolution": evo.model_dump(mode="json", exclude={"generations", "checkpoint_dir", "reports_dir"}),
         "simulator": sim.model_dump(mode="json", exclude={"reports_dir", "demo_strategy"}),
         "data": data.model_dump(mode="json"),
+        "sessions": [r.model_dump(mode="json", exclude={"path"}) for r in sessions],
     }
     payload["evolution"]["evaluation"].pop("workers", None)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
 class EvolutionRunner:
-    def __init__(self, evo: EvolutionConfig, sim: SimulatorConfig, data: DataConfig) -> None:
+    def __init__(self, evo: EvolutionConfig, sim: SimulatorConfig, data: DataConfig,
+                 sessions: list[SessionRef] | None = None) -> None:
         self.evo = evo
         self.sim = sim
-        self.evaluator = Evaluator(evo, sim, data)
-        self.fingerprint = config_fingerprint(evo, sim, data)
+        self.evaluator = Evaluator(evo, sim, data, sessions)
+        self.sessions = self.evaluator.sessions
+        self.fingerprint = config_fingerprint(evo, sim, data, self.sessions)
         self.ckpt_dir = evo.checkpoint_dir / evo.experiment_name
         self.report_dir = evo.reports_dir / evo.experiment_name
-        self.n_windows = len(evo.evaluation.windows)
+        self.n_windows = len(self.sessions)
 
     # ----------------------------------------------------------------- state
 
@@ -150,7 +155,9 @@ class EvolutionRunner:
         self.ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = self.ckpt_dir / f"gen_{state.generation:03d}.json"
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state.to_dict(self.fingerprint), sort_keys=True), encoding="utf-8")
+        payload = state.to_dict(self.fingerprint)
+        payload["train_sessions"] = [r.session_date.isoformat() for r in self.sessions]
+        tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
         os.replace(tmp, path)  # atomic: a crash never leaves a half-written checkpoint
         return path
 

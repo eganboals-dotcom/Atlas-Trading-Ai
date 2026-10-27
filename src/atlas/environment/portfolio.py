@@ -155,6 +155,7 @@ class Portfolio:
             "unrealized_pnl": self.unrealized_pnl,
             "fees_paid": self.fees_paid,
             "net_pnl": self.equity - self.initial_cash,
+            "marks": dict(sorted(self.marks.items())),
             "positions": {
                 s: {"quantity": p.quantity, "avg_cost": p.avg_cost, "realized_pnl": p.realized_pnl}
                 for s, p in sorted(self.positions.items())

@@ -22,6 +22,7 @@ import hashlib
 import heapq
 import json
 import math
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, Sequence
 
@@ -54,6 +55,9 @@ class RunResult:
     equity_curve: list[tuple[int, float]]
     final: dict[str, Any]
     stats: dict[str, int] = field(default_factory=dict)
+    exposure_curve: list[tuple[int, float]] = field(default_factory=list)  # market value at curve samples
+    # Wall-clock nanoseconds spent in each strategy decision. Measurement only: not part of the digest.
+    decision_wall_ns: list[int] = field(default_factory=list)
 
     @property
     def digest(self) -> str:
@@ -104,6 +108,8 @@ class ReplayEngine:
         orders: list[SimOrder] = []
         audit: list[dict[str, Any]] = []
         equity_curve: list[tuple[int, float]] = []
+        exposure_curve: list[tuple[int, float]] = []
+        decision_wall_ns: list[int] = []
         stats = {"market_events": 0, "late_quotes": 0, "decisions": 0}
 
         timeline: list[tuple[int, int, int, Any]] = []
@@ -134,6 +140,7 @@ class ReplayEngine:
 
             if next_curve_ts is None or now >= next_curve_ts:
                 equity_curve.append((now, portfolio.equity))
+                exposure_curve.append((now, portfolio.gross_exposure))
                 next_curve_ts = now + NS_PER_S
 
             state = PortfolioState.of(
@@ -141,7 +148,9 @@ class ReplayEngine:
                 portfolio.equity,
                 {s: p.quantity for s, p in portfolio.positions.items() if p.quantity},
             )
+            t0 = time.perf_counter_ns()
             intents = strategy.on_market(market, state)
+            decision_wall_ns.append(time.perf_counter_ns() - t0)
             stats["decisions"] += 1
             for intent in intents:
                 order = self._submit(intent, now, market, latency, len(orders), audit)
@@ -153,10 +162,12 @@ class ReplayEngine:
 
         if equity_curve:
             equity_curve.append((market.now_ns, portfolio.equity))
+            exposure_curve.append((market.now_ns, portfolio.gross_exposure))
         portfolio.assert_reconciled()
         final = portfolio.snapshot()
         log.info("replay complete", extra={"fills": len(portfolio.fills), "orders": len(orders), **stats})
-        return RunResult(orders, list(portfolio.fills), audit, equity_curve, final, stats)
+        return RunResult(orders, list(portfolio.fills), audit, equity_curve, final, stats,
+                         exposure_curve, decision_wall_ns)
 
     # ------------------------------------------------------------------ helpers
 

@@ -1,0 +1,25 @@
+# Same walk-forward procedure, reading an imported Parquet dataset. To create the demo dataset:
+#   python -m atlas.cli export-synthetic --config configs/data.yaml --start 2026-06-01 --sessions 30 \
+#       --duration-s 600 --symbols SPY QQQ --out data/raw/synthetic_demo
+#   python -m atlas.cli import-data --config configs/import_synthetic_demo.yaml
+experiment_name: wf_parquet_demo
+evolution_config: configs/evolution.yaml
+
+data_source:
+  kind: parquet
+  dataset_dir: data/processed/synthetic_demo
+  allowed_data_age_ms: 2000
+
+splits:
+  holdout_sessions: 6
+  train_sessions: 4
+  embargo_sessions: 1
+  validation_sessions: 2
+  step_sessions: 3
+  scheme: rolling
+
+generations_per_fold: 4
+candidates_per_fold: 3
+bootstrap: {samples: 2000, seed: 7, confidence: 0.9}
+reports_dir: artifacts/reports/walkforward
+holdout_ledger: artifacts/holdout_ledger.jsonl

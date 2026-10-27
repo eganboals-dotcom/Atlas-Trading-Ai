@@ -12,6 +12,7 @@ license = { text = "Proprietary" }
 # Exact pins; the full transitive lock lives in requirements-lock.txt.
 dependencies = [
     "numpy==2.5.4",
+    "polars==2.1.0",
     "pydantic==2.14.1",
     "PyYAML==6.0.3",
     "tzdata==2026.5",

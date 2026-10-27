@@ -13,13 +13,13 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 2 — agents and evolution
+## Status: Phase 3 — historical data and walk-forward evaluation
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Events, synthetic data, validation, deterministic replay, costs/latency, ledger | Done |
-| 2 | Agent interface, 50 non-RL agents, baselines, evolution, lineage | **Done (awaiting review)** |
-| 3 | Historical data, walk-forward evaluation, metrics | Not started |
+| 2 | Agent interface, 50 non-RL agents, baselines, evolution, lineage | Done |
+| 3 | Historical data, walk-forward evaluation, metrics | **Done (awaiting review)** |
 | 4 | PPO policy family | Not started |
 | 5 | Live-data paper trading, risk manager, dashboard | Not started |
 | 6–8 | Readiness review, disabled broker adapter, live activation | Not started; each needs separate approval |
@@ -35,7 +35,8 @@ pip install -r requirements-lock.txt
 pip install -e . --no-deps
 ```
 
-No API keys or credentials are needed. All Phase 1 data is generated locally.
+No API keys or credentials are needed. Synthetic data is generated locally, and
+historical data is imported from files you supply (see "Historical data" below).
 
 ## Run
 
@@ -93,6 +94,95 @@ Outputs:
 | `artifacts/reports/evolution/<experiment>/lineage.jsonl` | every agent ever created, with its parents, origin and exact parameter changes |
 | `artifacts/reports/evolution/<experiment>/summary.json` | history, top champions, number of evaluations run |
 
+### Historical data
+
+Real market data is not included. The pipeline below runs end to end on synthetic files
+exported in a vendor-style format. For a real vendor, copy
+`configs/import_synthetic_demo.yaml`, point it at the vendor's CSV export, map the
+column names, and record the license terms and where the timestamps come from.
+
+```bash
+# 1. Write 30 synthetic sessions as raw CSVs (raw data is never overwritten)
+python -m atlas.cli export-synthetic --config configs/data.yaml --start 2026-06-01 --sessions 30 --duration-s 600 --symbols SPY QQQ --out data/raw/synthetic_demo
+
+# 2. Import them into normalized Parquet sessions plus manifest.json (processed data is immutable)
+python -m atlas.cli import-data --config configs/import_synthetic_demo.yaml
+
+# 3. Check every session file against its manifest hash, then validate its events
+python -m atlas.cli validate-data --dataset data/processed/synthetic_demo
+```
+
+**The manifest** records:
+* source, feed, license, and where timestamps come from (exchange, vendor, local or
+  synthetic)
+* the SHA-256 hash of every raw and processed file
+* per-session row counts, symbols and validation summary
+* the point-in-time universe, taken from an optional `date,symbol` file; symbols the
+  universe lists but the data lacks are recorded
+* corporate actions, from an optional file
+* the chronology assumption used to merge separate quote and trade files
+
+A processed file whose hash no longer matches its manifest is refused.
+
+**Prices** are raw and unadjusted. Every session is simulated on its own, starting flat
+in cash, so no position spans a split or dividend and no adjustment is needed. Double
+adjustment cannot happen. Features that span several days would need adjusted prices
+first.
+
+### Walk-forward evaluation
+
+```bash
+# Nested walk-forward on 30 in-memory synthetic sessions
+python -m atlas.cli walkforward --config configs/walkforward.yaml
+
+# The same procedure on the imported Parquet dataset
+python -m atlas.cli walkforward --config configs/walkforward_parquet.yaml
+
+# Rebuild and print the Markdown report of a run
+python -m atlas.cli report --run-id <run_id>
+
+# Stress-test an evolution checkpoint's champions on later sessions under every cost scenario
+python -m atlas.cli evaluate --config configs/walkforward.yaml --checkpoint <path/to/gen_NNN.json>
+
+# Only once the design is frozen: evaluate the final candidate on the outer holdout
+python -m atlas.cli evaluate --config configs/walkforward.yaml --run-id <run_id> --holdout
+```
+
+**How it works**
+([splits.py](src/atlas/evaluation/splits.py),
+[walkforward.py](src/atlas/evaluation/walkforward.py)):
+* **Ordering.** Sessions are kept in date order and never shuffled. The last
+  `holdout_sessions` sessions form the outer holdout.
+* **Folds.** The remaining sessions are cut into rolling or expanding folds:
+  *train → embargo gap → validation*. Validation periods move forward fold by fold.
+* **Each fold:**
+  1. A fresh population evolves on the training sessions only.
+  2. The top champions are scored again on those same sessions (in-sample).
+  3. The champions and every baseline are scored on the validation sessions under the
+     optimistic, base and pessimistic cost scenarios (out-of-sample).
+* **Report contents** (`artifacts/reports/walkforward/<run_id>/report.{json,md}` and
+  `design.json`):
+  * champion out-of-sample returns with bootstrap confidence intervals, next to the
+    baselines
+  * the in-sample vs out-of-sample gap, as an estimate of selection bias
+  * the number of selection trials
+  * results by session, symbol and volatility regime
+  * Sharpe, Sortino, profit factor, win rate, fill rate, exposure, and decision latency
+    at p50/p95/p99
+  * a data-quality table and the limitations
+* **Emphasis.** Base and pessimistic costs are the main evidence. Optimistic results are
+  shown only for contrast.
+
+**Holdout protection** ([holdout.py](src/atlas/evaluation/holdout.py)):
+* `walkforward` cannot load holdout sessions; trying raises an error, and a test checks
+  that they are never read.
+* `evaluate --holdout` works only when the current configs and data reproduce the
+  frozen design's fingerprint.
+* Every holdout access is written to `artifacts/holdout_ledger.jsonl`.
+* Evaluating a *different* design on the same holdout is refused unless you pass
+  `--allow-holdout-reuse`. Any reuse is recorded, and from then on the report warns that
+  the holdout is no longer untouched.
+
 ## Test
 
 ```bash
@@ -112,6 +202,8 @@ The suites cover:
 | `test_agents.py` | genome operators, 10 agents per family, baselines kept separate, features (returns, trade signing, flow windows, staleness), illegal-target and limit handling, every family reconciles, no shared state |
 | `test_fitness_selection.py` | metric definitions, the documented score, every gate, no breach offset by return, diverse parents, never padding with ineligible agents, offspring mix and lineage, archives |
 | `test_evolution.py` | exactly 50 agents per generation (5 × 10), full lineage, an interrupted-and-resumed run identical to an uninterrupted one, refusal to overwrite or resume on changed config, hold and explore policies, parallel results identical to serial |
+| `test_ingest.py` | lossless synthetic → CSV → Parquet round trip, immutable raw and processed data, refusal of tampered files, vendor column mapping, ISO timestamps, universe and corporate-action files |
+| `test_walkforward.py` | date-ordered splits with embargo and rotating validation, holdout guard and ledger (reuse refused unless forced), cost scenarios, round-trip metrics, best-of-many overfitting the selection data, a walk-forward run that never reads holdout files, then a single frozen-design holdout evaluation |
 
 ## How agents and evolution work
 
@@ -229,6 +321,29 @@ The shipped config was run for 10 generations on synthetic random-walk data.
   scores overfit them by construction. Phase 3 adds walk-forward folds by date and an
   untouched holdout period to measure that.
 
+## What the first walk-forward run shows
+
+This is `configs/walkforward.yaml`: 30 synthetic sessions, of which 6 are held out, split
+into 6 folds with 4 generations each. It took about 40 s on 16 cores. Returns are the
+mean per validation session for each fold's top champion, with a 90% bootstrap
+confidence interval:
+
+| Cost scenario | Champion, out-of-sample | Cash | Random control |
+|---|---|---|---|
+| optimistic | +0.10 bps [−0.24, +0.52] | 0 | −6.2 |
+| **base** | **−0.39 bps [−0.73, −0.02]** | 0 | −9.7 |
+| **pessimistic** | **−2.92 bps [−3.78, −2.17]** | 0 | −26.3 |
+
+* **No champion beats cash out of sample under base or pessimistic costs.** That is the
+  correct answer on random-walk data.
+* **Selection bias.** Champions average −0.13 bps in-sample and −0.39 bps out-of-sample.
+  The +0.26 bps gap is the selection bias the walk-forward exists to expose.
+* **Selection trials.** There were 4,800 agent-session evaluations, and every one is
+  counted in the report.
+* **Data path check.** The same run on the imported Parquet dataset gives exactly the
+  same numbers, which shows the import path loses nothing.
+* **Holdout.** The 6 holdout sessions have not been evaluated.
+
 ## Known limitations
 
 * **Synthetic data only.** It tests plumbing and carries no information about real markets.
@@ -241,31 +356,38 @@ The shipped config was run for 10 generations on synthetic random-walk data.
   basis points.
 * **Fees.** The fee schedule in `configs/simulator.yaml` is an illustrative placeholder.
 * **Prices.** Prices and cash are floats. The ledger reconciles to within 1e-6 × initial cash.
-* **Fixed evaluation windows.** Phase 2 evaluates on fixed synthetic windows. Window
-  rotation, nested walk-forward and an outer holdout come in Phase 3.
-* **Single cost scenario.** Agents are evaluated under one cost scenario. Pessimistic,
-  base and optimistic scenarios come in Phase 3.
+* **No real data yet.** No vendor data has been imported. The importer handles generic
+  CSVs, but each vendor's format, entitlements, timestamp quality and redistribution
+  terms must be checked before use.
+* **No holidays.** Synthetic sessions run on consecutive weekdays, so market holidays
+  such as 2026-06-19 and 2026-07-03 are included.
+* **Selection uses base costs only.** Evolution selects under the base cost scenario.
+  All three scenarios are applied only when scoring out-of-sample.
+* **Few validation sessions.** Out-of-sample evidence is 12 validation sessions, which
+  are not independent of each other, so the confidence intervals are approximate.
+* **Noisy Sharpe and Sortino.** They are annualized from 1-minute returns within
+  10-minute sessions.
+* **Machine-dependent latency.** Decision latency is wall-clock time on this machine. It
+  excludes any network or broker latency.
 * **Limits, not a risk manager.** Agent limits clip positions and order sizes. Daily loss
   limits, order-rate limits and the kill switch are part of the Phase 5 risk manager.
-* **Coarse metrics.** Drawdown uses equity sampled about once per second plus every
-  fill. Sharpe, Sortino and profit factor arrive in Phase 3.
-* **Not built yet.** There is no PPO (Phase 4) and no historical-data adapter
-  (Phase 3).
+* **Not built yet.** There is no PPO (Phase 4).
 
 ## Repository layout
 
 ```
-configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml
+configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml,
+                   walkforward.yaml, walkforward_parquet.yaml, import_synthetic_demo.yaml
 src/atlas/
   cli.py           command-line entry point
   config.py        typed, strict configuration models
   simulation.py    run orchestration and run records
   timeutils.py     ns timestamps, session bounds
   logging_utils.py JSON structured logging
-  data/            events, synthetic generator, validation
+  data/            events, synthetic generator, validation, providers, Parquet storage, CSV import
   environment/     replay engine, market view, orders, costs, latency, portfolio, demo strategy
   agents/          agent contract, features, genome operators, 5 families, baselines, adapter
-  evaluation/      run metrics
+  evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)
