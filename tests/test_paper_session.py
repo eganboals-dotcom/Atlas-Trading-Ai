@@ -83,3 +83,70 @@ def test_resume_needs_saved_state(tmp_path: Path) -> None:
 def test_unknown_session_date_is_refused(tmp_path: Path) -> None:
     with pytest.raises(HealthCheckError, match="not available"):
         session(tmp_path, feed={"session_date": "2026-06-02"}).health_checks()
+
+
+class _StopAfter:
+    """Wraps a feed and requests a graceful stop (paper-stop) after n events."""
+
+    def __init__(self, inner, n: int, session_dir: Path) -> None:
+        self.inner, self.n, self.session_dir = inner, n, session_dir
+        self.symbols = inner.symbols
+
+    def connect(self):
+        self.inner.connect()
+
+    def reconnect(self):
+        self.inner.reconnect()
+
+    @property
+    def position(self):
+        return self.inner.position
+
+    def seek(self, p):
+        self.inner.seek(p)
+
+    def next_event(self):
+        if self.inner.position == self.n:
+            from atlas.paper.session import STOP_FILE
+
+            (self.session_dir / STOP_FILE).write_text("stop", encoding="utf-8")
+        return self.inner.next_event()
+
+
+def test_graceful_stop_writes_report_and_resumes(tmp_path: Path) -> None:
+    probe = session(tmp_path / "probe")
+    probe.health_checks()
+    target = tmp_path / "s" / "paper" / "test_session"
+    s = session(tmp_path / "s", feed_override=_StopAfter(probe.feed, 1500, target))
+    report = s.run()
+    assert report["stopped_by"] == "operator (paper-stop)"
+    assert report["kill_switch"] is None
+    assert report["counters"]["events"] < 1700
+    assert not (s.dir / "STOP").exists()
+    assert json.loads((s.dir / "live.json").read_text(encoding="utf-8"))["status"].startswith("stopped by")
+    resumed = session(tmp_path / "s", resume=True).run()
+    assert resumed["restarts"] == 1 and resumed["stopped_by"] is None
+    assert resumed["counters"]["events"] > report["counters"]["events"]
+
+
+def test_paper_status_and_check_commands(tmp_path: Path, capsys) -> None:
+    import yaml
+    from paper_helpers import RISK, REPO, paper_dict
+
+    from atlas.cli import EXIT_OK, main
+
+    (tmp_path / "risk.yaml").write_text(yaml.safe_dump(RISK), encoding="utf-8")
+    cfg = paper_dict(tmp_path)
+    cfg.update(simulator_config=str(REPO / "configs/simulator.yaml"), risk_config=str(tmp_path / "risk.yaml"))
+    path = tmp_path / "paper.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    assert main(["paper-check", "--config", str(path)]) == EXIT_OK
+    assert "READY" in capsys.readouterr().out
+    assert not (tmp_path / "paper").exists()  # the preflight never creates a session
+
+    s = session(tmp_path)
+    s.run()
+    assert main(["paper-status", "--config", str(path)]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "champion" in out and "benchmark" in out and "simulated orders only" in out

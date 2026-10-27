@@ -2,7 +2,8 @@
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
 ``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
-``train-ppo`` (Phase 4); ``paper``, ``paper-kill`` (Phase 5); ``readiness`` (Phase 6).
+``train-ppo`` (Phase 4); ``paper``, ``paper-check``, ``paper-stop``, ``paper-kill``, ``dashboard``
+(Phase 5); ``readiness`` (Phase 6).
 """
 
 from __future__ import annotations
@@ -231,15 +232,12 @@ def _cmd_train_ppo(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _cmd_paper(args: argparse.Namespace) -> int:
+def _load_paper(config: str):
     import yaml
 
-    from atlas.brokers.base import LiveTradingDisabledError
     from atlas.paper.config import PaperConfig, RiskConfig
-    from atlas.paper.feed import SimulatedCrash
-    from atlas.paper.session import HealthCheckError, PaperSession
 
-    path = Path(args.config)
+    path = Path(config)
     if not path.is_file():
         raise ConfigError(f"config file not found: {path}")
     try:
@@ -248,8 +246,33 @@ def _cmd_paper(args: argparse.Namespace) -> int:
         raise ConfigError(f"{path}: refusing to start paper mode, invalid or unsafe config:\n{exc}") from exc
     sim = load_config(_resolve(cfg.simulator_config, path), SimulatorConfig)
     risk = load_config(_resolve(cfg.risk_config, path), RiskConfig)
+    return path, cfg, sim, risk
+
+
+def _session_dir(args: argparse.Namespace) -> Path:
+    """--session-dir, or today's session directory derived from --config."""
+    if getattr(args, "session_dir", None):
+        return Path(args.session_dir)
+    if not getattr(args, "config", None):
+        raise ConfigError("give --session-dir or --config")
+    from atlas.paper.session import session_date_for
+
+    _, cfg, _, _ = _load_paper(args.config)
+    day = session_date_for(cfg, None)
+    return cfg.output_dir / cfg.session_name.replace("{date}", day.isoformat())
+
+
+def _cmd_paper(args: argparse.Namespace) -> int:
+    from atlas.brokers.base import LiveTradingDisabledError
+    from atlas.paper.feed import SimulatedCrash
+    from atlas.paper.session import HealthCheckError, PaperSession
+
+    path, cfg, sim, risk = _load_paper(args.config)
     session = PaperSession(cfg, sim, risk, base_dir=path.parent, resume=args.resume,
                            reset_kill_switch=args.reset_kill_switch)
+    if args.auto_resume and (session.dir / "state.json").exists():
+        session.resume = True  # same day, same config: continue the session instead of refusing
+
     def on_ready(s: PaperSession) -> None:
         print(f"paper session {s.dir.name}: startup checks passed; feed={cfg.feed.kind}; "
               f"{len(s.accounts)} accounts; simulated orders only", file=sys.stderr)
@@ -259,24 +282,22 @@ def _cmd_paper(args: argparse.Namespace) -> int:
             url = launch(cfg.output_dir, s.dir.name, cfg.dashboard.port)
             print(f"live page: {url} (read-only; keeps running after the session ends)", file=sys.stderr)
         if cfg.feed.kind == "alpaca":
-            print("waiting for the market to open if needed; stop any time with Ctrl+C or paper-kill",
-                  file=sys.stderr)
+            print("waiting for the market to open if needed. Stop cleanly with Ctrl+C or "
+                  f"`python -m atlas.cli paper-stop --config {path.as_posix()}`", file=sys.stderr)
 
     try:
         report = session.run(on_ready=on_ready)
-    except KeyboardInterrupt:
-        print("interrupted: state was flushed periodically; rerun with --resume to continue", file=sys.stderr)
-        return EXIT_CRASH
     except (HealthCheckError, LiveTradingDisabledError) as exc:
         print(f"paper session refused to start: {exc}", file=sys.stderr)
         return EXIT_CONFIG
     except SimulatedCrash as exc:
-        print(f"paper session crashed ({exc}); state was flushed periodically — rerun with --resume",
+        print(f"paper session crashed ({exc}); state was flushed periodically - rerun with --resume",
               file=sys.stderr)
         return EXIT_CRASH
     print(json.dumps({
         "session_dir": str(session.dir),
         "report": str(session.dir / "daily_report.md"),
+        "stopped_by": report.get("stopped_by"),
         "kill_switch": report["kill_switch"],
         "accounts": {a["account"]: {"net_return_bps": a["net_return"] * 1e4, "fills": a["fills"],
                                     "halted": a["halted"]} for a in report["accounts"]},
@@ -298,9 +319,104 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
 def _cmd_paper_kill(args: argparse.Namespace) -> int:
     from atlas.paper.risk import request_kill
 
-    path = request_kill(Path(args.session_dir), args.reason)
-    print(f"kill switch file written: {path}")
+    path = request_kill(_session_dir(args), args.reason)
+    print(f"kill switch file written: {path} (no new orders; reset needed before restarting)")
     return EXIT_OK
+
+
+def _cmd_paper_status(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime
+
+    from atlas.dashboard import data
+
+    d = _session_dir(args)
+    live = data.load_live(d)
+    if not live:
+        print(f"no live snapshot in {d} (session not started yet?)")
+        return EXIT_DATA_INVALID
+    age = (datetime.now(UTC) - datetime.fromisoformat(live["updated_wall"])).total_seconds()
+    print(f"{live['session']} | status: {live['status']} | updated {age:.0f}s ago | feed {live['feed']} | "
+          f"safe: {', '.join(live['safe']) or 'no'} | kill: {live['kill'] or 'no'} | simulated orders only")
+    print(f"{'#':>2}  {'bot':<10} {'model':<38} {'P&L $':>10} {'return':>12} {'fills':>6}  status / positions")
+    for r in data.leaderboard(live):
+        rank = str(r["rank"]) if r["rank"] else "-"
+        model = f"{r['agent_id']} ({r['family']})"[:38]
+        pos = ", ".join(f"{s} {q}" for s, q in r["positions"].items()) or "flat"
+        status = f"HALTED: {r['halted']}" if r["halted"] else pos
+        print(f"{rank:>2}  {r['account']:<10} {model:<38} {r['net_pnl']:>10.2f} "
+              f"{r['net_return'] * 1e4:>+9.2f}bps {r['fills']:>6}  {status}")
+    return EXIT_OK
+
+
+def _cmd_paper_stop(args: argparse.Namespace) -> int:
+    from atlas.paper.session import STOP_FILE
+
+    d = _session_dir(args)
+    if not d.is_dir():
+        raise ConfigError(f"no session directory {d}")
+    (d / STOP_FILE).write_text("stop requested", encoding="utf-8")
+    print(f"stop requested for {d.name}: the session finishes cleanly within a few seconds "
+          "(cancel working orders, save state, write the daily report). Continue later with --resume.")
+    return EXIT_OK
+
+
+def _cmd_paper_check(args: argparse.Namespace) -> int:
+    """Preflight: run every startup check against the real feed, without trading or writing a session."""
+    import shutil
+    import tempfile
+    from datetime import datetime
+
+    from atlas.paper.session import HealthCheckError, PaperSession, today_market_date
+    from atlas.timeutils import MARKET_TZ
+
+    path, cfg, sim, risk = _load_paper(args.config)
+    checks: list[tuple[str, bool, str]] = [("config", True, f"{path} valid; mode=paper, live orders disabled")]
+    tmp = Path(tempfile.mkdtemp(prefix="atlas-check-"))
+    try:
+        probe = cfg.model_copy(update={"output_dir": tmp, "alerts": cfg.alerts.model_copy(update={"console": False})})
+        session = PaperSession(probe, sim, risk, base_dir=path.parent)
+        try:
+            session.health_checks()
+            feed = session.feed
+            detail = f"{cfg.feed.kind} feed connected; symbols {', '.join(session.symbols)}"
+            quotes = getattr(feed, "connect_quotes", None)
+            if quotes:
+                detail += "; latest " + "; ".join(f"{s} {q['bid']}/{q['ask']}" for s, q in quotes.items())
+            checks.append(("market data + keys", True, detail))
+            offset = getattr(feed, "clock_offset_ms", None)
+            if offset is not None:
+                checks.append(("clock", True, f"latest exchange timestamp is {offset:+.0f} ms vs this PC "
+                               f"(limit +{risk.max_clock_skew_ms:.0f} ms)"))
+            checks.append(("bots", True, ", ".join(f"{a.account_id}={a.model['agent_id']} ({a.model['family']})"
+                                                   for a in session.accounts)))
+            session.audit.close()
+        except HealthCheckError as exc:
+            checks.append(("startup checks", False, str(exc)))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        import plotly  # noqa: F401
+        import streamlit  # noqa: F401
+
+        checks.append(("live page", True, f"dashboard available on http://localhost:{cfg.dashboard.port}"))
+    except ImportError as exc:
+        checks.append(("live page", False, f"install the dashboard extra: {exc}"))
+    if cfg.feed.kind == "alpaca" and cfg.feed.alpaca is not None:
+        now = datetime.now(MARKET_TZ)
+        a = cfg.feed.alpaca
+        day = today_market_date()
+        if now.time() < a.start_time:
+            when = f"market opens at {a.start_time:%H:%M} ET today ({day}); start the session any time before"
+        elif now.time() < a.end_time:
+            when = "market is open now; a session started now trades until " + f"{a.end_time:%H:%M} ET"
+        else:
+            when = "market is closed for today; start the session tomorrow before 09:30 ET"
+        checks.append(("schedule", True, when))
+    ok = all(c[1] for c in checks)
+    for name, passed, detail in checks:
+        print(f"[{'OK' if passed else 'FAIL'}] {name}: {detail}")
+    print("READY: paper session can start." if ok else "NOT READY: fix the FAIL lines above.")
+    return EXIT_OK if ok else EXIT_CONFIG
 
 
 def _cmd_readiness(args: argparse.Namespace) -> int:
@@ -402,17 +518,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true", help="continue a session after a crash or stop")
     p.add_argument("--reset-kill-switch", action="store_true", help="operator reset after reviewing a kill")
     p.add_argument("--open-dashboard", action="store_true", help="open the live page in the browser")
+    p.add_argument("--auto-resume", action="store_true", help="resume today's session if it already exists")
     p.set_defaults(func=_cmd_paper)
+
+    p = sub.add_parser("paper-status", help="Print the live leaderboard of a paper session.")
+    p.add_argument("--session-dir")
+    p.add_argument("--config", help="paper config; targets today's session")
+    p.set_defaults(func=_cmd_paper_status)
 
     p = sub.add_parser("dashboard", help="Open the read-only live page (leaderboard, P&L, trades).")
     p.add_argument("--paper-dir", default="artifacts/paper")
     p.add_argument("--port", type=int, default=8501)
     p.set_defaults(func=_cmd_dashboard)
 
-    p = sub.add_parser("paper-kill", help="Engage the kill switch of a paper session.")
-    p.add_argument("--session-dir", required=True)
+    p = sub.add_parser("paper-kill", help="Engage the kill switch of a paper session (halts trading).")
+    p.add_argument("--session-dir")
+    p.add_argument("--config", help="paper config; targets today's session")
     p.add_argument("--reason", default="operator kill")
     p.set_defaults(func=_cmd_paper_kill)
+
+    p = sub.add_parser("paper-stop", help="Stop a running paper session cleanly (resumable).")
+    p.add_argument("--session-dir")
+    p.add_argument("--config", help="paper config; targets today's session")
+    p.set_defaults(func=_cmd_paper_stop)
+
+    p = sub.add_parser("paper-check", help="Preflight: keys, clock, bots, live page; does not trade.")
+    p.add_argument("--config", required=True)
+    p.set_defaults(func=_cmd_paper_check)
 
     p = sub.add_parser("readiness", help="Readiness review: evidence, failure drills, gates (enables nothing).")
     p.add_argument("--config", required=True)

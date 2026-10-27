@@ -54,6 +54,7 @@ from atlas.timeutils import MARKET_TZ, NS_PER_MS, NS_PER_S
 
 log = get_logger(__name__)
 STATE_VERSION = 1
+STOP_FILE = "STOP"  # graceful, resumable stop requested by `paper-stop` (unlike KILL, which halts trading)
 
 
 class HealthCheckError(RuntimeError):
@@ -425,17 +426,12 @@ class PaperSession:
         if on_ready is not None:
             on_ready(self)
         validator = StreamValidator(self.risk_cfg.stale_data_ms, order_scope="symbol_type")
-        next_kill_check = next_live = 0.0
         live_every = self.cfg.dashboard.live_snapshot_ms / 1_000
         self._write_live(None, "waiting for market data")
         stale_ns = int(self.risk_cfg.stale_data_ms * NS_PER_MS)
         skew_ns = int(self.risk_cfg.max_clock_skew_ms * NS_PER_MS)
         market = MarketView(self.symbols, stale_ns)
         history: dict[str, deque[Quote]] = {s: deque(maxlen=512) for s in self.symbols}
-        last_arrival: int | None = None
-        clock_streak = 0
-        first_ts: int | None = None
-        processed = 0
 
         def quote_at(symbol: str, ts: int) -> Quote | None:
             for q in reversed(history[symbol]):
@@ -443,10 +439,34 @@ class PaperSession:
                     return q
             return None
 
+        self.stopped_by: str | None = None
+        try:
+            self._loop(validator, stale_ns, skew_ns, market, history, quote_at, live_every)
+        except KeyboardInterrupt:  # Ctrl+C: stop gracefully so the day can be resumed
+            self.stopped_by = "operator (Ctrl+C)"
+        return self._finish(market, quote_at)
+
+    def _stop_requested(self) -> bool:
+        stop = self.dir / STOP_FILE
+        if stop.exists():
+            stop.unlink()
+            self.stopped_by = "operator (paper-stop)"
+            return True
+        return False
+
+    def _loop(self, validator, stale_ns, skew_ns, market, history, quote_at, live_every) -> None:
+        last_arrival: int | None = None
+        clock_streak = 0
+        first_ts: int | None = None
+        processed = 0
+        next_kill_check = next_live = 0.0
         while True:
             wall = time.monotonic()
-            if (processed % 256 == 0 or wall >= next_kill_check) and (reason := self.kill.poll_file()):
-                self._engage_kill(reason, market.now_ns)
+            if processed % 256 == 0 or wall >= next_kill_check:
+                if reason := self.kill.poll_file():
+                    self._engage_kill(reason, market.now_ns)
+                if self._stop_requested():
+                    break
             try:
                 event = self.feed.next_event()
             except FeedDisconnected as exc:
@@ -550,7 +570,6 @@ class PaperSession:
                 next_live = wall + live_every
                 self._write_live(market.now_ns, "running")
 
-        return self._finish(market, quote_at)
 
     def _reconnect(self, ts: int, error: str) -> bool:
         self.audit.write({"type": "disconnect", "ts": ts, "error": error})
@@ -614,7 +633,7 @@ class PaperSession:
         for reason in list(self.safe):
             self._clear_safe(reason, now)
         self._flush(now)
-        self._write_live(now, "ended")
+        self._write_live(now, f"stopped by {self.stopped_by}" if getattr(self, "stopped_by", None) else "ended")
         from atlas.paper.report import write_daily_report
 
         report = write_daily_report(self)

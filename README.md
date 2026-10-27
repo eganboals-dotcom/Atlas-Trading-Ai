@@ -362,11 +362,19 @@ Atlas's internal paper broker.
    `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`; create it with
    `python -m atlas.cli evolve --config configs/evolution.yaml` if it is missing.
 
-**Each trading day** (start it any time before or during market hours):
+**Each trading day** (start it any time before or during market hours): double-click
+`scripts/start_live_paper.cmd`. It runs the preflight, then the session, in its own
+window, and re-running it the same day resumes the session. Or use the commands directly:
 
 ```bash
-python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard
+python -m atlas.cli paper-check --config configs/paper_live.yaml     # preflight; does not trade
+python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard --auto-resume
+python -m atlas.cli paper-status --config configs/paper_live.yaml    # leaderboard in the terminal
+python -m atlas.cli paper-stop --config configs/paper_live.yaml      # clean, resumable stop
 ```
+
+When running Atlas through Claude Code, see [CLAUDE.md](CLAUDE.md): sessions last about 6.5
+hours, so they run in their own window or in the background.
 
 **What happens when you run it:**
 * **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
@@ -383,7 +391,7 @@ python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard
 * a per-bot detail view
 
 **Stopping and restarting:**
-* Stop with Ctrl+C or `paper-kill`.
+* Stop cleanly with Ctrl+C or `paper-stop`; use `paper-kill` only as an emergency halt.
 * Continue the same day with `--resume`.
 * Reopen the page any time with `python -m atlas.cli dashboard`.
 

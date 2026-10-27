@@ -62,6 +62,7 @@ def write_daily_report(session: PaperSession) -> dict[str, Any]:
         "validation_issues": session.validation_counts,
         "safe_state_periods": session.safe_periods,
         "kill_switch": session.kill.reason,
+        "stopped_by": getattr(session, "stopped_by", None),
         "alerts": session.alerts.count,
         "restarts": getattr(session, "restarts", 0),
         "accounts": accounts,

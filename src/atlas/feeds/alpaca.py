@@ -147,6 +147,8 @@ class AlpacaPollingFeed(LiveFeed):
 
     def connect(self) -> None:
         data = self._fetch(QUOTES_PATH, self._params())  # validates credentials; raises on auth failure
+        self.connect_quotes = {s: {"bid": q.get("bp"), "ask": q.get("ap"), "t": q.get("t")}
+                               for s, q in (data.get("quotes") or {}).items()}
         stamps = [parse_rfc3339_ns(q["t"]) for q in data.get("quotes", {}).values() if q.get("t")]
         if stamps:
             self.clock_offset_ms = (max(stamps) - self._clock()) / NS_PER_MS
