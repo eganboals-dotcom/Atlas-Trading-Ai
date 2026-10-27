@@ -35,7 +35,7 @@ class MarketDataRecorder:
         self.processed_dir = root / "processed" / dataset
         self.source, self.license_notes, self.timestamp_kind = source, license_notes, timestamp_kind
         self.raw_path.parent.mkdir(parents=True, exist_ok=True)
-        new = not self.raw_path.exists()
+        new = not self.raw_path.exists() or self.raw_path.stat().st_size == 0  # an empty leftover still needs a header
         self._fh = self.raw_path.open("a", newline="", encoding="utf-8")
         self._csv = csv.writer(self._fh)
         if new:
@@ -102,6 +102,12 @@ def read_raw_csv(path: Path) -> list[MarketEvent]:
     """Parse a recorded raw CSV back into events (empty cells -> None)."""
     import polars as pl
 
-    df = pl.read_csv(path, schema_overrides={c: SCHEMA[c] for c in COLUMNS}, infer_schema_length=0)
+    with path.open(encoding="utf-8") as fh:
+        has_header = fh.readline().startswith(COLUMNS[0] + ",")
+    schema = {c: SCHEMA[c] for c in COLUMNS}
+    if has_header:
+        df = pl.read_csv(path, schema_overrides=schema, infer_schema_length=0)
+    else:  # recorded without a header row (an older recorder appending to an empty leftover file)
+        df = pl.read_csv(path, has_header=False, schema=schema)
     df = df.with_columns(pl.col("conditions").fill_null(""))
     return frame_to_events(df)

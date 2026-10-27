@@ -313,6 +313,30 @@ def test_recorder_saves_exactly_what_the_session_received(tmp_path: Path) -> Non
     assert "IEX" in manifest["fidelity"] and "never" not in manifest["license_notes"].lower()
 
 
+def test_recorder_writes_a_header_into_an_empty_leftover_file(tmp_path: Path) -> None:
+    # A file left empty by an earlier start used to get rows but no header, so finalize failed.
+    from atlas.paper.recorder import read_raw_csv
+
+    raw = tmp_path / "data" / "raw" / "rec_test" / "2026-06-01.csv"
+    raw.parent.mkdir(parents=True)
+    raw.touch()
+    report = recording_session(tmp_path).run()
+    assert raw.read_text(encoding="utf-8").startswith("event_type,")
+    assert report["recording"]["session"]["rows"] == len(read_raw_csv(raw)) > 100
+
+
+def test_read_raw_csv_accepts_a_headerless_recording(tmp_path: Path) -> None:
+    from atlas.paper.recorder import read_raw_csv
+
+    s = recording_session(tmp_path)
+    s.run()
+    raw = tmp_path / "data" / "raw" / "rec_test" / "2026-06-01.csv"
+    events = read_raw_csv(raw)
+    headless = tmp_path / "headless.csv"
+    headless.write_text(raw.read_text(encoding="utf-8").split("\n", 1)[1], encoding="utf-8")
+    assert read_raw_csv(headless) == events
+
+
 def test_recorder_failure_never_stops_trading(tmp_path: Path, monkeypatch) -> None:
     from atlas.paper.recorder import MarketDataRecorder
 
