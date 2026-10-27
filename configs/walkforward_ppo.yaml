@@ -1,0 +1,55 @@
+# Walk-forward with the PPO family enabled. Same data, splits, and costs as walkforward.yaml.
+# Each fold trains PPO on its training sessions only, then scores the frozen policy on the fold's
+# validation sessions next to the evolutionary champions and the fixed baselines.
+experiment_name: wf_synthetic_ppo_v1
+evolution_config: configs/evolution.yaml
+
+data_source:
+  kind: synthetic
+  data_config: configs/data.yaml
+  start_date: 2026-06-01
+  n_sessions: 30
+  duration_s: 600
+  symbols: [SPY, QQQ]
+
+splits:
+  holdout_sessions: 6
+  train_sessions: 4
+  embargo_sessions: 1
+  validation_sessions: 2
+  step_sessions: 3
+  scheme: rolling
+
+generations_per_fold: 4
+candidates_per_fold: 3
+
+cost_scenarios:
+  optimistic:  {slippage_bps: 0.0, widen_bps: 0.0, latency_multiplier: 0.5}
+  base:        {}
+  pessimistic: {slippage_bps: 2.0, widen_bps: 1.0, fee_multiplier: 1.5, latency_multiplier: 2.0, max_participation: 0.25}
+
+ppo:
+  enabled: true
+  seed: 0
+  total_steps: 49152          # ~41 training episodes of 10 minutes per fold
+  rollout_steps: 2048
+  epochs: 4
+  minibatch: 256
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  hidden: 64
+  size_frac: 0.2              # target levels: 0, 10%, 20% of equity per symbol
+  reward_scale: 10000         # rewards in bps of log equity change
+  terminal_exit_cost: true    # charge estimated exit cost at session end (anti reward-hacking)
+  kl_warning: 0.05
+
+final_candidate_source: evolution   # PPO is never promoted automatically; switching changes the design
+
+bootstrap: {samples: 2000, seed: 7, confidence: 0.9}
+reports_dir: artifacts/reports/walkforward
+holdout_ledger: artifacts/holdout_ledger.jsonl

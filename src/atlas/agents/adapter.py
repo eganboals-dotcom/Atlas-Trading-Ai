@@ -3,15 +3,19 @@
 The adapter owns the feature engine, throttles decisions, and converts
 ``target - current`` into bounded market orders. It enforces hard limits and records
 any illegal action (negative/non-integer/unknown-symbol targets) as a violation.
+
+The decision is split into ``poll`` -> ``snapshot`` -> ``intents_for`` so that an external
+driver (the Gymnasium environment) can supply targets itself; ``on_market`` composes the
+same steps for a normal agent, so both paths share identical order logic.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Mapping, Sequence
 
-from atlas.agents.base import Agent, AgentRuntime
-from atlas.agents.features import FeatureEngine
+from atlas.agents.base import Agent, AgentRuntime, TargetPositions
+from atlas.agents.features import FeatureEngine, SymbolFeatures
 from atlas.config import AgentLimits
 from atlas.environment.market_state import MarketView, PortfolioState
 from atlas.environment.orders import OrderIntent, OrderStatus, Side, SimOrder
@@ -41,16 +45,24 @@ class AgentStrategy:
         self.clipped = 0
         agent.initialize(AgentRuntime(tuple(symbols), limits), seed)
 
-    def on_market(self, market: MarketView, portfolio: PortfolioState) -> Sequence[OrderIntent]:
+    # -- decision steps ------------------------------------------------------
+
+    def poll(self, market: MarketView) -> bool:
+        """Update features with newly visible events; True when a decision is due."""
         self.features.update(market)
         now = market.now_ns
         if self._next_decision is not None and now < self._next_decision:
-            return []
+            return False
         self._next_decision = now + self.interval_ns
         self.decisions += 1
+        return True
 
-        snapshot = self.features.snapshot(now)
-        targets = self.agent.act(self.agent.observe(snapshot, portfolio, now))
+    def snapshot(self, now_ns: int) -> dict[str, SymbolFeatures]:
+        return self.features.snapshot(now_ns)
+
+    def intents_for(
+        self, targets: TargetPositions, snapshot: Mapping[str, SymbolFeatures], portfolio: PortfolioState
+    ) -> list[OrderIntent]:
         intents: list[OrderIntent] = []
         for symbol in sorted(targets):
             target = targets[symbol]
@@ -76,6 +88,15 @@ class AgentStrategy:
             intents.append(OrderIntent(symbol, Side.BUY if delta > 0 else Side.SELL, qty))
             self._pending.add(symbol)
         return intents
+
+    # -- Strategy protocol -----------------------------------------------------
+
+    def on_market(self, market: MarketView, portfolio: PortfolioState) -> Sequence[OrderIntent]:
+        if not self.poll(market):
+            return []
+        snapshot = self.snapshot(market.now_ns)
+        targets = self.agent.act(self.agent.observe(snapshot, portfolio, market.now_ns))
+        return self.intents_for(targets, snapshot, portfolio)
 
     def on_order_update(self, order: SimOrder) -> None:
         if order.status in _TERMINAL:

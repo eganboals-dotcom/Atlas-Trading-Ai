@@ -25,6 +25,8 @@ data/processed/*
 # Generated run outputs
 artifacts/checkpoints/*
 artifacts/reports/*
+artifacts/ppo/
+artifacts/holdout_ledger.jsonl
 !artifacts/checkpoints/.gitkeep
 !artifacts/reports/.gitkeep
 

@@ -76,6 +76,8 @@ def render(report: dict[str, Any], holdout: dict[str, Any] | None = None) -> str
             f"| {_bps(c['out_of_sample']['pessimistic']['mean_net_return'])} "
             f"| {c['out_of_sample']['base']['fills']} |"
         )
+    if report.get("ppo"):
+        lines += _render_ppo(report["ppo"], report["emphasized_scenarios"])
     stab = s["stability"]
     lines += ["", "## Stability", "", "By volatility regime (base, champion):", ""]
     for k, (mean, n) in stab["by_volatility_regime"].items():
@@ -106,6 +108,37 @@ def render(report: dict[str, Any], holdout: dict[str, Any] | None = None) -> str
         lines += _render_holdout(holdout)
     lines += ["## Limitations", ""] + [f"* {x}" for x in report["limitations"]] + [""]
     return "\n".join(lines)
+
+
+def _render_ppo(p: dict[str, Any], emphasized: list[str]) -> list[str]:
+    lines = ["", "## PPO vs evolution (out-of-sample, identical costs)", "",
+             f"**Promotion:** {p['promotion']}", "",
+             "| Scenario | PPO (bps, CI) |", "|---|---|"]
+    for sc, ci in p["oos"].items():
+        lines.append(f"| {sc}{' (emphasized)' if sc in emphasized else ''} | {_ci(ci)} |")
+    gap = p["selection_gap"]
+    wins = p["folds_beating_evolution_champion"]
+    lines += [
+        "",
+        f"* In-sample {_bps(gap['mean_in_sample_return'])} bps vs out-of-sample (base) "
+        f"{_bps(gap['mean_oos_base_return'])} bps.",
+        f"* PPO beat the fold's evolution champion in {wins['base']}/{p['folds_compared']} folds (base) and "
+        f"{wins['pessimistic']}/{p['folds_compared']} (pessimistic).",
+        "",
+        "| Fold | PPO base | Evolution base | PPO pessimistic | Evolution pessimistic | PPO fills | "
+        "Reward−P&L gap (bps) | Final action mix (flat/half/full) | Max KL | p50/p99 µs |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for c in p["comparison"]:
+        mix = "/".join(f"{x:.0%}" for x in (c["final_action_distribution"] or []))
+        lines.append(
+            f"| {c['fold']} | {_bps(c['ppo_base'])} | {_bps(c['evolution_base'])} | {_bps(c['ppo_pessimistic'])} "
+            f"| {_bps(c['evolution_pessimistic'])} | {c['ppo_fills_base']} | {_num(c['reward_vs_realized_gap_bps'])} "
+            f"| {mix} | {_num(c['max_approx_kl'], '.4f')} | {_num(c['p50_us'], '.0f')}/{_num(c['p99_us'], '.0f')} |"
+        )
+    if p["training_warnings"]:
+        lines += ["", "Training warnings:", ""] + [f"* {w}" for w in p["training_warnings"]]
+    return lines + [""]
 
 
 def _render_holdout(h: dict[str, Any]) -> list[str]:

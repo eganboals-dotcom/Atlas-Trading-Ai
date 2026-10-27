@@ -24,7 +24,7 @@ import json
 import math
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Protocol, Sequence
+from typing import Any, Callable, Generator, Protocol, Sequence
 
 from atlas.config import SimulatorConfig
 from atlas.data.events import MarketEvent, Quote, Trade, visible_ts
@@ -100,6 +100,30 @@ class ReplayEngine:
         self._stale_ns = int(config.stale_quote_ms * NS_PER_MS)
 
     def run(self, events: Sequence[MarketEvent], strategy: Strategy) -> RunResult:
+        """Replay ``events`` with a callback strategy."""
+        steps = self.iter_run(events, strategy.on_order_update)
+        wall: list[int] = []
+        try:
+            market, state = next(steps)
+            while True:
+                t0 = time.perf_counter_ns()
+                intents = strategy.on_market(market, state)
+                wall.append(time.perf_counter_ns() - t0)
+                market, state = steps.send(intents)
+        except StopIteration as done:
+            result: RunResult = done.value
+        result.decision_wall_ns = wall
+        return result
+
+    def iter_run(
+        self, events: Sequence[MarketEvent], on_order_update: Callable[[SimOrder], None]
+    ) -> Generator[tuple[MarketView, PortfolioState], Sequence[OrderIntent], RunResult]:
+        """Step-wise replay: yields ``(market, portfolio_state)`` at every decision opportunity and
+        receives the order intents for it via ``send``. Returns the ``RunResult``.
+
+        This lets an external driver (e.g. a Gymnasium environment) control decisions while the
+        engine keeps exactly the same chronology, latency, and execution semantics as ``run``.
+        """
         cfg = self.config
         latency = LatencySampler(cfg.seed)
         portfolio = Portfolio(cfg.initial_cash)
@@ -109,7 +133,6 @@ class ReplayEngine:
         audit: list[dict[str, Any]] = []
         equity_curve: list[tuple[int, float]] = []
         exposure_curve: list[tuple[int, float]] = []
-        decision_wall_ns: list[int] = []
         stats = {"market_events": 0, "late_quotes": 0, "decisions": 0}
 
         timeline: list[tuple[int, int, int, Any]] = []
@@ -125,7 +148,7 @@ class ReplayEngine:
 
             if kind == _ARRIVAL:
                 self._execute(payload, now, venue, portfolio, audit)
-                strategy.on_order_update(payload)
+                on_order_update(payload)
                 continue
 
             event: MarketEvent = payload
@@ -148,9 +171,7 @@ class ReplayEngine:
                 portfolio.equity,
                 {s: p.quantity for s, p in portfolio.positions.items() if p.quantity},
             )
-            t0 = time.perf_counter_ns()
-            intents = strategy.on_market(market, state)
-            decision_wall_ns.append(time.perf_counter_ns() - t0)
+            intents = (yield market, state) or ()
             stats["decisions"] += 1
             for intent in intents:
                 order = self._submit(intent, now, market, latency, len(orders), audit)
@@ -158,7 +179,7 @@ class ReplayEngine:
                 if order.status is OrderStatus.ACCEPTED:
                     heapq.heappush(timeline, (order.arrival_ts, _ARRIVAL, order.order_id, order))
                 else:
-                    strategy.on_order_update(order)
+                    on_order_update(order)
 
         if equity_curve:
             equity_curve.append((market.now_ns, portfolio.equity))
@@ -166,8 +187,7 @@ class ReplayEngine:
         portfolio.assert_reconciled()
         final = portfolio.snapshot()
         log.info("replay complete", extra={"fills": len(portfolio.fills), "orders": len(orders), **stats})
-        return RunResult(orders, list(portfolio.fills), audit, equity_curve, final, stats,
-                         exposure_curve, decision_wall_ns)
+        return RunResult(orders, list(portfolio.fills), audit, equity_curve, final, stats, exposure_curve)
 
     # ------------------------------------------------------------------ helpers
 

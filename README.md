@@ -13,14 +13,14 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 3 — historical data and walk-forward evaluation
+## Status: Phase 4 — PPO
 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Events, synthetic data, validation, deterministic replay, costs/latency, ledger | Done |
 | 2 | Agent interface, 50 non-RL agents, baselines, evolution, lineage | Done |
-| 3 | Historical data, walk-forward evaluation, metrics | **Done (awaiting review)** |
-| 4 | PPO policy family | Not started |
+| 3 | Historical data, walk-forward evaluation, metrics | Done |
+| 4 | PPO policy family | **Done (awaiting review)** |
 | 5 | Live-data paper trading, risk manager, dashboard | Not started |
 | 6–8 | Readiness review, disabled broker adapter, live activation | Not started; each needs separate approval |
 
@@ -31,9 +31,13 @@ Requires **Python 3.12**.
 ```bash
 py -3.12 -m venv .venv            # macOS/Linux: python3.12 -m venv .venv
 .venv/Scripts/activate            # macOS/Linux: source .venv/bin/activate
-pip install -r requirements-lock.txt
+pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
 pip install -e . --no-deps
 ```
+
+The lockfile includes the optional `rl` extra (PyTorch CPU build, Gymnasium), which PPO
+needs. That is why the command adds PyTorch's package index. Everything else runs
+without it, and `test_learning.py` is skipped when PyTorch is missing.
 
 No API keys or credentials are needed. Synthetic data is generated locally, and
 historical data is imported from files you supply (see "Historical data" below).
@@ -183,6 +187,65 @@ python -m atlas.cli evaluate --config configs/walkforward.yaml --run-id <run_id>
   `--allow-holdout-reuse`. Any reuse is recorded, and from then on the report warns that
   the holdout is no longer untouched.
 
+### PPO (reinforcement learning)
+
+```bash
+# Walk-forward with PPO trained per fold, then compared with the evolution champions and baselines
+python -m atlas.cli walkforward --config configs/walkforward_ppo.yaml
+
+# Training stability: 3 seeds on fold 0's training sessions, each scored on fold 0's validation sessions
+python -m atlas.cli train-ppo --config configs/walkforward_ppo.yaml --fold 0 --seeds 3
+```
+
+**Environment** ([env.py](src/atlas/learning/env.py)). This is a Gymnasium environment
+running on the same replay engine as everything else; the engine now also has a
+step-by-step mode for this.
+* **Episode and step.** One episode is one training session, and one step is one
+  decision at the usual 500 ms interval.
+* **Action.** For each symbol the policy picks a target of 0, 10% or 20% of equity. That
+  target goes through the same adapter, limits, latency and fill model as every
+  evolutionary agent, so PPO gets no execution advantage.
+* **Reward.** The reward is `log(V_t / V_{t-1})` after all fills and costs, scaled to
+  bps.
+* **Exit cost at the close.** At the end of an episode, the estimated cost of closing
+  open positions is subtracted. This removes the shortcut of holding into the close to
+  avoid paying the exit spread.
+
+**Inputs** ([observation.py](src/atlas/learning/observation.py)):
+* the causal per-symbol features, the position as a fraction of equity, the cash
+  fraction, and how far through the session it is
+* normalization statistics fitted **only on that fold's training sessions**, then
+  versioned and stored in every checkpoint
+
+**Training** ([ppo.py](src/atlas/learning/ppo.py)):
+* PPO with clipping and GAE, using one shared per-symbol network
+* seeded and single-threaded, so the same seed reproduces the same weights (tested)
+
+Each update logs:
+* policy and value loss, entropy, approximate KL, clip fraction, explained variance
+* the action distribution
+* **training reward against realized P&L**, as a check for reward hacking
+* fills per episode
+
+Warnings are raised for KL spikes, action collapse, never trading, and non-finite
+losses.
+
+**Frozen agent** ([policy.py](src/atlas/learning/policy.py)). Evaluation uses a
+`PolicyAgent` that follows the common agent contract:
+* **Pinned weights.** The record references its weights as `path#sha256`, and tampered
+  weights are refused.
+* **Frozen behavior.** It always picks the highest-scoring action and never learns
+  during evaluation.
+
+**Fair comparison** (from `configs/walkforward_ppo.yaml`):
+* **Same training data.** For each fold, PPO trains on the fold's training sessions only.
+* **Same scoring.** It is scored on the same validation sessions and cost scenarios as
+  the evolution champions and the baselines.
+* **Never auto-promoted.** PPO is a separate, versioned family (`ppo-v1`) and is never
+  bred into the 50-agent population. The frozen design's final candidate comes from
+  evolution unless `final_candidate_source: ppo` is set explicitly, and doing that
+  changes the design fingerprint.
+
 ## Test
 
 ```bash
@@ -204,6 +267,7 @@ The suites cover:
 | `test_evolution.py` | exactly 50 agents per generation (5 × 10), full lineage, an interrupted-and-resumed run identical to an uninterrupted one, refusal to overwrite or resume on changed config, hold and explore policies, parallel results identical to serial |
 | `test_ingest.py` | lossless synthetic → CSV → Parquet round trip, immutable raw and processed data, refusal of tampered files, vendor column mapping, ISO timestamps, universe and corporate-action files |
 | `test_walkforward.py` | date-ordered splits with embargo and rotating validation, holdout guard and ledger (reuse refused unless forced), cost scenarios, round-trip metrics, best-of-many overfitting the selection data, a walk-forward run that never reads holdout files, then a single frozen-design holdout evaluation |
+| `test_learning.py` (skipped without the `rl` extra) | step-by-step engine matches the callback engine, normalizer fitted on given sessions only, environment spaces, reward adding up to the realized log return, sessions cycled, observations unaffected by future data, deterministic PPO with full diagnostics, frozen and pinned policy agent (parallel equals serial, tampered weights refused), PPO in walk-forward never promoted automatically, explicit PPO candidate through the holdout |
 
 ## How agents and evolution work
 
@@ -344,6 +408,37 @@ confidence interval:
   same numbers, which shows the import path loses nothing.
 * **Holdout.** The 6 holdout sessions have not been evaluated.
 
+## What the first PPO run shows
+
+This is `configs/walkforward_ppo.yaml`, with the same 6 folds as above and 49,152 PPO
+steps per fold. It took about 3 minutes. Returns are out-of-sample, per validation
+session:
+
+| Cost scenario | PPO | Evolution champion | Cash |
+|---|---|---|---|
+| **base** | **−2.72 bps [−4.73, −0.68]** | −0.39 bps [−0.73, −0.02] | 0 |
+| **pessimistic** | **−3.47 bps [−5.45, −1.46]** | −2.92 bps [−3.78, −2.17] | 0 |
+
+* **PPO loses to cash and to the evolution champion.** It trails the champion in 6 of 6
+  folds under base costs. Under pessimistic costs it was ahead of the champion in 3 of 6
+  folds, but it still lost money in every fold, so it was **not promoted**.
+* **What PPO learned.** In every fold it ends up choosing "half position" about 98% of
+  the time. It learns to stop the costly churning of random exploration, which costs
+  about −145 bps per episode early in training. But it settles on a constant small
+  position rather than cash.
+* **Training stability.** Three seeds on fold 0 train to different weights, but all
+  three settle on the same constant action, so they score identically
+  (−2.93 bps, spread 0). The result does not depend on the seed, and at this budget the
+  policy is that degenerate constant position.
+* **No sign of reward hacking.** Training reward tracks realized P&L to within 0.14–0.25
+  bps per episode.
+* **No sign of training instability.** The largest per-update KL was 0.015, and there
+  were no warnings.
+* **Small in-sample/out-of-sample gap.** −2.60 bps against −2.72 bps, much smaller than
+  evolution's, because a constant position has little to overfit.
+* **Slower decisions.** PPO takes about 230 µs per decision at p99, against about 24 µs
+  for the rule agents. Both are measured on this machine.
+
 ## Known limitations
 
 * **Synthetic data only.** It tests plumbing and carries no information about real markets.
@@ -371,13 +466,22 @@ confidence interval:
   excludes any network or broker latency.
 * **Limits, not a risk manager.** Agent limits clip positions and order sizes. Daily loss
   limits, order-rate limits and the kill switch are part of the Phase 5 risk manager.
-* **Not built yet.** There is no PPO (Phase 4).
+* **Small PPO budget.** PPO trains on about 41 ten-minute episodes per fold, which is
+  small for reinforcement learning. The action set is three fixed target levels with
+  market orders only. The results describe this setup, not reinforcement learning in
+  general.
+* **No PPO hyperparameter search.** A tuned search would be one more selection trial
+  and would need its own walk-forward accounting.
+* **PPO uses base costs only.** It trains under the base cost scenario.
+* **Not built yet.** Paper trading, the live data provider and the full risk manager
+  come in Phase 5.
 
 ## Repository layout
 
 ```
 configs/           data.yaml, data_with_anomalies.yaml, simulator.yaml, evolution.yaml,
-                   walkforward.yaml, walkforward_parquet.yaml, import_synthetic_demo.yaml
+                   walkforward.yaml, walkforward_parquet.yaml, walkforward_ppo.yaml,
+                   import_synthetic_demo.yaml
 src/atlas/
   cli.py           command-line entry point
   config.py        typed, strict configuration models
@@ -388,6 +492,7 @@ src/atlas/
   environment/     replay engine, market view, orders, costs, latency, portfolio, demo strategy
   agents/          agent contract, features, genome operators, 5 families, baselines, adapter
   evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
+  learning/        Gymnasium env, observation normalizer, PPO trainer, frozen policy agent, seed stability
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)

@@ -24,7 +24,7 @@ import math
 import statistics
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -43,6 +43,7 @@ from atlas.evaluation.scenarios import DEFAULT_SCENARIOS, EMPHASIZED, CostScenar
 from atlas.evaluation.splits import SplitConfig, SplitPlan, plan_splits
 from atlas.evolution.evaluation import AgentEvaluation, evaluate_records
 from atlas.evolution.runner import EvolutionRunner
+from atlas.learning.settings import PPOSettings
 from atlas.logging_utils import get_logger
 from atlas.timeutils import NS_PER_S
 
@@ -75,12 +76,18 @@ class WalkForwardConfig(BaseModel):
     bootstrap: BootstrapConfig = BootstrapConfig()
     reports_dir: Path = Path("artifacts/reports/walkforward")
     holdout_ledger: Path = Path("artifacts/holdout_ledger.jsonl")
+    ppo: PPOSettings = PPOSettings()
+    # Which family supplies the frozen design's final candidate. PPO is never promoted
+    # automatically: choosing it requires changing this setting, which changes the design fingerprint.
+    final_candidate_source: Literal["evolution", "ppo"] = "evolution"
 
     @model_validator(mode="after")
     def _scenarios(self) -> WalkForwardConfig:
         missing = [s for s in EMPHASIZED if s not in self.cost_scenarios]
         if missing:
             raise ValueError(f"cost_scenarios must include {missing}")
+        if self.final_candidate_source == "ppo" and not self.ppo.enabled:
+            raise ValueError("final_candidate_source: ppo requires ppo.enabled: true")
         return self
 
 
@@ -234,24 +241,40 @@ def run_walkforward(
             "candidates": [],
             "baselines": {},
         }
-        if candidates:
+        ppo_record = None
+        if wf.ppo.enabled:
+            ppo_record, fold_out["ppo_training"] = _train_fold_ppo(wf, fold.index, train_refs, sim, fold_evo, run_dir)
+        if wf.final_candidate_source == "evolution" and candidates:
             final_candidate = candidates[0]
-            in_sample = scenario_evaluate(candidates, train_refs, sim, fold_evo, {"base": scenarios["base"]})["base"]
-            oos = scenario_evaluate(candidates + baselines, val_refs, sim, fold_evo, scenarios)
-            for rank, c in enumerate(candidates):
-                fold_out["candidates"].append({
-                    "rank": rank, "agent_id": c.agent_id, "family": c.family, "genome": c.genome,
-                    "in_sample": summarize(in_sample[c.agent_id]),
-                    "out_of_sample": {name: summarize(evs[c.agent_id]) for name, evs in oos.items()},
-                    "latency": latency_percentiles(
-                        [x for w in oos["base"][c.agent_id].decision_wall_ns for x in w]),
-                })
-            for b in baselines:
-                fold_out["baselines"][b.agent_id] = {name: summarize(evs[b.agent_id]) for name, evs in oos.items()}
+        elif wf.final_candidate_source == "ppo" and ppo_record is not None:
+            final_candidate = ppo_record
+        learned = [ppo_record] if ppo_record else []
+        in_sample = scenario_evaluate(candidates + learned, train_refs, sim, fold_evo,
+                                      {"base": scenarios["base"]})["base"] if candidates or learned else {}
+        oos = scenario_evaluate(candidates + learned + baselines, val_refs, sim, fold_evo, scenarios)
+        if ppo_record is not None:
+            fold_out["ppo"] = {
+                "agent_id": ppo_record.agent_id, "artifact": ppo_record.artifact,
+                "in_sample": summarize(in_sample[ppo_record.agent_id]),
+                "out_of_sample": {name: summarize(evs[ppo_record.agent_id]) for name, evs in oos.items()},
+                "latency": latency_percentiles([x for w in oos["base"][ppo_record.agent_id].decision_wall_ns for x in w]),
+            }
+        for rank, c in enumerate(candidates):
+            fold_out["candidates"].append({
+                "rank": rank, "agent_id": c.agent_id, "family": c.family, "genome": c.genome,
+                "in_sample": summarize(in_sample[c.agent_id]),
+                "out_of_sample": {name: summarize(evs[c.agent_id]) for name, evs in oos.items()},
+                "latency": latency_percentiles(
+                    [x for w in oos["base"][c.agent_id].decision_wall_ns for x in w]),
+            })
+        for b in baselines:
+            fold_out["baselines"][b.agent_id] = {name: summarize(evs[b.agent_id]) for name, evs in oos.items()}
         folds_out.append(fold_out)
 
     report = _aggregate(wf, evo, sim, base, provider, plan, folds_out, total_trials, final_candidate)
     report["run_id"] = run_id
+    if wf.ppo.enabled:
+        report["ppo"] = _ppo_summary(wf, folds_out)
     (run_dir / "report.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     design = {
         "design_fingerprint": report["design_fingerprint"],
@@ -268,6 +291,65 @@ def run_walkforward(
 
     write_markdown(run_dir)
     return report, run_dir
+
+
+def _train_fold_ppo(wf: WalkForwardConfig, fold_index: int, train_refs: list[SessionRef], sim: SimulatorConfig,
+                    evo: EvolutionConfig, run_dir: Path) -> tuple[AgentRecord, dict[str, Any]]:
+    """Train PPO on this fold's training sessions only (normalizer fit on the same sessions)."""
+    from atlas.learning.ppo import train_ppo
+
+    settings = wf.ppo.model_copy(update={"seed": wf.ppo.seed + fold_index})
+    res = train_ppo(settings, train_refs, sim, evo.limits, evo.evaluation.decision_interval_ms,
+                    run_dir / "ppo" / f"fold_{fold_index:02d}")
+    record = AgentRecord(agent_id=f"ppo-fold{fold_index:02d}", family="ppo", generation=0, genome={},
+                         origin="ppo", artifact=res.artifact)
+    return record, {"summary": res.summary(), "diagnostics": res.diagnostics, "episodes": len(res.episodes),
+                    "env_steps": settings.total_steps // settings.rollout_steps * settings.rollout_steps}
+
+
+def _ppo_summary(wf: WalkForwardConfig, folds: list[dict[str, Any]]) -> dict[str, Any]:
+    scenarios = list(wf.cost_scenarios)
+    returns: dict[str, list[float]] = {s: [] for s in scenarios}
+    comparison, in_s, oos_b, warnings = [], [], [], []
+    for f in folds:
+        p = f.get("ppo")
+        if p is None:
+            continue
+        for s in scenarios:
+            returns[s].extend(p["out_of_sample"][s]["session_returns"])
+        in_s.append(p["in_sample"]["mean_net_return"])
+        oos_b.append(p["out_of_sample"]["base"]["mean_net_return"])
+        warnings += [f"fold {f['index']}: {w}" for w in f["ppo_training"]["summary"]["warnings"]]
+        champ = f["candidates"][0] if f["candidates"] else None
+        comparison.append({
+            "fold": f["index"],
+            "ppo_base": p["out_of_sample"]["base"]["mean_net_return"],
+            "ppo_pessimistic": p["out_of_sample"]["pessimistic"]["mean_net_return"],
+            "evolution_base": champ["out_of_sample"]["base"]["mean_net_return"] if champ else None,
+            "evolution_pessimistic": champ["out_of_sample"]["pessimistic"]["mean_net_return"] if champ else None,
+            "ppo_fills_base": p["out_of_sample"]["base"]["fills"],
+            "reward_vs_realized_gap_bps": f["ppo_training"]["summary"]["mean_abs_reward_vs_realized_gap_bps"],
+            "final_action_distribution": f["ppo_training"]["summary"]["final_action_distribution"],
+            "max_approx_kl": f["ppo_training"]["summary"]["max_approx_kl"],
+            "p50_us": p["latency"]["p50_us"], "p99_us": p["latency"]["p99_us"],
+        })
+    wins = {s: sum(1 for c in comparison if c[f"evolution_{s}"] is not None and c[f"ppo_{s}"] > c[f"evolution_{s}"])
+            for s in ("base", "pessimistic")}
+    return {
+        "oos": {s: bootstrap_mean_ci(v, wf.bootstrap) for s, v in returns.items()},
+        "selection_gap": {
+            "mean_in_sample_return": statistics.fmean(in_s) if in_s else None,
+            "mean_oos_base_return": statistics.fmean(oos_b) if oos_b else None,
+        },
+        "folds_beating_evolution_champion": wins,
+        "folds_compared": len(comparison),
+        "comparison": comparison,
+        "training_warnings": warnings,
+        "promotion": (
+            "PPO is the configured final-candidate source (explicit setting)." if wf.final_candidate_source == "ppo"
+            else "Not promoted. The final candidate comes from evolution; PPO is never promoted automatically."
+        ),
+    }
 
 
 def _aggregate(wf, evo, sim, base, provider, plan, folds, total_trials, final_candidate) -> dict[str, Any]:
@@ -369,6 +451,13 @@ def limitations(provider: MarketDataProvider, plan: SplitPlan, wf: WalkForwardCo
         out.append("Some folds produced no eligible candidate; their validation sessions contribute no "
                    "champion evidence.")
     out.append("Sharpe/Sortino come from 1-minute returns within short sessions and are noisy.")
+    if wf.ppo.enabled:
+        out.append(f"PPO trains per fold for {wf.ppo.total_steps} environment steps on that fold's training "
+                   "sessions only. That is a small budget by RL standards, and results reflect it. It is "
+                   "evaluated frozen and greedy (argmax), with the same costs, limits, and latency as every "
+                   "other agent.")
+        out.append("PPO is a separate, versioned family (ppo-v1) evaluated beside the 50-agent population; it "
+                   "is not bred into the population and is never promoted automatically.")
     out.append(f"The outer holdout ({len(plan.holdout)} sessions) was not evaluated in this run.")
     return out
 

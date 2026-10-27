@@ -27,6 +27,10 @@ def family_space(family: str) -> ParamSpace:
 
 
 def create_agent(record: AgentRecord) -> Agent:
+    if record.family == "ppo":  # optional family; importing it requires the `rl` extra (PyTorch)
+        from atlas.learning.policy import PolicyAgent
+
+        return PolicyAgent(record)
     cls = FAMILY_CLASSES.get(record.family) or BASELINE_CLASSES.get(record.family)
     if cls is None:
         raise KeyError(f"unknown agent family {record.family!r}")

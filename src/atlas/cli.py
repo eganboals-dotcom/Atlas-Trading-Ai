@@ -1,7 +1,8 @@
 """Command-line entry point: ``python -m atlas.cli <command> --config <path>``.
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
-``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3).
+``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
+``train-ppo`` (Phase 4).
 Paper trading arrives in Phase 5.
 """
 
@@ -218,6 +219,19 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_train_ppo(args: argparse.Namespace) -> int:
+    try:
+        from atlas.learning.stability import seed_stability
+    except ImportError as exc:
+        raise ConfigError(f"PPO needs the rl extra (pip install -e .[rl]): {exc}") from exc
+
+    wf, evo, sim, _, provider = _load_walkforward(args.config, args.workers)
+    out, out_dir = seed_stability(wf, evo, sim, provider, args.fold, args.seeds, Path(args.output))
+    print(json.dumps({k: out[k] for k in ("fold", "train", "validation", "seeds", "base_return_by_seed_bps",
+                                          "base_return_spread_bps")} | {"output": str(out_dir)}, indent=2))
+    return EXIT_OK
+
+
 def _cmd_report(args: argparse.Namespace) -> int:
     from atlas.evaluation.report import write_markdown
 
@@ -281,6 +295,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-holdout-reuse", action="store_true")
     p.add_argument("--workers", type=int)
     p.set_defaults(func=_cmd_evaluate)
+
+    p = sub.add_parser("train-ppo", help="Train PPO with several seeds on one fold and compare them out of sample.")
+    p.add_argument("--config", required=True, help="walk-forward config with a `ppo:` section")
+    p.add_argument("--fold", type=int, default=0)
+    p.add_argument("--seeds", type=int, default=3)
+    p.add_argument("--output", default="artifacts/ppo")
+    p.add_argument("--workers", type=int)
+    p.set_defaults(func=_cmd_train_ppo)
 
     p = sub.add_parser("report", help="Rebuild and print the Markdown report for a walk-forward run.")
     p.add_argument("--run-id", required=True)

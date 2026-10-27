@@ -71,8 +71,10 @@ class AgentRecord:
     generation: int
     genome: Genome
     parents: tuple[str, ...] = ()
-    origin: str = "initial"  # initial | elite | small_mutation | large_mutation | crossover | immigrant | carried
+    origin: str = "initial"  # initial | elite | small_mutation | large_mutation | crossover | immigrant | ppo
     mutations: list[str] = field(default_factory=list)
+    # Learned policies only: "<path to policy file>#<sha256>". The hash pins the exact weights.
+    artifact: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -89,6 +91,7 @@ class AgentRecord:
             parents=tuple(d.get("parents", ())),
             origin=d.get("origin", "initial"),
             mutations=list(d.get("mutations", [])),
+            artifact=d.get("artifact"),
         )
 
 
