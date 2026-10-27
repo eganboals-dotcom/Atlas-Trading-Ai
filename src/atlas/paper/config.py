@@ -129,7 +129,8 @@ class AlertsConfig(Strict):
 class DashboardConfig(Strict):
     """Read-only live page, opened in the browser when a session starts (``paper --open-dashboard``)."""
 
-    open_on_start: bool = False
+    open_on_start: bool = False  # browser page (http://localhost:<port>)
+    watch_window: bool = False  # terminal leaderboard in its own console window
     port: Annotated[int, Field(ge=1024, le=65535)] = 8501
     live_snapshot_ms: Annotated[float, Field(ge=500)] = 2_000.0  # how often live.json is refreshed
 

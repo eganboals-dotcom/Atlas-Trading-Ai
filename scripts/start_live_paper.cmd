@@ -1,7 +1,7 @@
 @echo off
 REM Project Atlas - live paper trading (simulated orders only; prices from Alpaca IEX).
 REM Double-click, or run from a terminal. Runs the preflight, then today's session, and opens
-REM the live leaderboard page. Re-running on the same day resumes the session.
+REM the live leaderboard in its own terminal window. Re-running on the same day resumes the session.
 setlocal
 cd /d "%~dp0.."
 set PYTHONUTF8=1
@@ -21,7 +21,7 @@ if errorlevel 1 (
 )
 echo.
 echo === Live paper session (Ctrl+C to stop cleanly) ===
-"%PY%" -m atlas.cli --log-level WARNING paper --config configs\paper_live.yaml --open-dashboard --auto-resume
+"%PY%" -m atlas.cli --log-level WARNING paper --config configs\paper_live.yaml --auto-resume
 echo.
 echo Session ended. Daily report: artifacts\paper\live_^<date^>\daily_report.md
 echo Leaderboard: "%PY%" -m atlas.cli paper-status --config configs\paper_live.yaml

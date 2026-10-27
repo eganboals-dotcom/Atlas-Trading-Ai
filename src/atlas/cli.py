@@ -2,7 +2,7 @@
 
 Commands: ``validate-data``, ``simulate`` (Phase 1); ``evolve`` (Phase 2);
 ``export-synthetic``, ``import-data``, ``walkforward``, ``evaluate``, ``report`` (Phase 3);
-``train-ppo`` (Phase 4); ``paper``, ``paper-check``, ``paper-stop``, ``paper-kill``, ``dashboard``
+``train-ppo`` (Phase 4); ``paper``, ``paper-check``, ``paper-watch``, ``paper-stop``, ``paper-kill``, ``dashboard``
 (Phase 5); ``readiness`` (Phase 6).
 """
 
@@ -276,6 +276,11 @@ def _cmd_paper(args: argparse.Namespace) -> int:
     def on_ready(s: PaperSession) -> None:
         print(f"paper session {s.dir.name}: startup checks passed; feed={cfg.feed.kind}; "
               f"{len(s.accounts)} accounts; simulated orders only", file=sys.stderr)
+        if args.watch or cfg.dashboard.watch_window:
+            from atlas.dashboard.terminal import open_window
+
+            open_window(s.dir)
+            print("leaderboard: opened in a new terminal window (read-only)", file=sys.stderr)
         if args.open_dashboard or cfg.dashboard.open_on_start:
             from atlas.dashboard.launch import launch
 
@@ -346,6 +351,12 @@ def _cmd_paper_status(args: argparse.Namespace) -> int:
         print(f"{rank:>2}  {r['account']:<10} {model:<38} {r['net_pnl']:>10.2f} "
               f"{r['net_return'] * 1e4:>+9.2f}bps {r['fills']:>6}  {status}")
     return EXIT_OK
+
+
+def _cmd_paper_watch(args: argparse.Namespace) -> int:
+    from atlas.dashboard.terminal import watch
+
+    return watch(_session_dir(args), args.interval, args.once)
 
 
 def _cmd_paper_stop(args: argparse.Namespace) -> int:
@@ -523,7 +534,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reset-kill-switch", action="store_true", help="operator reset after reviewing a kill")
     p.add_argument("--open-dashboard", action="store_true", help="open the live page in the browser")
     p.add_argument("--auto-resume", action="store_true", help="resume today's session if it already exists")
+    p.add_argument("--watch", action="store_true", help="open the leaderboard in a new terminal window")
     p.set_defaults(func=_cmd_paper)
+
+    p = sub.add_parser("paper-watch", help="Live leaderboard in this terminal (refreshes every 2 s).")
+    p.add_argument("--session-dir")
+    p.add_argument("--config", help="paper config; targets today's session")
+    p.add_argument("--interval", type=float, default=2.0)
+    p.add_argument("--once", action="store_true", help="draw once and exit")
+    p.set_defaults(func=_cmd_paper_watch)
 
     p = sub.add_parser("paper-status", help="Print the live leaderboard of a paper session.")
     p.add_argument("--session-dir")

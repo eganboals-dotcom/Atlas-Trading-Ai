@@ -6,7 +6,7 @@
 #     APCA_API_KEY_ID=...
 #     APCA_API_SECRET_KEY=...
 # Run (any time before or during market hours; it waits for 09:30 ET and stops at 16:00 ET):
-#     python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard
+#     python -m atlas.cli paper --config configs/paper_live.yaml   (opens the leaderboard window)
 mode: paper
 live_orders_enabled: false
 session_name: live_{date}
@@ -40,4 +40,4 @@ decision_interval_ms: 2000        # polled data: decide at most every 2 s
 alerts: {console: true, file: true}
 output_dir: artifacts/paper
 state_flush_events: 200
-dashboard: {open_on_start: true, port: 8501, live_snapshot_ms: 2000}
+dashboard: {watch_window: true, open_on_start: false, port: 8501, live_snapshot_ms: 2000}  # leaderboard window; browser page off

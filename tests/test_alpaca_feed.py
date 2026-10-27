@@ -192,3 +192,18 @@ def test_live_page_renders_leaderboard(tmp_path: Path, monkeypatch) -> None:
     heads = [h.value for h in at.subheader]
     assert "Leaderboard" in heads and "Recent simulated trades" in heads
     assert any(m.label == "Leader" for m in at.metric)
+
+
+def test_terminal_leaderboard_renders_and_watch_once(tmp_path: Path, capsys) -> None:
+    from atlas.cli import EXIT_OK, main
+    from atlas.dashboard.terminal import render
+
+    s = run_live_session(tmp_path, minutes=3)
+    text = render(data.load_live(s.dir), color=False)
+    assert "LEADERBOARD" in text and "RECENT SIMULATED TRADES" in text and "simulated orders only" in text
+    lines = text.splitlines()
+    board = lines[lines.index(next(l for l in lines if l.startswith(" #"))) + 2:]
+    assert board[0].lstrip().startswith("1 ") and any(l.lstrip().startswith("- ") for l in board[:5])
+    assert "\x1b[" not in text  # no color codes when color is off
+    assert main(["paper-watch", "--session-dir", str(s.dir), "--once"]) == EXIT_OK
+    assert "LEADERBOARD" in capsys.readouterr().out

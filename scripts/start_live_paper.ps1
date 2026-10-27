@@ -8,4 +8,4 @@ Write-Host "=== Preflight ==="
 & $py -m atlas.cli --log-level ERROR paper-check --config configs\paper_live.yaml
 if ($LASTEXITCODE -ne 0) { Write-Host "Preflight failed - fix the FAIL lines above."; exit 1 }
 Write-Host "=== Live paper session (Ctrl+C to stop cleanly) ==="
-& $py -m atlas.cli --log-level WARNING paper --config configs\paper_live.yaml --open-dashboard --auto-resume
+& $py -m atlas.cli --log-level WARNING paper --config configs\paper_live.yaml --auto-resume

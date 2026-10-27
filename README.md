@@ -368,8 +368,9 @@ window, and re-running it the same day resumes the session. Or use the commands 
 
 ```bash
 python -m atlas.cli paper-check --config configs/paper_live.yaml     # preflight; does not trade
-python -m atlas.cli paper --config configs/paper_live.yaml --open-dashboard --auto-resume
-python -m atlas.cli paper-status --config configs/paper_live.yaml    # leaderboard in the terminal
+python -m atlas.cli paper --config configs/paper_live.yaml --auto-resume    # opens the leaderboard window
+python -m atlas.cli paper-watch --config configs/paper_live.yaml     # live leaderboard in this terminal
+python -m atlas.cli paper-status --config configs/paper_live.yaml    # one-shot leaderboard
 python -m atlas.cli paper-stop --config configs/paper_live.yaml      # clean, resumable stop
 ```
 
@@ -379,11 +380,15 @@ hours, so they run in their own window or in the background.
 **What happens when you run it:**
 * **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
   bots load.
-* **The live page opens** at `http://localhost:8501`.
+* **A leaderboard window opens** in its own terminal (`paper-watch`), refreshed every
+  2 seconds. It shows the ranking by net P&L against buy-and-hold, each bot's P&L,
+  fills, positions and halt status, and the recent simulated trades. It stays open
+  with the final standings after the close.
 * **Trading hours.** The session waits for 09:30 ET, trades until 16:00 ET, then writes
   the daily report.
 
-**The live page**, refreshed every 2 seconds:
+**The optional browser page** (`python -m atlas.cli dashboard`, or `--open-dashboard`, at
+`http://localhost:8501`), refreshed every 2 seconds:
 * a leaderboard ranking the bots by net P&L, against buy-and-hold
 * each bot's realized and unrealized P&L, fees, fills, positions and halt status
 * P&L over time

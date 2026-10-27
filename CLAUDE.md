@@ -37,9 +37,10 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
 2. **Start.** The user's preferred way is double-clicking `scripts/start_live_paper.cmd`, which runs in its
    own window. If the user asks you to start it, run it as a **background** process so it is not killed by a
    tool timeout:
-   `.venv/Scripts/python.exe -m atlas.cli --log-level WARNING paper --config configs/paper_live.yaml --open-dashboard --auto-resume`
-   It waits for the open by itself, and the live page opens at http://localhost:8501.
-3. **Monitor.** This is read-only:
+   `.venv/Scripts/python.exe -m atlas.cli --log-level WARNING paper --config configs/paper_live.yaml --auto-resume`
+   It waits for the open by itself and opens the live leaderboard in its own terminal window (read-only).
+3. **Monitor.** This is read-only. Use `paper-status` for a one-shot leaderboard; `paper-watch` is the live,
+   refreshing view, and is what the leaderboard window runs:
    `.venv/Scripts/python.exe -m atlas.cli paper-status --config configs/paper_live.yaml`
    The raw snapshot is `artifacts/paper/live_<YYYY-MM-DD>/live.json`, and alerts are in `alerts.jsonl` there.
 4. **Stop cleanly.** This is resumable; re-running step 2 the same day continues the session:
@@ -47,7 +48,8 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
 5. **Emergency halt.** Only when the user asks, or on clear malfunction. It halts trading, and the user
    must review before restarting:
    `.venv/Scripts/python.exe -m atlas.cli paper-kill --config configs/paper_live.yaml --reason "<why>"`
-6. **After the close.** Read `artifacts/paper/live_<date>/daily_report.md`. Reopen the page with
+6. **After the close.** Read `artifacts/paper/live_<date>/daily_report.md`. Reopen the leaderboard window
+   with `paper-watch --config configs/paper_live.yaml`; the optional browser page opens with
    `.venv/Scripts/python.exe -m atlas.cli dashboard`.
 
 ### If the preflight or start fails
@@ -60,4 +62,4 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
 - *"kill switch engaged"*: the user reviews why (`alerts.jsonl`), then restarts with `--reset-kill-switch`.
 - *Weekend/holiday*: the market is closed. Holidays are not in the calendar, so on a holiday the session
   just sees no fresh data and stays in safe state.
-- *Port 8501 busy*: an earlier page is still running; open http://localhost:8501, or close that window.
+- *Port 8501 busy* (browser page only): an earlier page is still running; open http://localhost:8501.
