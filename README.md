@@ -130,6 +130,20 @@ python -m atlas.cli validate-data --dataset data/processed/synthetic_demo
 
 A processed file whose hash no longer matches its manifest is refused.
 
+**Real Alpaca history.** `fetch-history` downloads real SPY/QQQ history from Alpaca with the
+same keys in `.env`. It uses two read-only GET endpoints, and paper sessions can't use them.
+It samples days spread evenly over 2016–2026, plus crash and rally days such as March 2020
+and April 2025. Each day becomes one window (30 minutes by default), re-sampled exactly like
+the live poller sees the market: the latest quote every 1 s and the latest trade every 2 s.
+That way, bots never learn from ticks they won't get live. Alpaca's SIP history reports
+quote sizes in 100-share lots until late 2025; they are converted to shares. Re-running
+skips days already downloaded. The data stays in `data/` (git-ignored, Alpaca's terms apply).
+
+```bash
+python -m atlas.cli fetch-history --days 40 --minutes 30          # ~48 windows, ~30 min
+python -m atlas.cli walkforward --config configs/walkforward_real.yaml
+```
+
 **Prices** are raw and unadjusted. Every session is simulated on its own, starting flat
 in cash, so no position spans a split or dividend and no adjustment is needed. Double
 adjustment cannot happen. Features that span several days would need adjusted prices

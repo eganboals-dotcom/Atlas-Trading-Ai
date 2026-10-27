@@ -37,6 +37,9 @@ class SessionRef(BaseModel):
     data_config: str | None = None  # synthetic: DataConfig JSON
     path: str | None = None  # parquet: session file
     sha256: str | None = None
+    # Polled feeds deliver quotes and trades on separate clocks: check source-time order per
+    # symbol and event type, exactly like the live session (set by the dataset manifest).
+    order_scope: Literal["symbol", "symbol_type"] = "symbol"
 
     @property
     def key(self) -> str:
@@ -130,7 +133,8 @@ class ParquetProvider(MarketDataProvider):
         s = self._by_date[session]
         return SessionRef(kind="parquet", session_date=session, symbols=tuple(s["symbols"]),
                           allowed_data_age_ms=self.allowed_data_age_ms,
-                          path=str((self.dir / s["file"]).resolve()), sha256=s["sha256"])
+                          path=str((self.dir / s["file"]).resolve()), sha256=s["sha256"],
+                          order_scope=self.manifest.get("order_scope", "symbol"))
 
     def describe(self) -> dict[str, Any]:
         m = self.manifest
@@ -152,7 +156,7 @@ def load_raw(ref: SessionRef) -> list[MarketEvent]:
 @lru_cache(maxsize=256)
 def _load_validated(key: str) -> tuple[tuple[MarketEvent, ...], ValidationReport]:
     ref = SessionRef.model_validate_json(key)
-    report = validate_events(load_raw(ref), ref.allowed_data_age_ms)
+    report = validate_events(load_raw(ref), ref.allowed_data_age_ms, order_scope=ref.order_scope)
     return tuple(report.valid_events), report
 
 

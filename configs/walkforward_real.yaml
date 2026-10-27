@@ -1,0 +1,31 @@
+# Walk-forward on real Alpaca SIP history: ~45 days sampled 2016-2026 (including crash and rally
+# days), one 30-minute window each, re-sampled like the live poller. Create the dataset with:
+#   python -m atlas.cli fetch-history --days 40 --minutes 30
+# The most recent 8 sessions are the untouched holdout.
+experiment_name: wf_real_sip_v1
+evolution_config: configs/evolution_real.yaml
+
+data_source:
+  kind: parquet
+  dataset_dir: data/processed/alpaca_sip_hist
+  allowed_data_age_ms: 2000
+
+splits:
+  holdout_sessions: 8
+  train_sessions: 8
+  embargo_sessions: 1
+  validation_sessions: 3
+  step_sessions: 4
+  scheme: expanding         # later folds learn from every earlier market, 2016 onward
+
+generations_per_fold: 12
+candidates_per_fold: 3
+
+cost_scenarios:
+  optimistic:  {slippage_bps: 0.0, widen_bps: 0.0, latency_multiplier: 0.5}
+  base:        {}
+  pessimistic: {slippage_bps: 2.0, widen_bps: 1.0, fee_multiplier: 1.5, latency_multiplier: 2.0, max_participation: 0.25}
+
+bootstrap: {samples: 2000, seed: 7, confidence: 0.9}
+reports_dir: artifacts/reports/walkforward
+holdout_ledger: artifacts/holdout_ledger.jsonl

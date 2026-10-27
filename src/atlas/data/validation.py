@@ -172,9 +172,10 @@ def validate_events(
     events: list[MarketEvent],
     allowed_data_age_ms: float,
     check_session: bool = True,
+    order_scope: str = "symbol",
 ) -> ValidationReport:
     report = ValidationReport(total_events=len(events), valid_events=[])
-    validator = StreamValidator(allowed_data_age_ms, check_session)
+    validator = StreamValidator(allowed_data_age_ms, check_session, order_scope=order_scope)
     for i, event in enumerate(events):
         keep, issues = validator.check(event, i)
         report.issues.extend(issues)

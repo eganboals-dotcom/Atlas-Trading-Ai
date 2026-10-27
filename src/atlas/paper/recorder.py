@@ -83,6 +83,7 @@ class MarketDataRecorder:
             "price_adjustment": "none: raw intraday prices (sessions are simulated independently, flat at the open)",
             "corporate_actions": [], "universe_source": "symbols subscribed by the paper session",
             "chronology_notes": "events in local arrival order, exactly as the paper session received them",
+            "order_scope": "symbol_type",  # validated like the live session
             "raw_files": [], "sessions": [],
         }
         quotes = sum(isinstance(e, Quote) for e in events)

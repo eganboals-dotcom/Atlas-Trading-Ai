@@ -10,6 +10,15 @@ Response fields used: quotes ``bp, bs, ap, as, t``. Sizes are in shares; a price
 means no active bid or ask, and validation rejects it. Trades use ``p, s, t, i, c``.
 Timestamps are RFC 3339 with nanosecond precision.
 
+For building training data, ``iter_history`` uses two more GET endpoints on the same host,
+Alpaca's historical market data (``HISTORY_PATHS``):
+
+    GET https://data.alpaca.markets/v2/stocks/quotes?symbols=...&start=...&end=...&feed=iex
+    GET https://data.alpaca.markets/v2/stocks/trades?symbols=...&start=...&end=...&feed=iex
+
+Paper sessions never use them: ``http_fetch`` allows only the live paths unless it is
+explicitly given ``HISTORY_PATHS``.
+
 It has **no trading endpoint** and no way to send an order: Atlas's paper orders go only
 to the internal ``PaperBroker``. Use API keys from an Alpaca *paper* account. Alpaca
 gives paper accounts their own keys, separate from live ones.
@@ -44,6 +53,9 @@ DATA_HOST = "https://data.alpaca.markets"
 QUOTES_PATH = "/v2/stocks/quotes/latest"
 TRADES_PATH = "/v2/stocks/trades/latest"
 ALLOWED_PATHS = frozenset({QUOTES_PATH, TRADES_PATH})
+HISTORY_QUOTES_PATH = "/v2/stocks/quotes"
+HISTORY_TRADES_PATH = "/v2/stocks/trades"
+HISTORY_PATHS = frozenset({HISTORY_QUOTES_PATH, HISTORY_TRADES_PATH})
 KEY_ENV, SECRET_ENV = "APCA_API_KEY_ID", "APCA_API_SECRET_KEY"
 
 Fetch = Callable[[str, dict[str, str]], dict[str, Any]]
@@ -79,9 +91,13 @@ def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
     return AlpacaCredentials(values[KEY_ENV], values[SECRET_ENV])
 
 
-def http_fetch(credentials: AlpacaCredentials, timeout_s: float = 5.0) -> Fetch:
+def http_fetch(credentials: AlpacaCredentials, timeout_s: float = 5.0,
+               allowed: frozenset[str] = ALLOWED_PATHS) -> Fetch:
+    if not allowed <= ALLOWED_PATHS | HISTORY_PATHS:
+        raise PermissionError(f"refusing non-market-data paths {sorted(allowed - ALLOWED_PATHS - HISTORY_PATHS)}")
+
     def fetch(path: str, params: dict[str, str]) -> dict[str, Any]:
-        if path not in ALLOWED_PATHS:  # hard guard: only the two read-only market-data endpoints
+        if path not in allowed:  # hard guard: only read-only market-data endpoints
             raise PermissionError(f"refusing non-market-data path {path!r}")
         url = f"{DATA_HOST}{path}?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url, method="GET", headers={
@@ -240,3 +256,34 @@ class AlpacaPollingFeed(LiveFeed):
                                 price=float(tr.get("p") or 0.0), size=int(tr.get("s") or 0),
                                 timestamp_kind=TimestampKind.VENDOR, conditions=tuple(tr.get("c") or ())))
         return events
+
+
+def iter_history(fetch: Fetch, path: str, symbol: str, start: str, end: str, feed: str = "iex",
+                 limit: int = 10_000, min_interval_s: float = 0.35, retries: int = 8,
+                 sleep: Callable[[float], None] = time.sleep) -> Any:
+    """Yield one symbol's historical quotes or trades (raw Alpaca dicts, oldest first), page by page.
+
+    ``min_interval_s`` keeps the download under the free plan's 200 requests/min; rate limits and
+    network errors are retried with backoff.
+    """
+    if path not in HISTORY_PATHS:
+        raise PermissionError(f"not a historical market-data path: {path!r}")
+    key = "quotes" if path == HISTORY_QUOTES_PATH else "trades"
+    token: str | None = None
+    while True:
+        params = {"symbols": symbol, "start": start, "end": end, "feed": feed, "limit": str(limit), "sort": "asc"}
+        if token:
+            params["page_token"] = token
+        for attempt in range(retries + 1):
+            try:
+                data = fetch(path, params)
+                break
+            except FeedDisconnected:
+                if attempt == retries:
+                    raise
+                sleep(min(60.0, 2.0 * (attempt + 1)))
+        sleep(min_interval_s)
+        yield from (data.get(key) or {}).get(symbol) or []
+        token = data.get("next_page_token")
+        if not token:
+            return

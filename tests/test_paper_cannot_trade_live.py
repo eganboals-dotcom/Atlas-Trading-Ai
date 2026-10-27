@@ -131,6 +131,23 @@ def test_market_data_module_can_only_GET_two_read_only_endpoints() -> None:
             fetch(bad, {})
 
 
+def test_history_download_adds_only_two_read_only_market_data_endpoints() -> None:
+    from atlas.feeds import alpaca
+
+    assert alpaca.HISTORY_PATHS == {"/v2/stocks/quotes", "/v2/stocks/trades"}
+    live = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"))  # what paper sessions use
+    with pytest.raises(PermissionError):
+        live("/v2/stocks/quotes", {})
+    hist = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"), allowed=alpaca.HISTORY_PATHS)
+    for bad in ("/v2/orders", "/v2/positions", "/v2/account", "/v2/stocks/quotes/latest"):
+        with pytest.raises(PermissionError):
+            hist(bad, {})
+    with pytest.raises(PermissionError):
+        alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"), allowed=frozenset({"/v2/orders"}))
+    with pytest.raises(PermissionError):
+        next(alpaca.iter_history(lambda p, q: {}, "/v2/orders", "SPY", "a", "b"))
+
+
 def test_no_trading_host_or_order_endpoint_appears_in_source() -> None:
     forbidden = ("api.alpaca.markets", "paper-api.alpaca.markets", "/v2/orders", "/v1/orders",
                  "trader/v1", "accounts/{", "/orders")

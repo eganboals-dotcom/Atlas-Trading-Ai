@@ -1,0 +1,36 @@
+# Simulator for real-data training: same costs and latency as configs/simulator.yaml, sized like a live bot.
+data_config: configs/data.yaml
+seed: 42
+initial_cash: 14285.71        # one bot's share of the live fund ($100k / 7)
+
+fees:                     # illustrative placeholders, not a specific broker's schedule
+  per_share: 0.0
+  bps: 0.0
+  min_per_order: 0.0
+  sell_regulatory_bps: 0.278
+
+slippage:
+  bps: 0.5                # adverse, applied on top of crossing the spread
+
+spread:
+  model: quoted           # buys at ask, sells at bid — never at the midpoint
+  widen_bps: 0.0
+
+latency:                  # milliseconds
+  feed:     {kind: fixed, value_ms: 2.0}           # only used when an event has no receive_ts
+  decision: {kind: fixed, value_ms: 1.0}
+  order:    {kind: lognormal, value_ms: 20.0, sigma: 0.4}
+
+fill:
+  model: top_of_book_ioc
+  max_participation: 0.5  # fill at most half of displayed size
+
+stale_quote_ms: 2000
+invalid_event_policy: drop   # drop | fail
+reports_dir: artifacts/reports
+
+demo_strategy:            # plumbing-only demo; not a research strategy
+  symbol: SPY
+  order_qty: 100
+  hold_s: 60
+  round_trips: 5

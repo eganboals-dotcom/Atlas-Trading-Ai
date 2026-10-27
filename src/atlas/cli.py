@@ -535,6 +535,71 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_fetch_history(args: argparse.Namespace) -> int:
+    """Download real Alpaca history (read-only) as polled training sessions; resumable, skips done days."""
+    import random
+    import time
+    from datetime import date as _date
+
+    from atlas.data.alpaca_history import download_window, publish_dataset_session, random_window_start, sample_days
+    from atlas.feeds.alpaca import HISTORY_PATHS, http_fetch, load_credentials
+
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=30, allowed=HISTORY_PATHS)
+    out = Path("data/processed") / args.dataset
+    done = set()
+    if (out / "manifest.json").is_file():
+        done = {s["date"] for s in json.loads((out / "manifest.json").read_text(encoding="utf-8"))["sessions"]}
+    days = sample_days(_date.fromisoformat(args.first), _date.fromisoformat(args.last), args.days, args.seed)
+    meta = {"source": f"alpaca-{args.feed}", "feed": args.feed,
+            "license_notes": "Alpaca historical market data, downloaded for personal research; check Alpaca's data "
+                             "terms before sharing or redistributing",
+            "timestamp_kind": "vendor",
+            "timestamp_notes": "event_ts = Alpaca's timestamp; receive_ts = emulated poll time + 80 ms",
+            "fidelity": f"{args.feed.upper()} Level 1 history, re-sampled like the live poller (latest quote every "
+                        f"1 s, latest trade every 2 s); one {args.minutes}-minute window per day",
+            "price_adjustment": "none: raw intraday prices (each session is simulated flat at its start)",
+            "corporate_actions": [], "universe_source": "symbols passed to fetch-history",
+            "chronology_notes": "events in emulated arrival order (by poll, then source time)",
+            "order_scope": "symbol_type"}
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    gate, last = threading.Lock(), [0.0]
+
+    def paced(path: str, params: dict[str, str]):  # all threads together stay under ~170 requests/min
+        with gate:
+            wait = last[0] + 60 / 170 - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            last[0] = time.monotonic()
+        return fetch(path, params)
+
+    publish = threading.Lock()
+
+    def one(i: int, day):
+        start = random_window_start(random.Random(f"{args.seed}-{day}"), args.minutes)
+        t0 = time.monotonic()
+        events, units = download_window(paced, args.symbols, day, start, args.minutes, args.feed, min_interval_s=0)
+        if len({e.symbol for e in events if e.event_type == "quote"}) < len(args.symbols):  # holiday / no data
+            return f"[{i}/{len(days)}] {day} skipped: no data"
+        with publish:
+            entry = publish_dataset_session(out, args.dataset, day, events, args.symbols, meta,
+                                            {"window_start_et": start.strftime("%H:%M"),
+                                             "window_minutes": args.minutes, "quote_size_unit": units})
+        return f"[{i}/{len(days)}] {day} {start:%H:%M} ET: {entry['rows']} events in {time.monotonic() - t0:.0f}s"
+
+    todo = [(i, d) for i, d in enumerate(days, 1) if d.isoformat() not in done]
+    print(f"{len(days)} days sampled, {len(todo)} to download", flush=True)
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = [pool.submit(one, i, d) for i, d in todo]
+        for fut in as_completed(futures):
+            try:
+                print(fut.result(), flush=True)
+            except Exception as exc:  # one bad day must not lose the rest; re-running retries it
+                print(f"day failed: {type(exc).__name__}: {exc}", flush=True)
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Project Atlas research CLI (simulation only).")
     parser.add_argument("--log-level", default="INFO")
@@ -572,6 +637,18 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("import-data", help="Import raw CSVs into normalized Parquet sessions plus a manifest.")
     p.add_argument("--config", required=True)
     p.set_defaults(func=_cmd_import_data)
+
+    p = sub.add_parser("fetch-history", help="Download real Alpaca history (read-only) as polled training sessions.")
+    p.add_argument("--dataset", default="alpaca_sip_hist")
+    p.add_argument("--feed", default="sip", choices=["sip", "iex"])
+    p.add_argument("--symbols", nargs="+", default=["SPY", "QQQ"])
+    p.add_argument("--first", default="2016-06-01")
+    p.add_argument("--last", default="2026-10-23")
+    p.add_argument("--days", type=int, default=40, help="random days, spread evenly (stress days are added)")
+    p.add_argument("--minutes", type=int, default=30, help="window length per day")
+    p.add_argument("--seed", type=int, default=2026)
+    p.add_argument("--workers", type=int, default=6, help="parallel downloads (shared rate limit)")
+    p.set_defaults(func=_cmd_fetch_history)
 
     p = sub.add_parser("walkforward", help="Nested walk-forward evaluation (the outer holdout stays untouched).")
     p.add_argument("--config", required=True)
