@@ -29,10 +29,10 @@ feed:
 # All are frozen: nothing trains during the session.
 # NOTE: these champions were evolved on synthetic data, so their live results are not evidence of an edge.
 # Each bot's `name` is what you see on the leaderboard, in reports, and in the fund ledger.
-candidate: {name: Liquidity-A, source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 0}
+candidate: {name: Liquidity, source: checkpoint, path: bots/live_lineup_v1.json, rank: 0}
 shadows:
-  - {name: Liquidity-B, source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 1}
-  - {name: Regime, source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 2}
+  - {name: Regime, source: checkpoint, path: bots/live_lineup_v1.json, rank: 1}
+  - {name: MomentumEvo, source: checkpoint, path: bots/live_lineup_v1.json, rank: 2}
   - {name: Momentum, source: baseline, baseline: baseline_momentum}
   - {name: MeanRevert, source: baseline, baseline: baseline_mean_reversion}
   - {name: Random, source: baseline, baseline: baseline_random}

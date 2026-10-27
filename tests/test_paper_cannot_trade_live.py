@@ -155,3 +155,17 @@ def test_full_session_runs_with_networking_disabled(tmp_path: Path, monkeypatch)
     assert "No order was sent to any broker" in (s.dir / "daily_report.md").read_text(encoding="utf-8")
     saved = json.loads((s.dir / "state.json").read_text(encoding="utf-8"))
     assert "live" not in json.dumps(saved["accounts"]).lower().replace("live_", "")
+
+
+def test_every_bot_file_the_configs_use_is_committed() -> None:
+    """Configs must never depend on untracked local files (e.g. git-ignored checkpoints)."""
+    import subprocess
+
+    import yaml
+
+    tracked = set(subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True).stdout.split())
+    for cfg in ("configs/paper_live.yaml", "configs/paper.yaml"):
+        raw = yaml.safe_load((REPO / cfg).read_text(encoding="utf-8"))
+        for src in [raw["candidate"], *raw.get("shadows", [])]:
+            if src.get("path"):
+                assert src["path"] in tracked, f"{cfg} uses {src['path']}, which is not committed"

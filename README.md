@@ -396,9 +396,12 @@ hours, so they run in their own window or in the background.
 * **Permanent bots.** **Flip**, the coin-flip bot, and **Hold**, the buy-and-hold benchmark,
   are added to every paper session automatically. A config can't remove or duplicate
   them, and both names are reserved.
-* **Bot names.** Each bot's `name` in the config (Liquidity-A, Liquidity-B, Regime,
+* **Bot names.** Each bot's `name` in the config (Liquidity, Regime, MomentumEvo,
   Momentum, MeanRevert, Random) is what appears on the leaderboard, in reports and in
   the fund ledger.
+* **The bots are in the repo.** The evolved bots' frozen parameters live in
+  [bots/live_lineup_v1.json](bots/live_lineup_v1.json), and [bots/README.md](bots/README.md)
+  explains each bot. A test ensures configs never depend on untracked files.
 * **Coin-flip bot.** `baseline_coin_flip` flips a fair coin per symbol every 5 minutes:
   heads holds 1 share, tails holds none. It is long-or-flat because Atlas does not short.
   The flips are seeded by time, so a day replays identically but every day is new. A

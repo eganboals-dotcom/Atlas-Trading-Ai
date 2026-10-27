@@ -1,0 +1,107 @@
+{
+  "format": 1,
+  "population_version": "v1-non-rl",
+  "description": "Frozen evolved bots used by configs/paper_live.yaml. Each record's genome fully determines the bot's behavior together with the family code in src/atlas/agents/families.py. Never edit by hand: changing a genome makes it a different bot. Three distinct strategies: the best liquidity, regime-adaptive and momentum champions of the run (a near-identical liquidity sibling was deliberately left out).",
+  "provenance": {
+    "experiment": "synthetic_baseline_v1",
+    "checkpoint": "gen_005",
+    "generation": 5,
+    "config_fingerprint": "0f923e4990a55ed0",
+    "atlas_version": "0.1.0",
+    "agent_session_evaluations": 750,
+    "trained_on": "synthetic random-walk data (configs/evolution.yaml windows)"
+  },
+  "archives": {
+    "champions": [
+      {
+        "generation_evaluated": 3,
+        "record": {
+          "agent_id": "g003-a05",
+          "family": "liquidity",
+          "generation": 3,
+          "genome": {
+            "exit_spread_mult": 4.677153874444089,
+            "imbalance_entry": 0.256469302671132,
+            "imbalance_exit": -0.8001951765194052,
+            "max_hold_s": 172.19763662550545,
+            "max_spread_bps": 0.3476872417778776,
+            "min_depth": 1041,
+            "size_frac": 0.13673365274384774
+          },
+          "mutations": [
+            "exit_spread_mult: 4.9185 -> 4.67715",
+            "imbalance_entry: 0.247933 -> 0.256469",
+            "size_frac: 0.178606 -> 0.136734"
+          ],
+          "origin": "small_mutation",
+          "parents": [
+            "g002-a17"
+          ]
+        },
+        "score": -0.08776161220928616,
+        "name": "Liquidity",
+        "genome_hash": "b9946d9715492b5e"
+      },
+      {
+        "generation_evaluated": 4,
+        "record": {
+          "agent_id": "g004-a23",
+          "family": "regime_adaptive",
+          "generation": 4,
+          "genome": {
+            "exit_bps": 1.6875985171828682,
+            "high_vol_flat": 0,
+            "horizon_s": 5.0,
+            "max_hold_s": 12.539576205361461,
+            "max_spread_bps": 2.2630986160295694,
+            "mom_entry_bps": 1.2153348184111974,
+            "mr_entry_z": 2.7175294489533486,
+            "size_frac": 0.05,
+            "vol_ratio_threshold": 0.7801744410135257
+          },
+          "mutations": [
+            "horizon_s: 0.5 -> 5",
+            "max_hold_s: 23.1503 -> 12.5396",
+            "max_spread_bps: 2.15339 -> 2.2631",
+            "mr_entry_z: 2.38951 -> 2.71753",
+            "size_frac: 0.05 -> 0.05"
+          ],
+          "origin": "small_mutation",
+          "parents": [
+            "g003-a27"
+          ]
+        },
+        "score": -0.16549587196451085,
+        "name": "Regime",
+        "genome_hash": "bd560756dcbfdff7"
+      },
+      {
+        "generation_evaluated": 4,
+        "record": {
+          "agent_id": "g004-a12",
+          "family": "momentum",
+          "generation": 4,
+          "genome": {
+            "entry_bps": 4.35291378543875,
+            "exit_bps": 0.10000000000000002,
+            "horizon_s": 1.0,
+            "max_hold_s": 28.72414282268629,
+            "max_spread_bps": 3.9000583779596436,
+            "size_frac": 0.13902086090238877
+          },
+          "mutations": [
+            "exit_bps: 0.10704 -> 0.1"
+          ],
+          "origin": "crossover",
+          "parents": [
+            "g003-a10",
+            "g003-a32"
+          ]
+        },
+        "score": -0.27144504339493275,
+        "name": "MomentumEvo",
+        "genome_hash": "6539c8f8310df9be"
+      }
+    ]
+  }
+}

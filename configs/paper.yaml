@@ -20,11 +20,11 @@ feed:
   first_quote_timeout_ms: 5000
   faults: {}                    # failure drills, e.g. {disconnect_at_events: [5000], disconnect_failures: 1}
 
-# Frozen candidate: the top champion of an evolution checkpoint (run `evolve` first), or a
-# walk-forward design: {source: design, path: artifacts/reports/walkforward/<run_id>/design.json}
-candidate: {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 0}
+# Frozen candidate: a bot from the committed lineup in bots/ (see bots/README.md), an evolution checkpoint,
+# or a walk-forward design: {source: design, path: artifacts/reports/walkforward/<run_id>/design.json}
+candidate: {source: checkpoint, path: bots/live_lineup_v1.json, rank: 0}
 shadows:                        # small comparison group, each in its own paper account
-  - {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 1}
+  - {source: checkpoint, path: bots/live_lineup_v1.json, rank: 1}
   - {source: baseline, baseline: baseline_random}
 # A buy-and-hold benchmark account is always added automatically.
 
