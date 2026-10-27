@@ -79,7 +79,7 @@ def test_generations_always_have_50_agents_and_full_lineage(tmp_path: Path) -> N
     assert len(report["leaderboard"]) == 50
     assert len(report["parents"]) == 5
     assert set(report["baselines"]) == {"baseline-cash", "baseline-buy_hold", "baseline-momentum",
-                                        "baseline-mean_reversion", "baseline-random"}
+                                        "baseline-mean_reversion", "baseline-random", "baseline-coin_flip"}
     assert report["fitness_fingerprint"] and report["disclaimer"]
     assert not any(a.agent_id.startswith("baseline") for a in state.lineage)
 

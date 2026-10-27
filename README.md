@@ -345,7 +345,7 @@ crash, `--resume`:
 
 ### Paper trading on live prices (Alpaca)
 
-Paper trading on **live market prices** from Alpaca: six frozen bots plus a
+Paper trading on **live market prices** from Alpaca: seven frozen bots plus a
 buy-and-hold benchmark, with a live page that opens automatically. **Market data only.**
 Atlas reads prices from two GET endpoints on `data.alpaca.markets` and contains no code
 that can place an order at Alpaca or anywhere else. Every order and fill is simulated by
@@ -393,8 +393,12 @@ hours, so they run in their own window or in the background.
 
   It stays open with the final standings after the close. Without the `window` extra,
   the terminal view (`paper-watch`) is used instead.
-* **Fund.** `fund.total_capital` (here $100,000) is split equally across the 6 bots on
-  day 1, $16,666.67 each, and each bot trades only its own share. At the close, open
+* **Coin-flip bot.** `baseline_coin_flip` flips a fair coin per symbol every 5 minutes:
+  heads holds 1 share, tails holds none. It is long-or-flat because Atlas does not short.
+  The flips are seeded by time, so a day replays identically but every day is new. A
+  strategy worth keeping should beat it over time, after costs.
+* **Fund.** `fund.total_capital` (here $100,000) is split equally across the 7 bots on
+  day 1, $14,285.71 each, and each bot trades only its own share. At the close, open
   positions are sold at the bid, after costs. Each bot starts the next day with exactly
   what it ended with, so its capital grows and shrinks with its own P&L. The ledger is
   `artifacts/paper/fund_ledger.json`. Changing the bot lineup requires `--reset-fund`,

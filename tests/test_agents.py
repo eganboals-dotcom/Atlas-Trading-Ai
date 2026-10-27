@@ -85,7 +85,7 @@ def test_initial_population_is_50_with_10_per_family() -> None:
 def test_baselines_are_not_evolvable_families() -> None:
     assert not set(BASELINE_CLASSES) & set(FAMILY_CLASSES)
     assert all(r.origin == "baseline" for r in baseline_records())
-    assert len(baseline_records()) == 5
+    assert len(baseline_records()) == 6
 
 
 def test_record_family_must_match_agent() -> None:
@@ -256,3 +256,50 @@ def test_agent_observation_is_read_only() -> None:
     obs = agent.observe({}, PortfolioState.of(1.0, 1.0, {"SPY": 3}), 0)
     with pytest.raises(TypeError):
         obs.positions["SPY"] = 5  # type: ignore[index]
+
+
+def test_coin_flip_bot_flips_every_5_minutes_and_holds_at_most_one_share() -> None:
+    from atlas.agents.baselines import CoinFlipBaseline
+    from atlas.agents.features import SymbolFeatures
+    from atlas.environment.market_state import PortfolioState
+
+    def bot(seed: int) -> CoinFlipBaseline:
+        b = CoinFlipBaseline(next(r for r in baseline_records() if r.family == "baseline_coin_flip"))
+        b.initialize(AgentRuntime(("SPY", "QQQ"), LIMITS), seed)
+        return b
+
+    fresh = SymbolFeatures.invalid("X")
+    feats = {s: SymbolFeatures(s, True, 100.0, 99.99, 100.01, 2.0, 500, 500, 10.0, 0.0, fresh.returns_bps, 1.0, 1.0,
+                               fresh.flow_imbalance, fresh.trade_volume) for s in ("SPY", "QQQ")}
+    state = PortfolioState.of(10_000.0, 10_000.0, {})
+    five_min = 300 * 1_000_000_000
+    t0 = ts(0) - ts(0) % five_min
+
+    def run(b, start, flips):
+        out = []
+        for k in range(flips):
+            seen = {b.act(b.observe(feats, state, start + k * five_min + j * 2_000_000_000))["SPY"] for j in range(150)}
+            assert len(seen) == 1  # constant within each 5-minute window
+            out.append(seen.pop())
+        return out
+
+    a = run(bot(7), t0, 400)
+    assert set(a) <= {0, 1}
+    assert 0.40 < sum(a) / len(a) < 0.60  # a fair coin
+    assert run(bot(7), t0, 400) == a  # same day replays identically
+    assert run(bot(7), t0 + 86_400 * 1_000_000_000, 400) != a  # a new day gets fresh flips
+    b = bot(7)
+    stale = {s: SymbolFeatures.invalid(s) for s in ("SPY", "QQQ")}
+    held = PortfolioState.of(10_000.0, 10_000.0, {"SPY": 1})
+    assert b.act(b.observe(stale, held, t0))["SPY"] == 1  # never acts on stale data
+
+
+def test_coin_flip_bot_trades_in_a_session() -> None:
+    from atlas.agents.baselines import CoinFlipBaseline
+
+    events = validate_events(generate_events(data_config(duration_s=1800)), 2_000).valid_events
+    rec = next(r for r in baseline_records() if r.family == "baseline_coin_flip")
+    strat = AgentStrategy(CoinFlipBaseline(rec), ["SPY", "QQQ"], LIMITS, 500 * NS_PER_MS, 2_000 * NS_PER_MS, seed=3)
+    result = ReplayEngine(sim_config(stale_quote_ms=2_000.0), ["SPY", "QQQ"]).run(events, strat)
+    assert result.fills and all(f.quantity == 1 for f in result.fills)
+    assert all(p["quantity"] <= 1 for p in result.final["positions"].values())

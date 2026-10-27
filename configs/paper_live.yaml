@@ -25,7 +25,7 @@ feed:
     wait_for_open: true
     env_file: .env
 
-# Six bots plus the automatic buy-and-hold benchmark. All are frozen: nothing trains during the session.
+# Seven bots plus the automatic buy-and-hold benchmark. All are frozen: nothing trains during the session.
 # NOTE: these champions were evolved on synthetic data, so their live results are not evidence of an edge.
 candidate: {source: checkpoint, path: artifacts/checkpoints/synthetic_baseline_v1/gen_005.json, rank: 0}
 shadows:
@@ -34,8 +34,9 @@ shadows:
   - {source: baseline, baseline: baseline_momentum}
   - {source: baseline, baseline: baseline_mean_reversion}
   - {source: baseline, baseline: baseline_random}
+  - {source: baseline, baseline: baseline_coin_flip}   # every 5 min: coin flip per symbol, hold 1 share or none
 
-# Fund: $100,000 split equally across the 6 bots on day 1 ($16,666.67 each). Each bot trades only its share;
+# Fund: $100,000 split equally across the 7 bots on day 1 ($14,285.71 each). Each bot trades only its share;
 # at the close its positions are sold at the bid, and it starts the next day with whatever it ended with.
 # The ledger is artifacts/paper/fund_ledger.json. `--reset-fund` archives it and splits afresh.
 fund: {total_capital: 100000, flatten_at_close: true}
