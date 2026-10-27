@@ -55,6 +55,10 @@ from atlas.timeutils import MARKET_TZ, NS_PER_MS, NS_PER_S
 log = get_logger(__name__)
 STATE_VERSION = 1
 MAX_BACKOFF_MS = 30_000.0
+# Always present in every paper session, whatever the config says: the coin flip is a ranked bot (with
+# its own fund share) that every strategy has to beat; buy-and-hold is the unranked market yardstick.
+PERMANENT_BASELINES = {"coin-flip": "baseline_coin_flip", "benchmark": "baseline_buy_hold"}
+ROLES = {"coin-flip": "control", "benchmark": "benchmark"}
 STOP_FILE = "STOP"  # graceful, resumable stop requested by `paper-stop` (unlike KILL, which halts trading)
 
 
@@ -304,8 +308,11 @@ class PaperSession:
             raise HealthCheckError(f"feed symbols {not_allowed} are not in risk.allowed_symbols")
 
         sources = [("champion", self.cfg.candidate)]
-        sources += [(f"shadow-{i + 1}", s) for i, s in enumerate(self.cfg.shadows)]
-        sources += [("benchmark", CandidateSource(source="baseline", baseline="baseline_buy_hold"))]
+        # Permanent accounts are always added here and can't be removed (or duplicated) by any config.
+        shadows = [s for s in self.cfg.shadows
+                   if not (s.source == "baseline" and s.baseline in PERMANENT_BASELINES.values())]
+        sources += [(f"shadow-{i + 1}", s) for i, s in enumerate(shadows)]
+        sources += [(acct, CandidateSource(source="baseline", baseline=fam)) for acct, fam in PERMANENT_BASELINES.items()]
         self.dir.mkdir(parents=True, exist_ok=True)
         acquire_lock(self.dir)  # one process per session: a second launcher refuses instead of corrupting files
         self.audit = AuditLog(self.dir / "audit.jsonl")
@@ -326,7 +333,7 @@ class PaperSession:
             broker = make_broker(role_id, self.sim, self.sim.seed + 100 + i, self.audit.write,
                                  capital.get(role_id))
             self.accounts.append(Account(
-                role_id, role_id.split("-")[0], record,
+                role_id, ROLES.get(role_id, role_id.split("-")[0]), record,
                 {"agent_id": meta.agent_id, "family": meta.family, "genome_hash": meta.genome_hash,
                  "population_version": meta.population_version, "artifact": record.artifact,
                  "source": src.model_dump(mode="json")},

@@ -157,10 +157,10 @@ def test_full_live_session_writes_leaderboard_snapshot(tmp_path: Path) -> None:
     assert report["counters"]["events"] > 300
     live = data.load_live(s.dir)
     assert live["status"] == "ended" and live["simulated"] is True
-    assert {a["account"] for a in live["accounts"]} == {"champion", "shadow-1", "shadow-2", "benchmark"}
+    assert {a["account"] for a in live["accounts"]} == {"champion", "shadow-1", "shadow-2", "coin-flip", "benchmark"}
     board = data.leaderboard(live)
     ranked = [r for r in board if r["rank"]]
-    assert [r["rank"] for r in ranked] == [1, 2, 3]
+    assert [r["rank"] for r in ranked] == [1, 2, 3, 4]  # the coin flip is a ranked bot
     assert [r["net_pnl"] for r in ranked] == sorted((r["net_pnl"] for r in ranked), reverse=True)
     assert board[-1]["role"] == "benchmark" and board[-1]["rank"] is None
     assert any(a["fills"] for a in live["accounts"])
@@ -225,27 +225,27 @@ def test_fund_splits_equally_flattens_at_close_and_compounds(tmp_path: Path) -> 
     day1 = fund_session(tmp_path, DAY)
     day1.run()
     bots = [a for a in day1.accounts if a.role != "benchmark"]
-    assert len(bots) == 3
-    assert all(a.broker.portfolio.initial_cash == pytest.approx(30_000) for a in day1.accounts)  # 90k / 3 bots
+    assert len(bots) == 4  # champion, two shadows, and the permanent coin-flip bot
+    assert all(a.broker.portfolio.initial_cash == pytest.approx(22_500) for a in day1.accounts)  # 90k / 4 bots
     assert all(not any(p.quantity for p in a.broker.portfolio.positions.values()) for a in day1.accounts)
     ledger = json.loads((tmp_path / "paper" / "fund_ledger.json").read_text(encoding="utf-8"))
     d1 = ledger["days"][0]
-    assert d1["final"] is True and set(d1["bots"]) == {"champion", "shadow-1", "shadow-2"}
+    assert d1["final"] is True and set(d1["bots"]) == {"champion", "shadow-1", "shadow-2", "coin-flip"}
     ends = {b: v["end"] for b, v in d1["bots"].items()}
-    assert any(abs(e - 30_000) > 0.01 for e in ends.values())  # someone made or lost money
+    assert any(abs(e - 22_500) > 0.01 for e in ends.values())  # someone made or lost money
 
     day2 = fund_session(tmp_path, date(2026, 6, 2))
     day2.run()
     starts = {a.account_id: a.broker.portfolio.initial_cash for a in day2.accounts if a.role != "benchmark"}
     assert starts == pytest.approx(ends)  # each bot starts day 2 with exactly what it ended day 1 with
     bench = next(a for a in day2.accounts if a.role == "benchmark")
-    assert bench.broker.portfolio.initial_cash == pytest.approx(30_000)  # benchmark: fresh share daily
+    assert bench.broker.portfolio.initial_cash == pytest.approx(22_500)  # benchmark: fresh share daily
     live = data.load_live(day2.dir)
     assert live["fund"]["days_settled"] == 2
     assert live["fund"]["equity"] == pytest.approx(sum(a["equity"] for a in live["accounts"] if a["role"] != "benchmark"))
     champ = next(a for a in live["accounts"] if a["account"] == "champion")
-    assert champ["inception_capital"] == pytest.approx(30_000)
-    assert champ["total_pnl"] == pytest.approx(champ["equity"] - 30_000)
+    assert champ["inception_capital"] == pytest.approx(22_500)
+    assert champ["total_pnl"] == pytest.approx(champ["equity"] - 22_500)
     assert len(FundLedger(tmp_path / "paper" / "fund_ledger.json", 90_000).data["days"]) == 2
 
 
@@ -277,7 +277,7 @@ def test_leaderboard_window_api_is_read_only_and_page_is_offline(tmp_path: Path)
     public = [n for n, _ in inspect.getmembers(api, inspect.ismethod) if not n.startswith("_")]
     assert public == ["live"]  # the page can only read the snapshot
     d = api.live()
-    assert d["live"]["fund"]["bots"] == 3 and len(d["rows"]) == 4 and d["age"] >= 0
+    assert d["live"]["fund"]["bots"] == 4 and len(d["rows"]) == 5 and d["age"] >= 0
     assert d["live"]["quotes"].keys() == {"SPY", "QQQ"}
     assert Api(tmp_path / "missing").live() is None
     page = HTML.read_text(encoding="utf-8")

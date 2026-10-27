@@ -16,7 +16,7 @@ def test_session_produces_accounts_audit_and_daily_report(tmp_path: Path) -> Non
     s = session(tmp_path)
     report = s.run()
     roles = {a["account"]: a["role"] for a in report["accounts"]}
-    assert roles == {"champion": "champion", "shadow-1": "shadow", "benchmark": "benchmark"}
+    assert roles == {"champion": "champion", "shadow-1": "shadow", "coin-flip": "control", "benchmark": "benchmark"}
     bench = next(a for a in report["accounts"] if a["role"] == "benchmark")
     assert bench["excess_return_vs_benchmark"] == 0.0
     for a in s.accounts:
@@ -175,3 +175,19 @@ def test_second_process_cannot_run_the_same_session(tmp_path: Path) -> None:
     s2.run()
     assert not (s2.dir / LOCK_FILE).exists()  # released at the end
     assert pid_alive(os.getpid())
+
+
+def test_buy_and_hold_and_coin_flip_are_permanent(tmp_path: Path) -> None:
+    """They're always present; a config can neither remove nor duplicate them."""
+    no_shadows = session(tmp_path / "a", shadows=[])
+    no_shadows.health_checks()
+    assert {a.account_id: a.model["family"] for a in no_shadows.accounts} == {
+        "champion": "baseline_momentum", "coin-flip": "baseline_coin_flip", "benchmark": "baseline_buy_hold"}
+
+    duplicates = session(tmp_path / "b", shadows=[{"source": "baseline", "baseline": "baseline_coin_flip"},
+                                                  {"source": "baseline", "baseline": "baseline_buy_hold"},
+                                                  {"source": "baseline", "baseline": "baseline_random"}])
+    duplicates.health_checks()
+    families = [a.model["family"] for a in duplicates.accounts]
+    assert families.count("baseline_coin_flip") == 1 and families.count("baseline_buy_hold") == 1
+    assert [a.account_id for a in duplicates.accounts] == ["champion", "shadow-1", "coin-flip", "benchmark"]

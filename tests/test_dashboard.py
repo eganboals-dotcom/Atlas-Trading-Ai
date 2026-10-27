@@ -28,7 +28,7 @@ def test_loaders_read_a_session(tmp_path: Path) -> None:
     assert data.list_sessions(paper_dir) == [s.dir]
     assert data.load_report(s.dir)["mode"] == "paper"
     eq = data.equity_frame(s.dir)
-    assert eq.height > 0 and set(eq["account"].unique()) == {"champion", "shadow-1", "benchmark"}
+    assert eq.height > 0 and set(eq["account"].unique()) == {"champion", "shadow-1", "coin-flip", "benchmark"}
     assert data.fills(s.dir) and all(f["simulated"] for f in data.fills(s.dir))
     assert data.list_sessions(tmp_path / "missing") == []
 
