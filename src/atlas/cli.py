@@ -1,7 +1,7 @@
 """Command-line entry point: ``python -m atlas.cli <command> --config <path>``.
 
-Phase 1 commands: ``validate-data`` and ``simulate``. Later phases add evolve,
-evaluate, paper, and report.
+Commands: ``validate-data``, ``simulate`` (Phase 1) and ``evolve`` (Phase 2). Later
+phases add evaluate, paper, and report.
 """
 
 from __future__ import annotations
@@ -51,6 +51,40 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _resolve(path: Path, relative_to: Path) -> Path:
+    for candidate in (path, relative_to.parent / path):
+        if candidate.is_file():
+            return candidate
+    raise ConfigError(f"referenced config not found: {path}")
+
+
+def _cmd_evolve(args: argparse.Namespace) -> int:
+    from atlas.config import EvolutionConfig
+    from atlas.evolution.runner import CheckpointError, EvolutionRunner
+
+    evo_path = Path(args.config)
+    evo = load_config(evo_path, EvolutionConfig)
+    if args.workers is not None:
+        evo = evo.model_copy(update={"evaluation": evo.evaluation.model_copy(update={"workers": args.workers})})
+    sim = load_config(_resolve(evo.simulator_config, evo_path), SimulatorConfig)
+    data = load_config(_resolve(evo.data_config, evo_path), DataConfig)
+    runner = EvolutionRunner(evo, sim, data)
+    try:
+        state = runner.run(generations=args.generations, resume=args.resume)
+    except CheckpointError as exc:
+        print(f"checkpoint error: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    print(json.dumps({
+        "experiment": evo.experiment_name,
+        "generations_completed": state.generation,
+        "stopped": state.stopped,
+        "history": state.history,
+        "reports": str(runner.report_dir),
+        "checkpoints": str(runner.ckpt_dir),
+    }, indent=2))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Project Atlas research CLI (simulation only).")
     parser.add_argument("--log-level", default="INFO")
@@ -67,6 +101,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", help="override reports directory")
     p.add_argument("--no-write", action="store_true", help="do not write run artifacts")
     p.set_defaults(func=_cmd_simulate)
+
+    p = sub.add_parser("evolve", help="Run evolutionary generations of the 50-agent population.")
+    p.add_argument("--config", required=True)
+    p.add_argument("--generations", type=int, help="total generations to reach (default: config value)")
+    p.add_argument("--resume", action="store_true", help="continue from the latest checkpoint")
+    p.add_argument("--workers", type=int, help="parallel evaluation processes (0 = auto)")
+    p.set_defaults(func=_cmd_evolve)
     return parser
 
 
