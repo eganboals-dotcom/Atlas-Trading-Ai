@@ -393,8 +393,12 @@ hours, so they run in their own window or in the background.
 
   It stays open with the final standings after the close. Without the `window` extra,
   the terminal view (`paper-watch`) is used instead.
-* **Permanent bots.** The coin-flip bot (`coin-flip`) and the buy-and-hold benchmark are added
-  to every paper session automatically. A config can't remove or duplicate them.
+* **Permanent bots.** **Flip**, the coin-flip bot, and **Hold**, the buy-and-hold benchmark,
+  are added to every paper session automatically. A config can't remove or duplicate
+  them, and both names are reserved.
+* **Bot names.** Each bot's `name` in the config (Liquidity-A, Liquidity-B, Regime,
+  Momentum, MeanRevert, Random) is what appears on the leaderboard, in reports and in
+  the fund ledger.
 * **Coin-flip bot.** `baseline_coin_flip` flips a fair coin per symbol every 5 minutes:
   heads holds 1 share, tails holds none. It is long-or-flat because Atlas does not short.
   The flips are seeded by time, so a day replays identically but every day is new. A

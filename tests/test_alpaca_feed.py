@@ -157,7 +157,7 @@ def test_full_live_session_writes_leaderboard_snapshot(tmp_path: Path) -> None:
     assert report["counters"]["events"] > 300
     live = data.load_live(s.dir)
     assert live["status"] == "ended" and live["simulated"] is True
-    assert {a["account"] for a in live["accounts"]} == {"champion", "shadow-1", "shadow-2", "coin-flip", "benchmark"}
+    assert {a["account"] for a in live["accounts"]} == {"champion", "shadow-1", "shadow-2", "Flip", "Hold"}
     board = data.leaderboard(live)
     ranked = [r for r in board if r["rank"]]
     assert [r["rank"] for r in ranked] == [1, 2, 3, 4]  # the coin flip is a ranked bot
@@ -230,7 +230,7 @@ def test_fund_splits_equally_flattens_at_close_and_compounds(tmp_path: Path) -> 
     assert all(not any(p.quantity for p in a.broker.portfolio.positions.values()) for a in day1.accounts)
     ledger = json.loads((tmp_path / "paper" / "fund_ledger.json").read_text(encoding="utf-8"))
     d1 = ledger["days"][0]
-    assert d1["final"] is True and set(d1["bots"]) == {"champion", "shadow-1", "shadow-2", "coin-flip"}
+    assert d1["final"] is True and set(d1["bots"]) == {"champion", "shadow-1", "shadow-2", "Flip"}
     ends = {b: v["end"] for b, v in d1["bots"].items()}
     assert any(abs(e - 22_500) > 0.01 for e in ends.values())  # someone made or lost money
 

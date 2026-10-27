@@ -15,7 +15,7 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
   the user to add them to `.env` themselves.
 - **Don't change a running session.** Never edit `configs/paper_live.yaml`, `configs/risk_live.yaml`, or
   checkpoints while a session runs. Risk limits are the user's to change.
-- **Permanent bots.** The `coin-flip` bot and the buy-and-hold `benchmark` are in every paper session
+- **Permanent bots.** `Flip` (coin flip) and `Hold` (buy-and-hold benchmark) are in every paper session
   (`PERMANENT_BASELINES` in `src/atlas/paper/session.py`). Never remove them; they are the yardsticks
   every strategy is judged against.
 - **Personal info.** Never commit `.env`, keys, account numbers, local paths, or the user's email. Commits use the

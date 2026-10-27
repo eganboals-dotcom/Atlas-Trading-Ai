@@ -57,8 +57,8 @@ STATE_VERSION = 1
 MAX_BACKOFF_MS = 30_000.0
 # Always present in every paper session, whatever the config says: the coin flip is a ranked bot (with
 # its own fund share) that every strategy has to beat; buy-and-hold is the unranked market yardstick.
-PERMANENT_BASELINES = {"coin-flip": "baseline_coin_flip", "benchmark": "baseline_buy_hold"}
-ROLES = {"coin-flip": "control", "benchmark": "benchmark"}
+PERMANENT_BASELINES = {"Flip": "baseline_coin_flip", "Hold": "baseline_buy_hold"}  # account name -> family
+ROLES = {"Flip": "control", "Hold": "benchmark"}
 STOP_FILE = "STOP"  # graceful, resumable stop requested by `paper-stop` (unlike KILL, which halts trading)
 
 
@@ -307,20 +307,24 @@ class PaperSession:
         if not_allowed:
             raise HealthCheckError(f"feed symbols {not_allowed} are not in risk.allowed_symbols")
 
-        sources = [("champion", self.cfg.candidate)]
+        sources = [(self.cfg.candidate.name or "champion", "champion", self.cfg.candidate)]
         # Permanent accounts are always added here and can't be removed (or duplicated) by any config.
         shadows = [s for s in self.cfg.shadows
                    if not (s.source == "baseline" and s.baseline in PERMANENT_BASELINES.values())]
-        sources += [(f"shadow-{i + 1}", s) for i, s in enumerate(shadows)]
-        sources += [(acct, CandidateSource(source="baseline", baseline=fam)) for acct, fam in PERMANENT_BASELINES.items()]
+        sources += [(s.name or f"shadow-{i + 1}", "shadow", s) for i, s in enumerate(shadows)]
+        sources += [(acct, ROLES[acct], CandidateSource(source="baseline", baseline=fam))
+                    for acct, fam in PERMANENT_BASELINES.items()]
+        names = [acct.lower() for acct, _, _ in sources]
+        if len(set(names)) != len(names):
+            raise HealthCheckError(f"bot names must be unique (Flip and Hold are reserved): {[a for a, _, _ in sources]}")
         self.dir.mkdir(parents=True, exist_ok=True)
         acquire_lock(self.dir)  # one process per session: a second launcher refuses instead of corrupting files
         self.audit = AuditLog(self.dir / "audit.jsonl")
         self.alerts = Alerts(self.dir / "alerts.jsonl", self.cfg.alerts.console, self.cfg.alerts.file)
         self.kill = KillSwitch(self.dir)
-        records = [(role_id, src, resolve_candidate(src)) for role_id, src in sources]
+        records = [(acct, role, src, resolve_candidate(src)) for acct, role, src in sources]
         capital, inception = self._fund_capital(records)
-        for i, (role_id, src, record) in enumerate(records):
+        for i, (role_id, role, src, record) in enumerate(records):
             try:
                 agent = create_agent(record)  # validates genome / pinned weights (model mismatch -> refuse)
             except (ValueError, KeyError, ImportError) as exc:
@@ -333,7 +337,7 @@ class PaperSession:
             broker = make_broker(role_id, self.sim, self.sim.seed + 100 + i, self.audit.write,
                                  capital.get(role_id))
             self.accounts.append(Account(
-                role_id, ROLES.get(role_id, role_id.split("-")[0]), record,
+                role_id, role, record,
                 {"agent_id": meta.agent_id, "family": meta.family, "genome_hash": meta.genome_hash,
                  "population_version": meta.population_version, "artifact": record.artifact,
                  "source": src.model_dump(mode="json")},
@@ -443,12 +447,13 @@ class PaperSession:
         self.fund = FundLedger(path, f.total_capital)
         if self.reset_fund and (archived := self.fund.archive()):
             print(f"fund ledger archived to {archived}; starting a new fund", file=sys.stderr)
-        bots = {role: rec.agent_id for role, _, rec in records if role != "benchmark"}
+        bots = {acct: rec.agent_id for acct, role, _, rec in records if role != "benchmark"}
+        bench_ids = [acct for acct, role, _, _ in records if role == "benchmark"]
         try:
             start, inception, bench = self.fund.start_capitals(bots, self.session_date)
         except FundError as exc:
             raise HealthCheckError(str(exc)) from exc
-        return {**start, "benchmark": bench}, {**inception, "benchmark": bench}
+        return {**start, **{b: bench for b in bench_ids}}, {**inception, **{b: bench for b in bench_ids}}
 
     def _flatten_at_close(self, now: int, quote_at) -> None:
         """Sell every open position at the latest bid (after costs), so the day settles in cash."""

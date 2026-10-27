@@ -108,6 +108,7 @@ class CandidateSource(Strict):
     """Where a frozen agent comes from. Paper sessions never train or mutate it."""
 
     source: Literal["design", "checkpoint", "baseline"]
+    name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,23}$")] | None = None  # shown everywhere
     path: Path | None = None  # design.json or evolution checkpoint
     rank: Annotated[int, Field(ge=0)] = 0  # champion rank within a checkpoint archive
     baseline: str | None = None  # e.g. baseline_buy_hold

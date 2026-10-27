@@ -16,7 +16,7 @@ def test_session_produces_accounts_audit_and_daily_report(tmp_path: Path) -> Non
     s = session(tmp_path)
     report = s.run()
     roles = {a["account"]: a["role"] for a in report["accounts"]}
-    assert roles == {"champion": "champion", "shadow-1": "shadow", "coin-flip": "control", "benchmark": "benchmark"}
+    assert roles == {"champion": "champion", "shadow-1": "shadow", "Flip": "control", "Hold": "benchmark"}
     bench = next(a for a in report["accounts"] if a["role"] == "benchmark")
     assert bench["excess_return_vs_benchmark"] == 0.0
     for a in s.accounts:
@@ -149,7 +149,7 @@ def test_paper_status_and_check_commands(tmp_path: Path, capsys) -> None:
     s.run()
     assert main(["paper-status", "--config", str(path)]) == EXIT_OK
     out = capsys.readouterr().out
-    assert "champion" in out and "benchmark" in out and "simulated orders only" in out
+    assert "champion" in out and "Hold" in out and "simulated orders only" in out
 
 
 def test_second_process_cannot_run_the_same_session(tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ def test_buy_and_hold_and_coin_flip_are_permanent(tmp_path: Path) -> None:
     no_shadows = session(tmp_path / "a", shadows=[])
     no_shadows.health_checks()
     assert {a.account_id: a.model["family"] for a in no_shadows.accounts} == {
-        "champion": "baseline_momentum", "coin-flip": "baseline_coin_flip", "benchmark": "baseline_buy_hold"}
+        "champion": "baseline_momentum", "Flip": "baseline_coin_flip", "Hold": "baseline_buy_hold"}
 
     duplicates = session(tmp_path / "b", shadows=[{"source": "baseline", "baseline": "baseline_coin_flip"},
                                                   {"source": "baseline", "baseline": "baseline_buy_hold"},
@@ -190,4 +190,15 @@ def test_buy_and_hold_and_coin_flip_are_permanent(tmp_path: Path) -> None:
     duplicates.health_checks()
     families = [a.model["family"] for a in duplicates.accounts]
     assert families.count("baseline_coin_flip") == 1 and families.count("baseline_buy_hold") == 1
-    assert [a.account_id for a in duplicates.accounts] == ["champion", "shadow-1", "coin-flip", "benchmark"]
+    assert [a.account_id for a in duplicates.accounts] == ["champion", "shadow-1", "Flip", "Hold"]
+
+
+def test_bots_can_be_named_and_reserved_names_are_refused(tmp_path: Path) -> None:
+    named = session(tmp_path / "a", candidate={"source": "baseline", "baseline": "baseline_momentum", "name": "Momo"},
+                    shadows=[{"source": "baseline", "baseline": "baseline_random", "name": "Dice"}])
+    named.health_checks()
+    assert [a.account_id for a in named.accounts] == ["Momo", "Dice", "Flip", "Hold"]
+    assert [a.role for a in named.accounts] == ["champion", "shadow", "control", "benchmark"]
+    clash = session(tmp_path / "b", shadows=[{"source": "baseline", "baseline": "baseline_random", "name": "flip"}])
+    with pytest.raises(HealthCheckError, match="unique"):
+        clash.health_checks()

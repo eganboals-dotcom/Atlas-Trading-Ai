@@ -464,7 +464,9 @@ def _cmd_paper_check(args: argparse.Namespace) -> int:
 
         permanent = set(PERMANENT_BASELINES.values())
         listed = [s for s in cfg.shadows if not (s.source == "baseline" and s.baseline in permanent)]
-        bots = 1 + len(listed) + sum(acct != "benchmark" for acct in PERMANENT_BASELINES)  # champion + shadows + coin flip
+        from atlas.paper.session import ROLES
+
+        bots = 1 + len(listed) + sum(ROLES[acct] != "benchmark" for acct in PERMANENT_BASELINES)  # + Flip
         ledger = cfg.fund.ledger or cfg.output_dir / "fund_ledger.json"
         if ledger.is_file():
             days = _json.loads(ledger.read_text(encoding="utf-8")).get("days", [])
