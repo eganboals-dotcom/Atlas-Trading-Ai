@@ -22,9 +22,15 @@ class Result:
     trades: float  # entries + exits, per symbol
 
 
-def run(p: Panel, x_id: np.ndarray, x_on: np.ndarray, start: int, end: int, cost_bps: float) -> Result:
+def run(p: Panel, x_id: np.ndarray, x_on: np.ndarray, start: int, end: int, cost_bps: float,
+        exit_ret: np.ndarray | None = None, cash: np.ndarray | None = None) -> Result:
+    """``exit_ret`` (where not NaN) replaces a day's open-to-close return for a position that left intraday at a
+    price level. ``cash`` is a daily return (e.g. a T-bill ETF's) earned by the capital out of the market."""
     c = cost_bps / 1e4
     on, intra = p.overnight[start:end], p.intraday[start:end]
+    if exit_ret is not None:
+        ex = exit_ret[start:end]
+        intra = np.where(np.isnan(ex), intra, ex)
     xi = x_id[start:end]
     xo = x_on[start:end].copy()
     xo[-1] = 0.0  # sold at the window's last close
@@ -36,7 +42,17 @@ def run(p: Panel, x_id: np.ndarray, x_on: np.ndarray, start: int, end: int, cost
     night, day = (prev * on).mean(axis=1), (xi * intra).mean(axis=1)
     cost = c * (open_turn + close_turn).mean(axis=1)
     trades = float(((open_turn > 1e-9).sum() + (close_turn > 1e-9).sum()) / xo.shape[1])
-    return Result((1 + night) * (1 + day) - 1 - cost, float((xi.mean() + prev.mean()) / 2), trades)
+    ret = (1 + night) * (1 + day) - 1 - cost
+    if cash is not None:  # idle share of capital, averaged over the two legs
+        idle = 1 - np.clip((prev.mean(axis=1) + xi.mean(axis=1)) / 2, 0.0, 1.0)
+        ret = ret + idle * cash[start:end]
+    return Result(ret, float((xi.mean() + prev.mean()) / 2), trades)
+
+
+def simulate(p: Panel, x: tuple[np.ndarray, ...], start: int, end: int, cost_bps: float,
+             cash: np.ndarray | None = None) -> Result:
+    """``run`` on what ``families.exposures`` returns (two exposures, plus exit returns for bracket bots)."""
+    return run(p, x[0], x[1], start, end, cost_bps, x[2] if len(x) > 2 else None, cash)
 
 
 def sharpe(r: np.ndarray) -> float:
@@ -49,9 +65,11 @@ def max_drawdown(r: np.ndarray) -> float:
     return float((1 - eq / np.maximum.accumulate(eq)).max()) if len(r) else 0.0
 
 
-def summary(r: np.ndarray) -> dict[str, float]:
+def summary(r: np.ndarray, rf: np.ndarray | None = None) -> dict[str, float]:
+    """Annual return, volatility, drawdown, and Sharpe of the return above ``rf`` (the cash rate) when given."""
+    ex = r if rf is None else r - rf
     return {"ann_return": float(np.prod(1 + r) ** (252 / max(1, len(r))) - 1), "ann_vol": float(r.std() * np.sqrt(252)),
-            "sharpe": sharpe(r), "max_drawdown": max_drawdown(r), "days": len(r)}
+            "sharpe": sharpe(ex), "max_drawdown": max_drawdown(r), "days": len(r)}
 
 
 def block_bootstrap(series: list[np.ndarray], stat, samples: int, block: int, seed: int) -> tuple[float, float]:

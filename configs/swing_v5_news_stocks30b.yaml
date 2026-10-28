@@ -1,0 +1,25 @@
+# Swing v5 (news) on the stocks30b universe: roughly the 31st-60th largest US companies at the end of 2015 (from memory, approximate; Celgene, since acquired, left out), a second stock list to replicate stocks30 results on.
+# v5: the news families (news_gap, earnings_drift) on Alpaca headlines, beside the price-only families that came
+# closest. Same folds, costs, activity gate, untouched holdout and T-bill cash (BIL) as v4.
+# Data: python -m atlas.cli fetch-daily --out data/processed/alpaca_daily_v3 --symbols <symbols below> BIL
+experiment_name: swing_v5_news_stocks30b
+dataset_dir: data/processed/alpaca_daily_v3
+symbols: [MO, AMGN, MA, C, BA, MMM, UNH, MCD, QCOM, SLB, ABBV, CVS, UPS, BMY, MDT, NKE, SBUX, UNP, HON, USB, LLY, TXN, BIIB, WBA, MDLZ, COST, LOW, ACN, ABT, GS]
+cash_symbol: BIL
+news_dir: data/raw/alpaca_news/stocks30b   # python -m atlas.cli fetch-news --out data/raw/alpaca_news/stocks30b --symbols <symbols above>
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [news_gap, earnings_drift, news_tone, event_drift, bracket, vol_target, session]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

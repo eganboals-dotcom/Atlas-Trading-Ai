@@ -615,6 +615,43 @@ than Hold with much more risk (Sharpe 0.72 vs 1.24). Holdout checks are logged i
 `artifacts/reports/swing/holdout_ledger.jsonl`. Research only: nothing in `swing` trades, and
 the live session is intraday only.
 
+v4 and v5 (`configs/swing_v4_*.yaml`, `configs/swing_v5_news_*.yaml`) add momentum with trend and
+volatility caps, take-profit/stop brackets (+0.5% to +3% targets), event drift after big
+high-volume gaps, and news bots built on Alpaca headlines (`fetch-news`: news vs no-news gaps,
+post-earnings drift, analyst upgrades/downgrades and EPS beats/misses read from headlines). Each
+headline counts only for opens after it was published, with a 15-minute margin. They run on
+lists picked without hindsight: the Ivy Portfolio's 10 ETFs, the 9 SPDR sectors, GEM's 3 funds,
+and two lists of large 2015 stocks (about the 30 largest, then the next 30) for replication.
+Idle cash earns T-bill interest (BIL), and Sharpe is measured on returns above that rate.
+Brackets settle days that touch both levels from the bar's shape; on 1-minute paths that was
+within ~2 bps per trade. Nothing beat Hold on more than one list:
+
+* Trained bots lost to Hold on all six lists. A +1%/−1% day trade every day lost 3–10% a year.
+* 6-month momentum (top 3) on the first stock list made +27.5% vs +17.0% and passed every check
+  there. On the second list it made +5.0% vs +11.7%, and 0 of 64 settings beat Hold. Short-term
+  reversal did the same.
+* The news signals' alpha over Hold was about zero on both lists (upgrades −0.1% and +1.6% a
+  year, EPS beats +0.7% and −1.5%; every 90% interval includes 0).
+* The 200-day trend filter and a 15% volatility target roughly halved the worst drawdown at
+  about Hold's Sharpe, for less return. They had small positive alpha on every list, but none
+  of it was significant.
+
+No strategy earned a holdout check, so the swing holdout is still used only once.
+
+**Forward tracker.** Backtests can be overfit; days that haven't happened yet can't. Six rules
+were frozen on 2026-10-28 in [configs/swing_track.yaml](configs/swing_track.yaml): dual
+momentum (plain, and with trend and volatility caps) on the 16 ETFs, 6-month momentum on both
+2015 stock lists, and the trend filter and volatility target on the first. From 2026-10-29 on,
+each run scores them against Hold on their own symbols. The first run records a fingerprint of
+the rules, and later runs refuse to continue if any rule changes. Run it after 4:20 pm ET by
+double-clicking `scripts/swing_track.cmd`, or:
+
+```bash
+python -m atlas.cli swing-track   # refetches daily bars (~1.5 min), writes artifacts/reports/swing_track/tracker.md
+```
+
+Expect noise for months: a real edge needs about a year of days or more to stand out from luck.
+
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)
 * equal-weight buy-and-hold

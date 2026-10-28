@@ -148,6 +148,24 @@ def test_history_download_adds_only_three_read_only_market_data_endpoints() -> N
         next(alpaca.iter_history(lambda p, q: {}, "/v2/orders", "SPY", "a", "b"))
 
 
+def test_news_download_adds_only_one_read_only_market_data_endpoint() -> None:
+    from atlas.feeds import alpaca
+
+    assert alpaca.NEWS_PATHS == {"/v1beta1/news"}
+    live = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"))  # what paper sessions use
+    with pytest.raises(PermissionError):
+        live("/v1beta1/news", {})
+    news = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"), allowed=alpaca.NEWS_PATHS)
+    for bad in ("/v2/orders", "/v2/positions", "/v2/account", "/v2/stocks/quotes/latest", "/v2/stocks/bars"):
+        with pytest.raises(PermissionError):
+            news(bad, {})
+    calls = []
+    pages = iter([{"news": [{"id": 1}], "next_page_token": "x"}, {"news": [{"id": 2}], "next_page_token": None}])
+    got = list(alpaca.iter_news(lambda p, q: (calls.append(p), next(pages))[1], ["AAPL"], "a", "b",
+                                sleep=lambda s: None))
+    assert [a["id"] for a in got] == [1, 2] and set(calls) == {"/v1beta1/news"}
+
+
 def test_no_trading_host_or_order_endpoint_appears_in_source() -> None:
     forbidden = ("api.alpaca.markets", "paper-api.alpaca.markets", "/v2/orders", "/v1/orders",
                  "trader/v1", "accounts/{", "/orders")

@@ -1,0 +1,50 @@
+# Forward tracker for swing rules (python -m atlas.cli swing-track --config configs/swing_track.yaml).
+# These rules were frozen on 2026-10-28, before any of the days they are scored on. Every run refetches
+# daily bars and scores each rule against Hold on the same symbols, counting only days from start_date on.
+# The tracker records a fingerprint of this file's rules on its first run and refuses to continue if they
+# change: a changed rule is a new experiment, so give it a new start_date and out_dir.
+# Research only: nothing here places an order, paper or live.
+start_date: 2026-10-29
+history_start: 2016-01-04     # fixed, so lookbacks and monthly rebalance days never shift between runs
+out_dir: artifacts/reports/swing_track
+dataset_dir: data/processed/swing_track
+cash_symbol: BIL
+cost_bps: 2.0
+
+universes:
+  # the v3 list, chosen in 2026 (it includes SMH, a hindsight pick); this is where dual momentum made +22%/yr
+  etf16: [SPY, QQQ, IWM, DIA, XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLU, XLB, SMH, TLT, GLD]
+  # about the 30 largest US companies at the end of 2015
+  stocks30: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG, VZ, T, PFE, KO, CVX, ORCL,
+             DIS, MRK, PEP, HD, V, INTC, CSCO, BAC, IBM, GILD, CMCSA]
+  # roughly the next 30 (Walgreens left out: it went private in 2025)
+  stocks30b: [MO, AMGN, MA, C, BA, MMM, UNH, MCD, QCOM, SLB, ABBV, CVS, UPS, BMY, MDT, NKE, SBUX, UNP, HON, USB,
+              LLY, TXN, BIIB, MDLZ, COST, LOW, ACN, ABT, GS]
+
+# Hold (equal weight, always invested) is scored on every universe automatically.
+rules:
+  - name: dual momentum top 3 (12-1 months)
+    universe: etf16
+    family: rotation
+    genome: {mode: 0.0, lookback: 231, skip: 21, top_k: 3, rebalance: 21, abs_filter: 1.0}
+  - name: dual momentum + 200-day trend + 15% vol cap
+    universe: etf16
+    family: risk_rotation
+    genome: {lookback: 231, skip: 21, top_k: 3, rebalance: 21, abs_filter: 1.0, trend_filter: 1.0, trend_n: 200,
+             vol_scale: 1.0, vol_n: 20, target_vol: 0.15, overlay_every: 5.0}
+  - name: 6-month momentum top 3
+    universe: stocks30
+    family: rotation
+    genome: {mode: 0.0, lookback: 126, skip: 0, top_k: 3, rebalance: 21, abs_filter: 0.0}
+  - name: 6-month momentum top 3
+    universe: stocks30b
+    family: rotation
+    genome: {mode: 0.0, lookback: 126, skip: 0, top_k: 3, rebalance: 21, abs_filter: 0.0}
+  - name: 200-day trend filter
+    universe: stocks30
+    family: session
+    genome: {mode: 0.0, trend_filter: 1.0, trend_n: 200}
+  - name: volatility target 15%
+    universe: stocks30
+    family: vol_target
+    genome: {mode: 0.0, trend_filter: 0.0, trend_n: 200, vol_n: 20, target_vol: 0.15}

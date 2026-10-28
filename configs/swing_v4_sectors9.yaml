@@ -1,0 +1,24 @@
+# Swing v4 on the sectors9 universe: the nine original SPDR sector funds (1998), no picking at all.
+# Same folds, costs, activity gate and untouched holdout as configs/swing.yaml (v3). Changes in v4:
+# only the families that held up or are new, and idle cash earns T-bill interest (BIL), as a real account would.
+# Data: python -m atlas.cli fetch-daily --out data/processed/alpaca_daily_v2 --symbols <symbols below> BIL
+experiment_name: swing_v4_sectors9
+dataset_dir: data/processed/alpaca_daily_v2
+symbols: [XLB, XLE, XLF, XLI, XLK, XLP, XLU, XLV, XLY]
+cash_symbol: BIL
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [rotation, risk_rotation, vol_target, session, bracket, event_drift]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

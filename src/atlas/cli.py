@@ -656,6 +656,62 @@ def _cmd_fetch_daily(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_fetch_news(args: argparse.Namespace) -> int:
+    """Download news headlines and timestamps (read-only) for swing research, one file per year (resumable)."""
+    from atlas.feeds.alpaca import NEWS_PATHS, http_fetch, iter_news, load_credentials
+    from atlas.swing.news import news_rows, save_news, write_manifest
+
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=NEWS_PATHS)
+    out = Path(args.out)
+    for year in range(int(args.first[:4]), int(args.last[:4]) + 1):
+        path = out / f"{year}.parquet"
+        if path.exists():
+            print(f"{year}: already downloaded", flush=True)
+            continue
+        first, last = max(args.first, f"{year}-01-01"), min(args.last, f"{year}-12-31")
+        rows = news_rows(iter_news(fetch, args.symbols, f"{first}T00:00:00Z", f"{last}T23:59:59Z",
+                                   min_interval_s=args.interval))
+        save_news(rows, path)
+        print(f"{year}: {len(rows)} articles", flush=True)
+    write_manifest(out, {"source": "alpaca-news (v1beta1)", "symbols": args.symbols, "first": args.first,
+                         "last": args.last, "fields": "id, created_at, symbols, headline, source",
+                         "license_notes": "Alpaca news data, downloaded for personal research; check Alpaca's terms "
+                                          "before sharing or redistributing"})
+    print(f"news written to {out}", flush=True)
+    return EXIT_OK
+
+
+def _cmd_swing_track(args: argparse.Namespace) -> int:
+    """Refetch daily bars (read-only) and score the frozen swing rules against Hold since their start date."""
+    from datetime import UTC, datetime, timedelta
+
+    from atlas.swing.track import TrackConfig, check_frozen, last_complete_day, track
+
+    cfg = load_config(Path(args.config), TrackConfig)
+    check_frozen(cfg)  # refuse changed rules before downloading anything
+    if not args.no_fetch:
+        from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+        from atlas.swing.data import daily_rows, save_daily
+
+        now = datetime.now(UTC)
+        last = last_complete_day(now)
+        end = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")  # the free plan has no SIP data newer than 15 min
+        fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
+        rows = {}
+        for sym in cfg.symbols():  # ~1 request per symbol, paced well under the free plan's limit
+            got = daily_rows(iter_history(fetch, HISTORY_BARS_PATH, sym, f"{cfg.history_start}T00:00:00Z", end, "sip",
+                                          min_interval_s=1.0, extra={"timeframe": "1Day", "adjustment": "all"}))
+            rows[sym] = [r for r in got if r["date"] <= last]  # today's bar only once it is final
+        save_daily(rows, cfg.dataset_dir, {"source": "alpaca-sip-1Day", "adjustment": "all (splits and dividends)",
+                                           "through": str(last), "license_notes": "Alpaca historical market data, "
+                                           "downloaded for personal research; check Alpaca's data terms before sharing"})
+        print(f"daily bars through {last} for {len(rows)} symbols", flush=True)
+    out = track(cfg)
+    print(out.read_text(encoding="utf-8"))
+    print(f"report: {out}")
+    return EXIT_OK
+
+
 def _cmd_swing_walkforward(args: argparse.Namespace) -> int:
     from atlas.swing.walkforward import SwingConfig, walkforward
 
@@ -731,6 +787,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--last", default="2026-10-27")
     p.add_argument("--out", default="data/processed/alpaca_daily")
     p.set_defaults(func=_cmd_fetch_daily)
+
+    p = sub.add_parser("fetch-news", help="Download news headlines (read-only Alpaca market data) for swing research.")
+    p.add_argument("--symbols", nargs="+", required=True)
+    p.add_argument("--first", default="2016-01-01")
+    p.add_argument("--last", default="2026-10-27")
+    p.add_argument("--interval", type=float, default=1.0, help="seconds between requests (rate limit)")
+    p.add_argument("--out", default="data/raw/alpaca_news/stocks30")
+    p.set_defaults(func=_cmd_fetch_news)
+
+    p = sub.add_parser("swing-track", help="Score frozen swing rules against Hold on days since they were frozen.")
+    p.add_argument("--config", default="configs/swing_track.yaml")
+    p.add_argument("--no-fetch", action="store_true", help="score the bars already downloaded")
+    p.set_defaults(func=_cmd_swing_track)
 
     p = sub.add_parser("swing-walkforward", help="Walk-forward test of multi-day (swing) bots vs buy-and-hold.")
     p.add_argument("--config", required=True)

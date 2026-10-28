@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -49,11 +49,18 @@ class Panel:
     low: np.ndarray
     close: np.ndarray
     volume: np.ndarray
+    features: dict[str, np.ndarray] = field(default_factory=dict)  # extra (days, symbols) data, e.g. news counts
 
     def before(self, end: date) -> Panel:
         """The panel cut to dates strictly before ``end`` (e.g. to keep a holdout out of reach)."""
         n = sum(d < end for d in self.dates)
-        return Panel(self.dates[:n], self.symbols, *(getattr(self, c)[:n] for c in COLUMNS))
+        return Panel(self.dates[:n], self.symbols, *(getattr(self, c)[:n] for c in COLUMNS),
+                     {k: v[:n] for k, v in self.features.items()})
+
+    def select(self, symbols: Iterable[str]) -> Panel:
+        idx = [self.symbols.index(s) for s in symbols]
+        return Panel(self.dates, tuple(self.symbols[i] for i in idx), *(getattr(self, c)[:, idx] for c in COLUMNS),
+                     {k: v[:, idx] for k, v in self.features.items()})
 
     @property
     def overnight(self) -> np.ndarray:

@@ -17,8 +17,13 @@ Alpaca's historical market data (``HISTORY_PATHS``):
     GET https://data.alpaca.markets/v2/stocks/trades?symbols=...&start=...&end=...&feed=iex
     GET https://data.alpaca.markets/v2/stocks/bars?symbols=...&timeframe=1Min&start=...&end=...
 
+For news research, ``iter_news`` uses one more GET endpoint on the same host (``NEWS_PATHS``;
+verified against Alpaca's docs on 2026-10-28; headlines and timestamps only are kept):
+
+    GET https://data.alpaca.markets/v1beta1/news?symbols=...&start=...&end=...&limit=50
+
 Paper sessions never use them: ``http_fetch`` allows only the live paths unless it is
-explicitly given ``HISTORY_PATHS``.
+explicitly given ``HISTORY_PATHS`` or ``NEWS_PATHS``.
 
 It has **no trading endpoint** and no way to send an order: Atlas's paper orders go only
 to the internal ``PaperBroker``. Use API keys from an Alpaca *paper* account. Alpaca
@@ -58,6 +63,8 @@ HISTORY_QUOTES_PATH = "/v2/stocks/quotes"
 HISTORY_TRADES_PATH = "/v2/stocks/trades"
 HISTORY_BARS_PATH = "/v2/stocks/bars"
 HISTORY_PATHS = frozenset({HISTORY_QUOTES_PATH, HISTORY_TRADES_PATH, HISTORY_BARS_PATH})
+NEWS_PATH = "/v1beta1/news"
+NEWS_PATHS = frozenset({NEWS_PATH})
 KEY_ENV, SECRET_ENV = "APCA_API_KEY_ID", "APCA_API_SECRET_KEY"
 
 Fetch = Callable[[str, dict[str, str]], dict[str, Any]]
@@ -95,8 +102,9 @@ def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
 
 def http_fetch(credentials: AlpacaCredentials, timeout_s: float = 5.0,
                allowed: frozenset[str] = ALLOWED_PATHS) -> Fetch:
-    if not allowed <= ALLOWED_PATHS | HISTORY_PATHS:
-        raise PermissionError(f"refusing non-market-data paths {sorted(allowed - ALLOWED_PATHS - HISTORY_PATHS)}")
+    readable = ALLOWED_PATHS | HISTORY_PATHS | NEWS_PATHS
+    if not allowed <= readable:
+        raise PermissionError(f"refusing non-market-data paths {sorted(allowed - readable)}")
 
     def fetch(path: str, params: dict[str, str]) -> dict[str, Any]:
         if path not in allowed:  # hard guard: only read-only market-data endpoints
@@ -287,6 +295,31 @@ def iter_history(fetch: Fetch, path: str, symbol: str, start: str, end: str, fee
                 sleep(min(60.0, 2.0 * (attempt + 1)))
         sleep(min_interval_s)
         yield from (data.get(key) or {}).get(symbol) or []
+        token = data.get("next_page_token")
+        if not token:
+            return
+
+
+def iter_news(fetch: Fetch, symbols: list[str], start: str, end: str, min_interval_s: float = 1.0,
+              retries: int = 8, sleep: Callable[[float], None] = time.sleep) -> Any:
+    """Yield news articles (raw Alpaca dicts, oldest first) mentioning any of ``symbols``, 50 per request,
+    without article bodies; paced and retried like ``iter_history``."""
+    token: str | None = None
+    while True:
+        params = {"symbols": ",".join(symbols), "start": start, "end": end, "limit": "50", "sort": "asc",
+                  "include_content": "false"}
+        if token:
+            params["page_token"] = token
+        for attempt in range(retries + 1):
+            try:
+                data = fetch(NEWS_PATH, params)
+                break
+            except FeedDisconnected:
+                if attempt == retries:
+                    raise
+                sleep(min(60.0, 2.0 * (attempt + 1)))
+        sleep(min_interval_s)
+        yield from data.get("news") or []
         token = data.get("next_page_token")
         if not token:
             return

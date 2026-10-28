@@ -8,6 +8,7 @@ from ``holdout_start`` on is cut off before any computation, so it stays untouch
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ from pydantic import Field
 
 from atlas.agents.genome import Genome, crossover, genome_hash, mutate_genome, sample_genome
 from atlas.config import StrictModel
-from atlas.swing.backtest import Result, block_bootstrap, run, sharpe, summary
+from atlas.swing.backtest import Result, block_bootstrap, sharpe, simulate, summary
 from atlas.swing.data import DEFAULT_DIR, Panel, load_panel
 from atlas.swing.families import FAMILIES, HOLD, exposures
 
@@ -47,14 +48,18 @@ class SwingConfig(StrictModel):
     # A bot that barely trades can post a high Sharpe from a few lucky trades; such bots can't win.
     min_exposure: float = 0.25
     min_trades_per_year: float = 4.0
+    # Daily return earned by capital out of the market (a T-bill ETF such as BIL); None leaves idle cash at 0%.
+    cash_symbol: str | None = None
+    # Alpaca news headlines (``fetch-news``) for the news families; None runs without news.
+    news_dir: Path | None = None
 
 
-def fitness(r: Result, cfg: SwingConfig) -> float:
-    """Sharpe, for bots that pass the activity gate; below it, a score under every passing bot's that
+def fitness(r: Result, cfg: SwingConfig, rf: np.ndarray | None = None) -> float:
+    """Sharpe (of the return above the cash rate ``rf``), for bots that pass the activity gate; below it, a score under every passing bot's that
     still ranks more active bots higher, so evolution is pushed toward the gate."""
     per_year = r.trades / max(1, len(r.returns)) * 252
     if r.exposure >= cfg.min_exposure and per_year >= cfg.min_trades_per_year:
-        return sharpe(r.returns)
+        return sharpe(r.returns if rf is None else r.returns - rf)
     return -100.0 + min(r.exposure / cfg.min_exposure, 1.0) + min(per_year / cfg.min_trades_per_year, 1.0)
 
 
@@ -70,6 +75,26 @@ TEXTBOOK: dict[str, tuple[str, Genome]] = {
                                                 "after": 3}),
     "volatility target 15%": ("vol_target", {"mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "vol_n": 20,
                                              "target_vol": 0.15}),
+    # v4: fixed combinations, set once here and never tuned (they are ours, not published as such)
+    "dual momentum + 200-day trend + 15% vol cap": ("risk_rotation", {
+        "lookback": 231, "skip": 21, "top_k": 3, "rebalance": 21, "abs_filter": 1.0, "trend_filter": 1.0,
+        "trend_n": 200, "vol_scale": 1.0, "vol_n": 20, "target_vol": 0.15, "overlay_every": 5.0}),
+    "day trade +1% target / -1% stop": ("bracket", {"trend_filter": 0.0, "trend_n": 200, "entry": 0.0,
+                                                    "drop_bps": 100.0, "tp_bps": 100.0, "sl_bps": 100.0,
+                                                    "max_days": 1}),
+    "post-event drift (2% gap, 2x volume, 20 days)": ("event_drift", {
+        "mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "direction": 1.0, "gap_bps": 200.0, "vol_mult": 2.0,
+        "confirm": 0.0, "hold_days": 20}),
+}
+NEWS_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run has news
+    "news gaps: follow with news, fade without (1% gap, 5 days)": ("news_gap", {
+        "trend_filter": 0.0, "trend_n": 200, "rule": 2.0, "gap_bps": 100.0, "min_articles": 1, "hold_days": 5}),
+    "post-earnings drift (gap up on earnings, enter next day, 60 days)": ("earnings_drift", {
+        "trend_filter": 0.0, "trend_n": 200, "direction": 1.0, "gap_bps": 0.0, "delay": 1.0, "hold_days": 60}),
+    "analyst upgrade drift (buy on upgrades, 20 days)": ("news_tone", {
+        "trend_filter": 0.0, "trend_n": 200, "source": 0.0, "side": 1.0, "delay": 0.0, "hold_days": 20}),
+    "earnings surprise drift (EPS beat, enter next day, 60 days)": ("news_tone", {
+        "trend_filter": 0.0, "trend_n": 200, "source": 1.0, "side": 1.0, "delay": 1.0, "hold_days": 60}),
 }
 
 
@@ -84,7 +109,7 @@ def folds(n_days: int, cfg: SwingConfig) -> list[tuple[int, int, int, int]]:
 
 
 def evolve_family(p: Panel, family: str, start: int, end: int, cfg: SwingConfig, rng: np.random.Generator,
-                  ) -> tuple[list[tuple[float, Genome]], int]:
+                  cash: np.ndarray | None = None) -> tuple[list[tuple[float, Genome]], int]:
     """Best genomes of one family on [start, end), by ``fitness`` at base costs; also the number of genomes tried."""
     space = FAMILIES[family].space
     cost = cfg.costs_bps["base"]
@@ -93,8 +118,8 @@ def evolve_family(p: Panel, family: str, start: int, end: int, cfg: SwingConfig,
     def fit(g: Genome) -> float:
         h = genome_hash(g)
         if h not in seen:
-            r = run(p, *exposures(p, family, g), start, end, cost)
-            seen[h] = (fitness(r, cfg), g)
+            r = simulate(p, exposures(p, family, g), start, end, cost, cash)
+            seen[h] = (fitness(r, cfg, None if cash is None else cash[start:end]), g)
         return seen[h][0]
 
     pop = [sample_genome(space, rng) for _ in range(cfg.population)]
@@ -116,27 +141,39 @@ def evolve_family(p: Panel, family: str, start: int, end: int, cfg: SwingConfig,
 
 
 def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing")) -> Path:
-    full = load_panel(cfg.dataset_dir, cfg.symbols)
-    p = full.before(cfg.holdout_start)  # the holdout is never seen below
-    holdout_days = len(full.dates) - len(p.dates)
+    syms = cfg.symbols + ([cfg.cash_symbol] if cfg.cash_symbol else [])
+    full = load_panel(cfg.dataset_dir, syms).before(cfg.holdout_start)  # the holdout is never seen below
+    holdout_days = len(load_panel(cfg.dataset_dir, syms).dates) - len(full.dates)
+    p = full.select(cfg.symbols)
+    rules = dict(TEXTBOOK)
+    if cfg.news_dir:
+        from atlas.swing.news import load_news, news_features
+
+        p = dataclasses.replace(p, features=news_features(p, load_news(cfg.news_dir)))  # days before the holdout only
+        rules |= NEWS_TEXTBOOK
+    cash = np.zeros(len(p.dates))  # no interest unless a cash symbol is configured
+    if cfg.cash_symbol:
+        c = full.select([cfg.cash_symbol]).close[:, 0]
+        cash = np.zeros_like(c)
+        cash[1:] = c[1:] / c[:-1] - 1
     rng = np.random.default_rng(cfg.seed)
     hold_x = exposures(p, *HOLD)
     plan = folds(len(p.dates), cfg)
     if not plan:
         raise ValueError("not enough days for one fold")
     oos: dict[str, dict[str, list[np.ndarray]]] = {}  # strategy -> scenario -> per-fold returns
-    fixed = {f"rule:{name}": (fam, g) for name, (fam, g) in TEXTBOOK.items()}  # never tuned
+    fixed = {f"rule:{name}": (fam, g) for name, (fam, g) in rules.items()}  # never tuned
     fixed_x = {name: exposures(p, fam, g) for name, (fam, g) in fixed.items()}
     fold_rows, trials = [], 0
     for k, (t0, t1, v0, v1) in enumerate(plan):
         best: dict[str, tuple[float, Genome]] = {}
         for fam in cfg.families:
-            ranked, n = evolve_family(p, fam, t0, t1, cfg, rng)
+            ranked, n = evolve_family(p, fam, t0, t1, cfg, rng, cash)
             best[fam] = ranked[0]
             trials += n
         champ = max(best, key=lambda f: best[f][0])
         passing = [f for f, (fit_, _) in best.items() if fit_ > -50] or [champ]  # cleared the gate in training
-        hold_is = sharpe(run(p, *hold_x, t0, t1, cfg.costs_bps["base"]).returns)
+        hold_is = sharpe(simulate(p, hold_x, t0, t1, cfg.costs_bps["base"], cash).returns - cash[t0:t1])
         row = {"fold": k, "train": [str(p.dates[t0]), str(p.dates[t1 - 1])],
                "validation": [str(p.dates[v0]), str(p.dates[v1 - 1])], "champion_family": champ,
                "champion_genome": best[champ][1], "in_sample_sharpe": best[champ][0], "hold_in_sample_sharpe": hold_is,
@@ -147,14 +184,14 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
         for sc, cost in cfg.costs_bps.items():
             rets = {}
             for name, x in xs.items():
-                r = run(p, *x, v0, v1, cost)
+                r = simulate(p, x, v0, v1, cost, cash)
                 rets[name] = r.returns
                 if sc == "base":
-                    row["oos"][name] = {**summary(r.returns), "exposure": r.exposure, "trades": r.trades}
+                    row["oos"][name] = {**summary(r.returns, cash[v0:v1]), "exposure": r.exposure, "trades": r.trades}
             # equal capital in each family's best bot that cleared the gate: no pick between families at all
             rets["ensemble"] = np.mean([rets[f"family:{f}"] for f in passing], axis=0)
             if sc == "base":
-                row["oos"]["ensemble"] = summary(rets["ensemble"])
+                row["oos"]["ensemble"] = summary(rets["ensemble"], cash[v0:v1])
             for name, r in rets.items():
                 oos.setdefault(name, {}).setdefault(sc, []).append(r)
         fold_rows.append(row)
@@ -164,26 +201,27 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
               flush=True)
 
     stitched = {n: {sc: np.concatenate(v) for sc, v in d.items()} for n, d in oos.items()}
+    rf = np.concatenate([cash[v0:v1] for _, _, v0, v1 in plan])  # Sharpe ratios below are of returns above it
     headline: dict[str, dict[str, Any]] = {}
     for strat in ("champion", "ensemble"):
         for sc in cfg.costs_bps:
             a, h = stitched[strat][sc], stitched["hold"][sc]
-            ci_sharpe = block_bootstrap([a, h], lambda x, y: sharpe(x) - sharpe(y), cfg.bootstrap_samples,
-                                        cfg.block_days, cfg.seed)
+            ci_sharpe = block_bootstrap([a, h, rf], lambda x, y, z: sharpe(x - z) - sharpe(y - z),
+                                        cfg.bootstrap_samples, cfg.block_days, cfg.seed)
             ci_excess = block_bootstrap([a - h], lambda d: float(d.mean() * 252), cfg.bootstrap_samples,
                                         cfg.block_days, cfg.seed)
             headline.setdefault(strat, {})[sc] = {
-                strat: summary(a), "hold": summary(h), "sharpe_diff": sharpe(a) - sharpe(h),
+                strat: summary(a, rf), "hold": summary(h, rf), "sharpe_diff": sharpe(a - rf) - sharpe(h - rf),
                 "sharpe_diff_ci90": ci_sharpe, "excess_return_ann": float((a - h).mean() * 252),
                 "excess_return_ci90": ci_excess}
-    hold_base = summary(stitched["hold"]["base"])
+    hold_base = summary(stitched["hold"]["base"], rf)
 
     def passes(m: dict[str, float]) -> bool:
         return m["sharpe"] > hold_base["sharpe"] and m["ann_return"] >= hold_base["ann_return"]
 
-    others = {n: {sc: summary(v) for sc, v in d.items()} for n, d in stitched.items()
+    others = {n: {sc: summary(v, rf) for sc, v in d.items()} for n, d in stitched.items()
               if n.startswith(("family:", "rule:"))}
-    verdict = {n: passes(summary(stitched[n]["base"])) for n in stitched if n != "hold"}
+    verdict = {n: passes(summary(stitched[n]["base"], rf)) for n in stitched if n != "hold"}
     run_id = f"{cfg.experiment_name}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     out = out_root / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -192,7 +230,7 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
               "holdout_status": "untouched by this run", "trials": trials, "headline": headline,
               "hold_base": hold_base, "others": others, "passes": verdict,
               "pass_rule": "base costs, stitched unseen days: Sharpe above Hold's and annual return at least Hold's",
-              "textbook": {n: {"family": f, "genome": g} for n, (f, g) in TEXTBOOK.items()}, "folds": fold_rows,
+              "textbook": {n: {"family": f, "genome": g} for n, (f, g) in rules.items()}, "folds": fold_rows,
               "selection": {"mean_in_sample_sharpe": float(np.mean([r["in_sample_sharpe"] for r in fold_rows])),
                             "mean_oos_sharpe": float(np.mean([r["oos"]["champion"]["sharpe"] for r in fold_rows]))}}
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
@@ -260,6 +298,12 @@ def render(r: dict[str, Any]) -> str:
           "imbalance or size limits.",
           "* Decisions are made at the open only, from closes up to the day before and the day's open.",
           "* Long-only, no leverage; Hold is equal weight across symbols, rebalanced daily.",
+          (f"* Capital out of the market earns {r['config']['cash_symbol']}'s daily return (T-bills); Hold is always "
+           "invested. Sharpe ratios are of the return above that cash rate, so sitting in cash doesn't raise them."
+           if r["config"].get("cash_symbol") else "* Capital out of the market earns nothing."),
+          "* Bracket bots fill stops and targets exactly at their levels (no slippage past a stop beyond the cost), "
+          "and a day touching both is read from its shape (up day: stop first); this matched 1-minute paths "
+          "within ~2 bps per trade.",
           "* The symbol list was chosen today; all of them still trade, so there is survivorship in the universe.",
           "* Daily returns are not independent; the block bootstrap intervals are approximate."]
     return "\n".join(L) + "\n"
