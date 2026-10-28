@@ -12,11 +12,13 @@ from atlas.agents.families import (
     RegimeAdaptiveAgent,
 )
 from atlas.agents.genome import ParamSpace
+from atlas.agents.slow_families import SLOW_FAMILIES
 
 #: Families that may appear in the evolving population. Baselines are deliberately excluded.
 FAMILY_CLASSES: dict[str, type[Agent]] = {
     cls.family: cls
-    for cls in (MomentumAgent, MeanReversionAgent, OrderFlowAgent, LiquidityAgent, RegimeAdaptiveAgent)
+    for cls in (MomentumAgent, MeanReversionAgent, OrderFlowAgent, LiquidityAgent, RegimeAdaptiveAgent,
+                *SLOW_FAMILIES)
 }
 
 

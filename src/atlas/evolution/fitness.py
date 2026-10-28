@@ -2,7 +2,8 @@
 
     J = w_R * R/a_R - w_D * D/a_D - w_V * V/a_V - w_T * T/a_T - w_S * S/a_S
 
-R = mean net return per window, D = worst window drawdown, V = mean downside
+R = mean net return per window (optionally in excess of Hold's return on the same window),
+D = worst (or mean) window drawdown, V = mean downside
 deviation, T = mean turnover, S = std of per-window net returns (instability).
 Each metric is divided by a fixed, predeclared anchor (see ``FitnessAnchors``), so the
 terms are dimensionless and comparable. Weights and anchors are frozen in config and
@@ -49,12 +50,17 @@ class FitnessResult:
         return d
 
 
-def aggregate(ev: AgentEvaluation) -> Aggregate:
+def aggregate(ev: AgentEvaluation, benchmark: tuple[float, ...] | None = None,
+              drawdown_stat: str = "worst") -> Aggregate:
+    """Window metrics. With ``benchmark`` (one return per window), returns are excess over it."""
     w = ev.windows
     returns = tuple(m.net_return for m in w)
+    if benchmark is not None:
+        returns = tuple(r - b for r, b in zip(returns, benchmark, strict=True))
+    dds = [m.max_drawdown for m in w]
     return Aggregate(
         mean_net_return=statistics.fmean(returns),
-        worst_drawdown=max(m.max_drawdown for m in w),
+        worst_drawdown=max(dds) if drawdown_stat == "worst" else statistics.fmean(dds),
         mean_downside=statistics.fmean(m.downside for m in w),
         mean_turnover=statistics.fmean(m.turnover for m in w),
         instability=statistics.pstdev(returns) if len(returns) > 1 else 0.0,
@@ -64,13 +70,17 @@ def aggregate(ev: AgentEvaluation) -> Aggregate:
     )
 
 
-def score(ev: AgentEvaluation, cfg: FitnessConfig, expected_windows: int) -> FitnessResult:
+def score(ev: AgentEvaluation, cfg: FitnessConfig, expected_windows: int,
+          benchmark: tuple[float, ...] | None = None) -> FitnessResult:
+    """``benchmark``: Hold's return per window, required when ``cfg.benchmark == "buy_hold"``."""
     if ev.error:
         return FitnessResult(ev.agent_id, False, None, [f"invalid: {ev.error}"])
     if len(ev.windows) != expected_windows:
         return FitnessResult(ev.agent_id, False, None, ["invalid: incomplete evaluation"])
 
-    agg = aggregate(ev)
+    if cfg.benchmark == "buy_hold" and benchmark is None:
+        raise ValueError("fitness benchmark is buy_hold but no benchmark returns were given")
+    agg = aggregate(ev, benchmark if cfg.benchmark == "buy_hold" else None, cfg.drawdown_stat)
     g, w, a = cfg.gates, cfg.weights, cfg.anchors
     reasons: list[str] = []
     if len(ev.violations) > g.max_violations:

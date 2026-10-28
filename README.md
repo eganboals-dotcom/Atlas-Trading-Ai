@@ -561,6 +561,34 @@ The suites cover:
 | Liquidity | buy only into tight, deep markets with support on the bid; sell when liquidity worsens |
 | Regime-adaptive | momentum when the market is calm; mean reversion (or stay out) when it's volatile |
 
+**Slow families** (minutes to hours, never overnight) live in
+[slow_families.py](src/atlas/agents/slow_families.py) and are evolved as their own population
+of 50, ten per family. On real data, the second-scale families above lose to the spread. These
+trade less and aim for bigger moves:
+
+| Family | Rule |
+|---|---|
+| Intraday momentum | if the market is up enough by a chosen time after the open, buy later in the day and ride it |
+| Opening range | buy a breakout above the high of the first 5–60 minutes; take profit at a target |
+| Trend follow | stay long while a fast moving average of 1-minute prices is above a slow one |
+| Pullback | buy a sharp dip (from a recent high, or below the session's average price) and sell the rebound |
+| Smart hold | hold like Hold, but step aside on a drawdown or a volatility spike and come back once it calms |
+
+Every slow bot has a stop loss, a maximum hold time and is flat before the close. Each one
+samples its own 1-minute prices from whatever quotes arrive, so it makes the same decisions
+on 1-minute training bars as on 1-second live quotes. They train on 10 years of real 1-minute
+bars, and the score is the return **above Hold** on the same day (`fitness.benchmark:
+buy_hold`), so doing nothing is not free in a rising market:
+
+```bash
+python -m atlas.cli fetch-bars                                   # 2016-2026 SPY/QQQ 1-minute bars, ~10 min
+python -m atlas.cli walkforward --config configs/walkforward_slow.yaml
+```
+
+Bars carry no bid/ask. Each minute becomes one trade at the close and one quote with a 1.0 bps
+spread around it. That's a little wider than live IEX's median (~0.75 bps), so costs are, if
+anything, overstated.
+
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)
 * equal-weight buy-and-hold

@@ -10,11 +10,12 @@ Response fields used: quotes ``bp, bs, ap, as, t``. Sizes are in shares; a price
 means no active bid or ask, and validation rejects it. Trades use ``p, s, t, i, c``.
 Timestamps are RFC 3339 with nanosecond precision.
 
-For building training data, ``iter_history`` uses two more GET endpoints on the same host,
+For building training data, ``iter_history`` uses three more GET endpoints on the same host,
 Alpaca's historical market data (``HISTORY_PATHS``):
 
     GET https://data.alpaca.markets/v2/stocks/quotes?symbols=...&start=...&end=...&feed=iex
     GET https://data.alpaca.markets/v2/stocks/trades?symbols=...&start=...&end=...&feed=iex
+    GET https://data.alpaca.markets/v2/stocks/bars?symbols=...&timeframe=1Min&start=...&end=...
 
 Paper sessions never use them: ``http_fetch`` allows only the live paths unless it is
 explicitly given ``HISTORY_PATHS``.
@@ -55,7 +56,8 @@ TRADES_PATH = "/v2/stocks/trades/latest"
 ALLOWED_PATHS = frozenset({QUOTES_PATH, TRADES_PATH})
 HISTORY_QUOTES_PATH = "/v2/stocks/quotes"
 HISTORY_TRADES_PATH = "/v2/stocks/trades"
-HISTORY_PATHS = frozenset({HISTORY_QUOTES_PATH, HISTORY_TRADES_PATH})
+HISTORY_BARS_PATH = "/v2/stocks/bars"
+HISTORY_PATHS = frozenset({HISTORY_QUOTES_PATH, HISTORY_TRADES_PATH, HISTORY_BARS_PATH})
 KEY_ENV, SECRET_ENV = "APCA_API_KEY_ID", "APCA_API_SECRET_KEY"
 
 Fetch = Callable[[str, dict[str, str]], dict[str, Any]]
@@ -260,18 +262,19 @@ class AlpacaPollingFeed(LiveFeed):
 
 def iter_history(fetch: Fetch, path: str, symbol: str, start: str, end: str, feed: str = "iex",
                  limit: int = 10_000, min_interval_s: float = 0.35, retries: int = 8,
-                 sleep: Callable[[float], None] = time.sleep) -> Any:
-    """Yield one symbol's historical quotes or trades (raw Alpaca dicts, oldest first), page by page.
+                 sleep: Callable[[float], None] = time.sleep, extra: dict[str, str] | None = None) -> Any:
+    """Yield one symbol's historical quotes, trades or bars (raw Alpaca dicts, oldest first), page by page.
 
     ``min_interval_s`` keeps the download under the free plan's 200 requests/min; rate limits and
     network errors are retried with backoff.
     """
     if path not in HISTORY_PATHS:
         raise PermissionError(f"not a historical market-data path: {path!r}")
-    key = "quotes" if path == HISTORY_QUOTES_PATH else "trades"
+    key = {HISTORY_QUOTES_PATH: "quotes", HISTORY_TRADES_PATH: "trades", HISTORY_BARS_PATH: "bars"}[path]
     token: str | None = None
     while True:
-        params = {"symbols": symbol, "start": start, "end": end, "feed": feed, "limit": str(limit), "sort": "asc"}
+        params = {"symbols": symbol, "start": start, "end": end, "feed": feed, "limit": str(limit), "sort": "asc",
+                  **(extra or {})}
         if token:
             params["page_token"] = token
         for attempt in range(retries + 1):

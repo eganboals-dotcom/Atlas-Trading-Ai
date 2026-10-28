@@ -12,7 +12,7 @@ from typing import Annotated, Literal, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 NonNeg = Annotated[float, Field(ge=0)]
 Pos = Annotated[float, Field(gt=0)]
@@ -261,6 +261,20 @@ class FitnessConfig(StrictModel):
     weights: FitnessWeights = FitnessWeights()
     anchors: FitnessAnchors = FitnessAnchors()
     gates: FitnessGates = FitnessGates()
+    # "buy_hold": score each window's return minus Hold's return on the same window, so an agent
+    # must beat simply holding (and doing nothing is not free in a rising market).
+    benchmark: Literal["none", "buy_hold"] = "none"
+    # "mean": the drawdown term and gate use the average window's drawdown instead of the single
+    # worst one, so one crash day in hundreds does not decide everything.
+    drawdown_stat: Literal["worst", "mean"] = "worst"
+
+    @model_serializer(mode="wrap")
+    def _omit_defaults(self, handler):  # keeps fingerprints of configs that predate these options
+        d = handler(self)
+        for k, default in (("benchmark", "none"), ("drawdown_stat", "worst")):
+            if d.get(k) == default:
+                d.pop(k)
+        return d
 
 
 class OffspringConfig(StrictModel):
@@ -289,6 +303,10 @@ class DiversityConfig(StrictModel):
 
 
 FAMILY_NAMES = ("momentum", "mean_reversion", "order_flow", "liquidity", "regime_adaptive")
+#: Minutes-to-hours families (src/atlas/agents/slow_families.py); evolved as their own population.
+SLOW_FAMILY_NAMES = ("intraday_momentum", "opening_range", "trend_follow", "pullback", "smart_hold")
+FamilyName = Literal["momentum", "mean_reversion", "order_flow", "liquidity", "regime_adaptive",
+                     "intraday_momentum", "opening_range", "trend_follow", "pullback", "smart_hold"]
 
 
 class EvolutionConfig(StrictModel):
@@ -298,7 +316,7 @@ class EvolutionConfig(StrictModel):
     parent_count: Annotated[int, Field(ge=1)] = 5
     offspring_per_parent: Annotated[int, Field(ge=1)] = 10
     generations: Annotated[int, Field(ge=1)] = 5
-    families: list[Literal["momentum", "mean_reversion", "order_flow", "liquidity", "regime_adaptive"]] = Field(
+    families: list[FamilyName] = Field(
         default_factory=lambda: list(FAMILY_NAMES)
     )
     simulator_config: Path

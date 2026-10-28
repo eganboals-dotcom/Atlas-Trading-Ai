@@ -600,6 +600,42 @@ def _cmd_fetch_history(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_fetch_bars(args: argparse.Namespace) -> int:
+    """Download real 1-minute bars (read-only) as full-day sessions for slow (minutes-to-hours) bots."""
+    from datetime import date as _date
+
+    from atlas.data.alpaca_history import bar_events, merge_bar_sessions, publish_dataset_session, regular_hours_days
+    from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
+    by_symbol = {}
+    for sym in args.symbols:
+        bars = iter_history(fetch, HISTORY_BARS_PATH, sym, f"{args.first}T00:00:00Z", f"{args.last}T23:59:59Z",
+                            args.feed, extra={"timeframe": "1Min", "adjustment": "raw"})
+        by_symbol[sym] = regular_hours_days(bars)
+        print(f"{sym}: {len(by_symbol[sym])} days", flush=True)
+    out = Path("data/processed") / args.dataset
+    meta = {"source": f"alpaca-{args.feed}-bars", "feed": args.feed,
+            "license_notes": "Alpaca historical market data, downloaded for personal research; check Alpaca's data "
+                             "terms before sharing or redistributing",
+            "timestamp_kind": "vendor",
+            "timestamp_notes": "event_ts = bar end (start + 60 s): a bar is only known once it closes",
+            "fidelity": f"1-minute {args.feed.upper()} bars, regular hours; one trade (close, volume) and one quote "
+                        f"per minute, with a modeled {args.spread_bps} bps spread around the close",
+            "price_adjustment": "none: raw intraday prices (each session is simulated flat at the open)",
+            "corporate_actions": [], "universe_source": "symbols passed to fetch-bars",
+            "chronology_notes": "per minute: trades then quotes, symbols interleaved",
+            "order_scope": "symbol_type", "spread_bps": args.spread_bps}
+    days = sorted(set.intersection(*(set(d) for d in by_symbol.values())))
+    full = [d for d in days if all(len(by_symbol[s][d]) >= args.min_bars for s in args.symbols)]
+    for day in full:
+        events = merge_bar_sessions({s: bar_events(by_symbol[s][day], s, args.spread_bps) for s in args.symbols})
+        publish_dataset_session(out, args.dataset, day, events, args.symbols, meta,
+                                {"bars": {s: len(by_symbol[s][day]) for s in args.symbols}})
+    print(f"{len(full)} full sessions written to {out} ({len(days) - len(full)} short days skipped)", flush=True)
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Project Atlas research CLI (simulation only).")
     parser.add_argument("--log-level", default="INFO")
@@ -649,6 +685,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=2026)
     p.add_argument("--workers", type=int, default=6, help="parallel downloads (shared rate limit)")
     p.set_defaults(func=_cmd_fetch_history)
+
+    p = sub.add_parser("fetch-bars", help="Download real 1-minute bars (read-only) as full-day training sessions.")
+    p.add_argument("--dataset", default="alpaca_bars_1min")
+    p.add_argument("--feed", default="sip", choices=["sip", "iex"])
+    p.add_argument("--symbols", nargs="+", default=["SPY", "QQQ"])
+    p.add_argument("--first", default="2016-01-04")
+    p.add_argument("--last", default="2026-10-26")
+    p.add_argument("--spread-bps", type=float, default=1.0, help="modeled quoted spread (live IEX median ~0.75)")
+    p.add_argument("--min-bars", type=int, default=380, help="skip early closes and gappy days")
+    p.set_defaults(func=_cmd_fetch_bars)
 
     p = sub.add_parser("walkforward", help="Nested walk-forward evaluation (the outer holdout stays untouched).")
     p.add_argument("--config", required=True)

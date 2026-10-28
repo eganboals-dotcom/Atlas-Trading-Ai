@@ -1,0 +1,32 @@
+# Walk-forward for the slow (minutes-to-hours) families on 10 years of real 1-minute bars.
+# Each fold evolves on one year of days, then scores its champions on the next half-year,
+# which they never saw; folds roll forward through 2016-2026. Scored against Hold.
+# The most recent ~6 months are the untouched holdout. Create the dataset with:
+#   python -m atlas.cli fetch-bars
+experiment_name: wf_slow_bars_v1
+evolution_config: configs/evolution_slow.yaml
+
+data_source:
+  kind: parquet
+  dataset_dir: data/processed/alpaca_bars_1min
+  allowed_data_age_ms: 65000   # one quote per minute
+
+splits:
+  holdout_sessions: 126       # ~6 months, never read by `walkforward`
+  train_sessions: 250         # ~1 year
+  embargo_sessions: 5         # one week between training and validation
+  validation_sessions: 126    # ~6 months out of sample per fold
+  step_sessions: 126
+  scheme: rolling
+
+generations_per_fold: 10
+candidates_per_fold: 5
+
+cost_scenarios:
+  optimistic:  {slippage_bps: 0.0, widen_bps: 0.0, latency_multiplier: 0.5}
+  base:        {}
+  pessimistic: {slippage_bps: 2.0, widen_bps: 1.0, fee_multiplier: 1.5, latency_multiplier: 2.0, max_participation: 0.25}
+
+bootstrap: {samples: 2000, seed: 7, confidence: 0.9}
+reports_dir: artifacts/reports/walkforward
+holdout_ledger: artifacts/holdout_ledger.jsonl

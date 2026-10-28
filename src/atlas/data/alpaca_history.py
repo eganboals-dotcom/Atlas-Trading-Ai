@@ -180,3 +180,58 @@ def publish_dataset_session(processed_dir: Path, dataset: str, day: date, events
     tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     os.replace(tmp, manifest_path)
     return entry
+
+
+# ---------------------------------------------------------------- 1-minute bars (slow strategies)
+
+BAR_NS = 60 * NS_PER_S
+
+
+def bar_events(bars: Iterable[dict[str, Any]], symbol: str, spread_bps: float, size: int = 500,
+               source: str = "alpaca-bars") -> list[MarketEvent]:
+    """One regular-hours session of 1-minute bars as events: at each bar's close, a trade and a quote.
+
+    A bar is only known once it ends, so both events are stamped at ``start + 60 s``: the trade at
+    the bar's close price with the minute's volume, then a quote around that close with a modeled
+    spread (bars carry no bid/ask). ``spread_bps`` is calibrated from real quotes, so strategies pay
+    a realistic cost to cross it.
+    """
+    from atlas.feeds.alpaca import parse_rfc3339_ns
+
+    half = spread_bps / 2 / 10_000
+    out: list[MarketEvent] = []
+    for b in bars:
+        t = parse_rfc3339_ns(b["t"]) + BAR_NS
+        c = float(b["c"])
+        out.append(Trade(symbol=symbol, event_ts=t - 1, receive_ts=t + 80 * NS_PER_MS, source=source, price=c,
+                         size=int(b.get("v") or 0), timestamp_kind=TimestampKind.VENDOR))
+        out.append(Quote(symbol=symbol, event_ts=t, receive_ts=t + 80 * NS_PER_MS + 1, source=source,
+                         bid=round(c * (1 - half), 4), ask=round(c * (1 + half), 4), bid_size=size, ask_size=size,
+                         timestamp_kind=TimestampKind.VENDOR))
+    return out
+
+
+def regular_hours_days(bars: Iterable[dict[str, Any]]) -> dict[date, list[dict[str, Any]]]:
+    """Group bars by market date, keeping bars that start 09:30-15:59 ET."""
+    from atlas.feeds.alpaca import parse_rfc3339_ns
+
+    days: dict[date, list[dict[str, Any]]] = {}
+    for b in bars:
+        et = datetime.fromtimestamp(parse_rfc3339_ns(b["t"]) / NS_PER_S, UTC).astimezone(MARKET_TZ)
+        if time(9, 30) <= et.time() < time(16, 0):
+            days.setdefault(et.date(), []).append({"t": b["t"], "c": b["c"], "v": b.get("v")})  # keep memory small
+    return days
+
+
+def merge_bar_sessions(per_symbol: dict[str, list[MarketEvent]]) -> list[MarketEvent]:
+    events = [e for evs in per_symbol.values() for e in evs]
+    events.sort(key=lambda e: (e.receive_ts, e.symbol))
+    import dataclasses
+
+    last = -1
+    fixed = []
+    for e in events:  # one arrival per minute for all symbols; keep receive_ts strictly increasing
+        r = max(e.receive_ts, last + 1)
+        fixed.append(e if r == e.receive_ts else dataclasses.replace(e, receive_ts=r))
+        last = r
+    return fixed

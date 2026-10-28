@@ -153,7 +153,7 @@ def load_raw(ref: SessionRef) -> list[MarketEvent]:
     return read_session(Path(ref.path), ref.sha256)
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=512)  # a year of training days plus a validation half-year
 def _load_validated(key: str) -> tuple[tuple[MarketEvent, ...], ValidationReport]:
     ref = SessionRef.model_validate_json(key)
     report = validate_events(load_raw(ref), ref.allowed_data_age_ms, order_scope=ref.order_scope)

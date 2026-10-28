@@ -187,11 +187,23 @@ class EvolutionRunner:
         self._write_summary(state)
         return state
 
+    def _benchmark(self, state: EvolutionState | None = None) -> tuple[float, ...] | None:
+        """Hold's per-window returns on the training sessions (for ``fitness.benchmark: buy_hold``)."""
+        if self.evo.fitness.benchmark != "buy_hold":
+            return None
+        if getattr(self, "_hold_returns", None) is None:
+            hold = next(r for r in baseline_records() if r.family == "baseline_buy_hold")
+            ev = self.evaluator.evaluate([hold])[0]
+            if ev.error:
+                raise RuntimeError(f"benchmark evaluation failed: {ev.error}")
+            self._hold_returns = tuple(m.net_return for m in ev.windows)
+        return self._hold_returns
+
     def _evaluate_baselines(self) -> dict[str, dict[str, Any]]:
         records = baseline_records()
         out = {}
         for rec, ev in zip(records, self.evaluator.evaluate(records)):
-            fit = score(ev, self.evo.fitness, self.n_windows)
+            fit = score(ev, self.evo.fitness, self.n_windows, self._benchmark())
             out[rec.agent_id] = {"family": rec.family, "fitness": fit.to_dict(), "evaluation": ev.to_dict()}
         return out
 
@@ -203,7 +215,8 @@ class EvolutionRunner:
 
         evaluations = self.evaluator.evaluate(population)
         state.evaluations_run += len(population) * self.n_windows
-        fitness = {ev.agent_id: score(ev, self.evo.fitness, self.n_windows) for ev in evaluations}
+        bench = self._benchmark()
+        fitness = {ev.agent_id: score(ev, self.evo.fitness, self.n_windows, bench) for ev in evaluations}
         state.archives.update(population, fitness, gen)
         selection = select_parents(population, fitness, self.evo.parent_count,
                                    self.evo.diversity.min_parent_distance,

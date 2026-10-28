@@ -108,9 +108,11 @@ def test_selection_relaxes_constraints_among_eligible_only() -> None:
 
 def test_offspring_mix_and_lineage() -> None:
     rng = np.random.default_rng(0)
-    parents = initial_population(list(FAMILY_CLASSES), 50, rng)[::10]
+    from atlas.config import FAMILY_NAMES
+
+    parents = initial_population(list(FAMILY_NAMES), 50, rng)[::10]
     cfg = OffspringConfig()
-    kids = make_offspring(parents, 1, cfg, list(FAMILY_CLASSES), rng)
+    kids = make_offspring(parents, 1, cfg, list(FAMILY_NAMES), rng)
     assert len(kids) == 50
     assert len({k.agent_id for k in kids}) == 50
     origins = [k.origin for k in kids]
@@ -135,3 +137,18 @@ def test_archives_keep_best_and_novel() -> None:
     # An elite copy (same genome) is not re-archived as a new champion.
     arch.update([_rec("a2", "momentum")], _fit({"a2": 3}), generation=1)
     assert [e.record.agent_id for e in arch.champions] == ["a", "b"]
+
+
+def test_buy_hold_benchmark_scores_excess_return_and_keeps_old_fingerprints() -> None:
+    plain = FitnessConfig()
+    vs_hold = FitnessConfig(benchmark="buy_hold", drawdown_stat="mean")
+    agent = ev(windows=[m(ret=0.004, dd=0.002), m(ret=0.002, dd=0.010), m(ret=0.003, dd=0.003)])
+    hold = (0.003, 0.003, 0.003)
+    r = score(agent, vs_hold, 3, hold)
+    assert r.aggregate.mean_net_return == pytest.approx(0.0)  # exactly matches Hold on average
+    assert r.aggregate.worst_drawdown == pytest.approx(0.005)  # mean of window drawdowns
+    assert score(agent, plain, 3).aggregate.mean_net_return == pytest.approx(0.003)
+    with pytest.raises(ValueError):
+        score(agent, vs_hold, 3)  # benchmark returns are required
+    # Configs that don't use the new options hash exactly as before.
+    assert "benchmark" not in plain.model_dump() and fitness_fingerprint(plain) != fitness_fingerprint(vs_hold)

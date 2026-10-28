@@ -74,11 +74,15 @@ def test_crossover_and_distance() -> None:
 # ------------------------------------------------------------------ population
 
 
-def test_initial_population_is_50_with_10_per_family() -> None:
-    pop = initial_population(list(FAMILY_CLASSES), 50, np.random.default_rng(0))
+@pytest.mark.parametrize("families", ["fast", "slow"])
+def test_initial_population_is_50_with_10_per_family(families: str) -> None:
+    from atlas.config import FAMILY_NAMES, SLOW_FAMILY_NAMES
+
+    names = list(FAMILY_NAMES if families == "fast" else SLOW_FAMILY_NAMES)
+    pop = initial_population(names, 50, np.random.default_rng(0))
     assert len(pop) == 50
     assert len({r.agent_id for r in pop}) == 50
-    for family in FAMILY_CLASSES:
+    for family in names:
         assert sum(r.family == family for r in pop) == 10
 
 
