@@ -7,12 +7,16 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 ## Hard rules
 
 - **No live trading.** There is no live-order path, and none may be added without the user's explicit,
-  separate approval for Phase 7/8. Never add trading endpoints, broker SDKs, order-placing code, or a
-  network client outside `src/atlas/feeds/alpaca.py`. The tests in `tests/test_paper_cannot_trade_live.py`
-  enforce this; never weaken them to make something pass.
-- **Keys stay in `.env`.** Alpaca market-data keys live only in `.env` (git-ignored). Never ask the user to
-  paste keys into chat, never print, `cat`, or log `.env`, and never commit it. If keys are missing, tell
-  the user to add them to `.env` themselves.
+  separate approval for Phase 7/8. Never add trading endpoints, broker SDKs, or order-placing code. Only
+  three modules may use the network, each pinned to its own read-only job (approved by the user on
+  2026-10-28): `src/atlas/feeds/alpaca.py` (Alpaca market data and news, `urllib`), `src/atlas/feeds/anthropic_api.py`
+  (the AI news reader's Claude `messages.create` calls, `anthropic`), and `src/atlas/feeds/sec.py` (SEC EDGAR
+  filings, `urllib` GET). Never add another. The tests in `tests/test_paper_cannot_trade_live.py` enforce
+  this; never weaken them to make something pass.
+- **Keys stay in `.env`.** Alpaca market-data keys, `ANTHROPIC_API_KEY` (AI news reader) and `SEC_USER_AGENT`
+  (the contact the SEC requires) live only in `.env` (git-ignored), read only through
+  `atlas.feeds.alpaca.read_env`. Never ask the user to paste keys into chat, never print, `cat`, or log
+  `.env`, and never commit it. If one is missing, tell the user to add it to `.env` themselves.
 - **Don't change a running session.** Never edit `configs/paper_live.yaml`, `configs/risk_live.yaml`, or
   checkpoints while a session runs. Risk limits are the user's to change.
 - **Permanent bots.** `Flip` (coin flip) and `Hold` (buy-and-hold benchmark) are in every paper session

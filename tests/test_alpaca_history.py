@@ -81,3 +81,36 @@ def test_polled_dataset_is_validated_like_the_live_session(tmp_path) -> None:
         ref = ParquetProvider(out).session_ref(date(2024, 6, 3))
         assert ref.order_scope == scope
         assert session_validation(ref).summary()["dropped_events"] == dropped
+
+
+def test_history_requests_stop_short_of_the_free_plans_sip_delay() -> None:
+    from datetime import UTC, datetime
+
+    from atlas.feeds.alpaca import history_end
+
+    now = datetime(2026, 10, 28, 20, 30, tzinfo=UTC)  # 4:30 pm New York
+    assert history_end("2026-10-28", now) == "2026-10-28T20:10:00Z"  # today: 20 minutes ago
+    assert history_end("2026-10-27", now) == "2026-10-27T23:59:59Z"  # an earlier day: its end
+
+
+def test_recent_sip_403_is_reported_as_a_plan_limit_not_bad_keys(monkeypatch) -> None:
+    import io
+    import urllib.error
+    import urllib.request
+
+    import pytest
+
+    from atlas.feeds import alpaca
+
+    def refuse(body):
+        def urlopen(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+        return urlopen
+
+    fetch = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"), allowed=alpaca.HISTORY_PATHS)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse(b'{"message":"subscription does not permit querying recent SIP data"}'))
+    with pytest.raises(alpaca.AlpacaPlanLimit, match="15 minutes"):
+        fetch("/v2/stocks/bars", {})
+    monkeypatch.setattr(urllib.request, "urlopen", refuse(b'{"message":"forbidden"}'))
+    with pytest.raises(alpaca.AlpacaAuthError):
+        fetch("/v2/stocks/bars", {})

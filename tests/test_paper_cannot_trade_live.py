@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import importlib.util
 import json
 import socket
@@ -18,8 +19,8 @@ from atlas.paper.config import PaperConfig
 from atlas.paper.session import PaperSession, ensure_not_live, make_broker
 
 SRC = REPO / "src" / "atlas"
-NETWORK_MODULES = {"socket", "ssl", "http", "urllib", "requests", "httpx", "aiohttp", "websocket", "websockets",
-                   "ftplib", "smtplib", "grpc", "schwab", "tda"}
+NETWORK_MODULES = {"socket", "ssl", "http", "urllib", "requests", "httpx", "httpx2", "aiohttp", "websocket",
+                   "websockets", "ftplib", "smtplib", "grpc", "schwab", "tda", "anthropic", "alpaca", "alpaca_trade_api"}
 
 
 @pytest.mark.parametrize("override", [
@@ -90,7 +91,11 @@ def test_no_live_broker_module_exists() -> None:
     assert set(brokers.__all__) == {"BrokerExecution", "LiveTradingDisabledError"}
 
 
-DATA_ONLY_MODULE = Path("feeds") / "alpaca.py"  # the single module allowed to touch the network
+DATA_ONLY_MODULE = Path("feeds") / "alpaca.py"  # market data: the only module allowed to read the environment
+AI_READER_MODULE = Path("feeds") / "anthropic_api.py"  # the AI news reader's Claude API calls
+SEC_MODULE = Path("feeds") / "sec.py"  # company filings from SEC EDGAR
+NETWORK_ALLOWED = {DATA_ONLY_MODULE: {"urllib"}, AI_READER_MODULE: {"anthropic"},
+                   SEC_MODULE: {"urllib"}}  # module -> the only network client it may import
 
 
 def _imports(path: Path) -> list[str]:
@@ -104,11 +109,48 @@ def _imports(path: Path) -> list[str]:
 
 
 def test_only_the_market_data_module_imports_a_network_client() -> None:
-    offenders = [f"{p.relative_to(SRC)}: {n}" for p in SRC.rglob("*.py") if p.relative_to(SRC) != DATA_ONLY_MODULE
+    offenders = [f"{p.relative_to(SRC)}: {n}" for p in SRC.rglob("*.py") if p.relative_to(SRC) not in NETWORK_ALLOWED
                  for n in _imports(p) if n.split(".")[0] in NETWORK_MODULES]
     assert offenders == []
-    allowed = {n.split(".")[0] for n in _imports(SRC / DATA_ONLY_MODULE)} & NETWORK_MODULES
-    assert allowed == {"urllib"}  # stdlib HTTP only; no broker SDKs, no sockets, no websockets
+    for module, only in NETWORK_ALLOWED.items():
+        # alpaca.py: stdlib HTTP only; anthropic_api.py: Anthropic's package only. No broker SDKs, no sockets.
+        assert {n.split(".")[0] for n in _imports(SRC / module)} & NETWORK_MODULES == only, module
+
+
+def test_ai_reader_module_can_only_ask_claude_about_headlines(monkeypatch) -> None:
+    """The AI reader may make one call, messages.create, to Anthropic's default API host; nothing else."""
+    text = (SRC / AI_READER_MODULE).read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    for node in ast.walk(tree):  # drop docstrings and other bare strings, keep all code and real string values
+        if hasattr(node, "body") and isinstance(node.body, list):
+            node.body = [n for n in node.body if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))]
+    code = ast.unparse(tree)
+    assert text.count("client.messages.create(") == 1
+    assert set(re.findall(r"client\.([a-z_.]+)\(", code)) == {"messages.create"}
+    for banned in ("base_url", "http://", "https://", ".beta", "batches", "files.", "tools=", "/v2/", "alpaca.markets",
+                   "os.environ", "getenv", "submit", "order"):
+        assert banned not in code, banned
+    from atlas.feeds import anthropic_api
+
+    monkeypatch.delenv(anthropic_api.KEY_ENV, raising=False)
+    with pytest.raises(PermissionError):  # no key: refuses before any client exists
+        anthropic_api.claude_classifier("claude-haiku-5-5", env_file=None)
+
+
+def test_sec_module_can_only_GET_two_public_edgar_endpoints(monkeypatch) -> None:
+    from atlas.feeds import sec
+
+    text = (SRC / SEC_MODULE).read_text(encoding="utf-8")
+    assert set(re.findall(r"https://[a-z.]+", text)) == {"https://www.sec.gov", "https://data.sec.gov"}
+    assert 'method="GET"' in text and "POST" not in text and "DELETE" not in text and "PATCH" not in text
+    get = sec.http_get("Atlas test test@example.com")
+    for bad in ("https://api.alpaca.markets/v2/orders", "https://www.sec.gov/cgi-bin/browse-edgar",
+                "https://data.sec.gov/submissions/CIK0000320193.json", "http://data.sec.gov/api/xbrl/companyfacts/CIK1"):
+        with pytest.raises(PermissionError):
+            get(bad)
+    monkeypatch.delenv(sec.UA_ENV, raising=False)
+    with pytest.raises(PermissionError):  # no contact address: refuses before any request
+        sec.user_agent(env_file=None)
 
 
 def test_only_the_market_data_module_reads_the_environment() -> None:

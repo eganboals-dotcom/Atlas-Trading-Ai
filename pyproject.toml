@@ -29,6 +29,10 @@ dashboard = [
     "streamlit==1.66.1",
     "plotly==7.1.0",
 ]
+# AI news reader (atlas.feeds.anthropic_api): pip install -e .[news]; key ANTHROPIC_API_KEY in .env
+news = [
+    "anthropic==2.3.0",
+]
 # Native leaderboard window (Edge WebView2 on Windows): python -m atlas.cli paper-window
 window = [
     "pywebview==6.2.1",

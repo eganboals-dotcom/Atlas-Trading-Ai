@@ -659,6 +659,38 @@ python -m atlas.cli swing-track   # refetches daily bars (~1.5 min), writes arti
 
 Expect noise for months: a real edge needs about a year of days or more to stand out from luck.
 
+**News desk** ([src/atlas/news/](src/atlas/news/)). Readers turn headlines into notes: company,
+direction (−1 to +1), importance (0 to 1) and category. A briefing turns the notes into what is
+known at each open (anything published before 09:15 counts), and bots trade only the briefing,
+so readers can be swapped. Reader #1 (`keyword`) uses fixed rules: analyst up/downgrades and EPS
+beats/misses. Reader #2 (`claude`) has Claude Haiku 5.5 read each headline with company names
+hidden. It needs `pip install -e .[news]` and `ANTHROPIC_API_KEY` in `.env`. It costs cents a day,
+and its run cap is set in [configs/news_desk.yaml](configs/news_desk.yaml). A model may remember what
+followed an old headline, so the AI reader is never backtested: it only reads headlines from
+2026-10-29 on. `python -m atlas.cli news-desk` fetches new headlines, runs the readers and writes
+the next briefing to `artifacts/reports/news_desk/latest.md`. Two news bots per reader
+(`brief_tilt` holds everything but leans away from bad news; `brief_drift` buys good news for 5
+days) are frozen in [configs/swing_track_news.yaml](configs/swing_track_news.yaml), so the two
+readers are compared on the same future days. Backtested on 10 years with the keyword reader,
+`brief_tilt` beat Hold on one stock list (+17.9% vs +17.0%) and lost on the other (+11.0% vs
++11.7%): no edge.
+
+**Fundamentals** ([src/atlas/swing/fundamentals.py](src/atlas/swing/fundamentals.py)). Annual
+figures come from SEC EDGAR filings, point in time: a figure counts from the day after it was
+filed. Market value uses unadjusted prices, because filed share counts aren't split-adjusted. The
+factors are gross profitability, return on assets, book-to-market, earnings yield and a
+quality + value blend (`fund_rank` and four fixed rules, in `configs/swing_v8_fund_*.yaml`). The
+SEC requires a contact in every request: set `SEC_USER_AGENT=<name> <email>` in `.env`, then run:
+
+```bash
+python -m atlas.cli fetch-sec --symbols AAPL MSFT ...      # both 2015 stock lists; ~1 request each
+python -m atlas.cli fetch-daily --adjustment raw --out data/processed/alpaca_daily_raw --symbols AAPL MSFT ...
+python -m atlas.cli swing-walkforward --config configs/swing_v8_fund_stocks30.yaml
+```
+
+`scripts/swing_track.cmd` runs the news desk and both trackers after the close. `swing_track.cmd
+auto` is the unattended form for a scheduled task.
+
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)
 * equal-weight buy-and-hold

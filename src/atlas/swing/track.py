@@ -9,6 +9,7 @@ and a later run with different rules is refused, so the record can't be edited a
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from datetime import UTC, date, datetime, time
@@ -33,6 +34,7 @@ class TrackedRule(StrictModel):
     universe: str
     family: str
     genome: Genome
+    reader: str | None = None  # news desk reader whose briefing the rule trades (notes under notes_dir/<reader>)
 
 
 class TrackConfig(StrictModel):
@@ -44,14 +46,16 @@ class TrackConfig(StrictModel):
     cost_bps: float = 2.0
     universes: dict[str, list[str]]
     rules: list[TrackedRule]
+    notes_dir: Path | None = None  # news desk notes, for rules with a reader
 
     def symbols(self) -> list[str]:
         return sorted({s for syms in self.universes.values() for s in syms} | {self.cash_symbol})
 
 
 def fingerprint(cfg: TrackConfig) -> str:
-    """Hash of everything that decides the results: start, history, costs, universes and rules."""
-    frozen = cfg.model_dump(mode="json", exclude={"out_dir", "dataset_dir"})
+    """Hash of everything that decides the results: start, history, costs, universes and rules. Unset
+    optional fields are left out, so adding one never changes an existing tracker's fingerprint."""
+    frozen = cfg.model_dump(mode="json", exclude={"out_dir", "dataset_dir", "notes_dir"}, exclude_none=True)
     return hashlib.sha256(json.dumps(frozen, sort_keys=True).encode()).hexdigest()
 
 
@@ -97,11 +101,18 @@ def score(cfg: TrackConfig, panels: dict[str, Panel]) -> dict[str, Any]:
         cash = _cash_returns(panels[uni], cfg.cash_symbol)
         s = next((i for i, d in enumerate(p.dates) if d >= cfg.start_date), len(p.dates))
         rows: dict[str, Any] = {}
-        entries = [("Hold", *HOLD)] + [(r.name, r.family, r.genome) for r in cfg.rules if r.universe == uni]
-        for name, fam, g in entries:
-            x = exposures(p, fam, g)
+        entries = [("Hold", *HOLD, None)] + [(r.name, r.family, r.genome, r.reader) for r in cfg.rules
+                                             if r.universe == uni]
+        for name, fam, g, reader in entries:
+            q = p
+            if reader:
+                from atlas.news.desk import briefing_features, load_notes
+
+                notes = load_notes(Path(cfg.notes_dir or "data/processed/news_notes") / reader)
+                q = dataclasses.replace(p, features=briefing_features(p, notes))
+            x = exposures(q, fam, g)
             days = len(p.dates) - s
-            res = simulate(p, x, s, len(p.dates), cfg.cost_bps, cash) if days else None
+            res = simulate(q, x, s, len(p.dates), cfg.cost_bps, cash) if days else None
             last = x[1][-1] if days else np.zeros(len(syms))  # held overnight after the last close
             held = {p.symbols[j]: round(float(last[j]) / len(syms), 4) for j in np.flatnonzero(last > 1e-9)}
             rows[name] = {"days": days, "family": fam, "holding_last_day": held,

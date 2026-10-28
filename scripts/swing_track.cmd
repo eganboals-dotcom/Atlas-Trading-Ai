@@ -1,7 +1,9 @@
 @echo off
-REM Project Atlas - swing forward tracker (research only; places no orders).
-REM Double-click after 4:20 pm ET (1:20 pm Pacific) on any trading day. Downloads daily bars (read-only,
-REM about 1.5 minutes) and scores the frozen rules in configs\swing_track.yaml against Hold since 2026-10-29.
+REM Project Atlas - daily research after the close (research only; places no orders).
+REM Double-click after 4:20 pm ET (1:20 pm Pacific) on any trading day. Runs the news desk
+REM (configs\news_desk.yaml: new headlines, reader notes, next briefing), then both forward trackers:
+REM the frozen swing rules (configs\swing_track.yaml; downloads daily bars, about 1.5 minutes) and the
+REM news bots (configs\swing_track_news.yaml), each scored against Hold since 2026-10-29.
 REM "swing_track.cmd auto" is the unattended form (for a scheduled task): no pause, output appended to
 REM artifacts\reports\swing_track\runs.log.
 setlocal
@@ -16,10 +18,15 @@ if not exist "%PY%" (
 if /i "%~1"=="auto" (
   if not exist artifacts\reports\swing_track mkdir artifacts\reports\swing_track
   echo === %DATE% %TIME% >> artifacts\reports\swing_track\runs.log
+  "%PY%" -m atlas.cli --log-level WARNING news-desk --config configs\news_desk.yaml >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track.yaml >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_news.yaml --no-fetch >> artifacts\reports\swing_track\runs.log 2>&1
   exit /b %ERRORLEVEL%
 )
+"%PY%" -m atlas.cli --log-level WARNING news-desk --config configs\news_desk.yaml
 "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track.yaml
+"%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_news.yaml --no-fetch
 echo.
-echo Report: artifacts\reports\swing_track\tracker.md
+echo Reports: artifacts\reports\swing_track\tracker.md, artifacts\reports\swing_track_news\tracker.md
+echo          and the next briefing in artifacts\reports\news_desk\latest.md
 pause

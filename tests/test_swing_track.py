@@ -100,13 +100,14 @@ def test_tracker_writes_a_report_and_handles_no_days_yet(tmp_path) -> None:
     assert "No completed days" in track(later).read_text(encoding="utf-8")
 
 
-def test_the_shipped_tracker_config_is_valid() -> None:
+@pytest.mark.parametrize("path", ["configs/swing_track.yaml", "configs/swing_track_news.yaml"])
+def test_the_shipped_tracker_configs_are_valid(path: str) -> None:
     from pathlib import Path
 
     from atlas.config import load_config
     from atlas.swing.families import FAMILIES
 
-    cfg = load_config(Path("configs/swing_track.yaml"), TrackConfig)
+    cfg = load_config(Path(path), TrackConfig)
     assert cfg.start_date == date(2026, 10, 29)
     for r in cfg.rules:
         assert r.universe in cfg.universes and set(r.genome) == set(FAMILIES[r.family].space)

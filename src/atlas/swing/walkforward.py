@@ -52,6 +52,13 @@ class SwingConfig(StrictModel):
     cash_symbol: str | None = None
     # Alpaca news headlines (``fetch-news``) for the news families; None runs without news.
     news_dir: Path | None = None
+    # News desk reader whose briefing the brief_* families trade: "keyword" (computed from news_dir) or the
+    # name of a reader whose notes are saved under notes_dir/<reader>/.
+    reader: str | None = None
+    notes_dir: Path = Path("data/processed/news_notes")
+    # SEC fundamentals (``fetch-sec``) and unadjusted daily bars of the same symbols (for market value)
+    fundamentals_dir: Path | None = None
+    raw_dataset_dir: Path | None = None
 
 
 def fitness(r: Result, cfg: SwingConfig, rf: np.ndarray | None = None) -> float:
@@ -91,6 +98,15 @@ TEXTBOOK: dict[str, tuple[str, Genome]] = {
     "post-event drift (2% gap, 2x volume, 20 days)": ("event_drift", {
         "mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "direction": 1.0, "gap_bps": 200.0, "vol_mult": 2.0,
         "confirm": 0.0, "hold_days": 20}),
+}
+FUND_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run has fundamentals
+    "quality: top 10 by gross profitability (Novy-Marx), quarterly": ("fund_rank", {"factor": 0.0, "top_k": 10,
+                                                                                  "rebalance": 63}),
+    "value: top 10 by book-to-market (Fama-French), quarterly": ("fund_rank", {"factor": 2.0, "top_k": 10,
+                                                                               "rebalance": 63}),
+    "value: top 10 by earnings yield, quarterly": ("fund_rank", {"factor": 3.0, "top_k": 10, "rebalance": 63}),
+    "quality + value (magic-formula style): top 10, quarterly": ("fund_rank", {"factor": 4.0, "top_k": 10,
+                                                                               "rebalance": 63}),
 }
 NEWS_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run has news
     "news gaps: follow with news, fade without (1% gap, 5 days)": ("news_gap", {
@@ -157,6 +173,21 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
 
         p = dataclasses.replace(p, features=news_features(p, load_news(cfg.news_dir)))  # days before the holdout only
         rules |= NEWS_TEXTBOOK
+    if cfg.reader:
+        from atlas.news.desk import KeywordReader, briefing_features, load_notes
+        from atlas.swing.news import load_news
+
+        notes = (KeywordReader().read(load_news(cfg.news_dir)) if cfg.reader == "keyword"
+                 else load_notes(cfg.notes_dir / cfg.reader))
+        p = dataclasses.replace(p, features={**p.features, **briefing_features(p, notes)})
+    if cfg.fundamentals_dir:
+        from atlas.swing.fundamentals import fundamental_features
+
+        raw = load_panel(cfg.raw_dataset_dir or cfg.dataset_dir, cfg.symbols)
+        idx = {d: i for i, d in enumerate(raw.dates)}
+        raw_close = np.array([raw.close[idx[d]] if d in idx else np.full(len(cfg.symbols), np.nan) for d in p.dates])
+        p = dataclasses.replace(p, features={**p.features, **fundamental_features(p, cfg.fundamentals_dir, raw_close)})
+        rules |= FUND_TEXTBOOK
     cash = np.zeros(len(p.dates))  # no interest unless a cash symbol is configured
     if cfg.cash_symbol:
         c = full.select([cfg.cash_symbol]).close[:, 0]

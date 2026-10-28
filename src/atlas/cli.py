@@ -605,12 +605,13 @@ def _cmd_fetch_bars(args: argparse.Namespace) -> int:
     from datetime import date as _date
 
     from atlas.data.alpaca_history import bar_events, merge_bar_sessions, publish_dataset_session, regular_hours_days
-    from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+    from atlas.feeds.alpaca import (HISTORY_BARS_PATH, HISTORY_PATHS, history_end, http_fetch, iter_history,
+                                    load_credentials)
 
     fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
     by_symbol = {}
     for sym in args.symbols:
-        bars = iter_history(fetch, HISTORY_BARS_PATH, sym, f"{args.first}T00:00:00Z", f"{args.last}T23:59:59Z",
+        bars = iter_history(fetch, HISTORY_BARS_PATH, sym, f"{args.first}T00:00:00Z", history_end(args.last),
                             args.feed, extra={"timeframe": "1Min", "adjustment": "raw"})
         by_symbol[sym] = regular_hours_days(bars)
         print(f"{sym}: {len(by_symbol[sym])} days", flush=True)
@@ -638,18 +639,19 @@ def _cmd_fetch_bars(args: argparse.Namespace) -> int:
 
 def _cmd_fetch_daily(args: argparse.Namespace) -> int:
     """Download split- and dividend-adjusted daily bars (read-only) for swing (multi-day) research."""
-    from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+    from atlas.feeds.alpaca import (HISTORY_BARS_PATH, HISTORY_PATHS, history_end, http_fetch, iter_history,
+                                    load_credentials)
     from atlas.swing.data import daily_rows, save_daily
 
     fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
     rows = {}
     for sym in args.symbols:  # ~1 request per symbol, paced well under the free plan's limit
         rows[sym] = daily_rows(iter_history(fetch, HISTORY_BARS_PATH, sym, f"{args.first}T00:00:00Z",
-                                            f"{args.last}T23:59:59Z", args.feed, min_interval_s=1.0,
-                                            extra={"timeframe": "1Day", "adjustment": "all"}))
+                                            history_end(args.last), args.feed, min_interval_s=1.0,
+                                            extra={"timeframe": "1Day", "adjustment": args.adjustment}))
         print(f"{sym}: {len(rows[sym])} days", flush=True)
     out = Path(args.out)
-    save_daily(rows, out, {"source": f"alpaca-{args.feed}-1Day", "adjustment": "all (splits and dividends)",
+    save_daily(rows, out, {"source": f"alpaca-{args.feed}-1Day", "adjustment": args.adjustment,
                            "license_notes": "Alpaca historical market data, downloaded for personal research; check "
                                             "Alpaca's data terms before sharing or redistributing"})
     print(f"daily bars written to {out}", flush=True)
@@ -683,19 +685,20 @@ def _cmd_fetch_news(args: argparse.Namespace) -> int:
 
 def _cmd_swing_track(args: argparse.Namespace) -> int:
     """Refetch daily bars (read-only) and score the frozen swing rules against Hold since their start date."""
-    from datetime import UTC, datetime, timedelta
+    from datetime import UTC, datetime
 
     from atlas.swing.track import TrackConfig, check_frozen, last_complete_day, track
 
     cfg = load_config(Path(args.config), TrackConfig)
     check_frozen(cfg)  # refuse changed rules before downloading anything
     if not args.no_fetch:
-        from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+        from atlas.feeds.alpaca import (HISTORY_BARS_PATH, HISTORY_PATHS, history_end, http_fetch, iter_history,
+                                    load_credentials)
         from atlas.swing.data import daily_rows, save_daily
 
         now = datetime.now(UTC)
         last = last_complete_day(now)
-        end = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")  # the free plan has no SIP data newer than 15 min
+        end = history_end(str(now.date()), now)  # the free plan has no SIP data newer than 15 minutes
         fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
         rows = {}
         for sym in cfg.symbols():  # ~1 request per symbol, paced well under the free plan's limit
@@ -709,6 +712,47 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
     out = track(cfg)
     print(out.read_text(encoding="utf-8"))
     print(f"report: {out}")
+    return EXIT_OK
+
+
+def _cmd_news_desk(args: argparse.Namespace) -> int:
+    """Fetch new headlines (read-only), run the news desk's readers, write the next open's briefing."""
+    from atlas.feeds import anthropic_api
+    from atlas.feeds.alpaca import NEWS_PATHS, http_fetch, iter_news, load_credentials
+    from atlas.news.daily import DeskConfig, run_desk
+
+    cfg = load_config(Path(args.config), DeskConfig)
+    http = None if args.no_fetch else http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=NEWS_PATHS)
+
+    def fetch(syms: list[str], start: str, end: str):
+        return iter_news(http, syms, start, end, min_interval_s=1.0)
+
+    def classifier():
+        return anthropic_api.claude_classifier(cfg.claude_model, Path(".env"))
+
+    has_key = "claude" in cfg.readers and not anthropic_api.missing_key(Path(".env"))
+    out = run_desk(cfg, fetch if http else None, classifier if has_key else None)
+    print(f"briefing: {out}")
+    return EXIT_OK
+
+
+def _cmd_fetch_sec(args: argparse.Namespace) -> int:
+    """Download companies' SEC filings data (read-only EDGAR) and keep the annual figures the factors use."""
+    from atlas.feeds import sec
+    from atlas.swing.fundamentals import extract
+
+    get = sec.http_get(sec.user_agent(Path(".env")))
+    ciks = sec.ciks(get)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for sym in args.symbols:
+        if sym not in ciks:
+            print(f"{sym}: not in EDGAR's ticker list, skipped", flush=True)
+            continue
+        rows = extract(sec.company_facts(get, ciks[sym]))
+        rows.write_parquet(out / f"{sym}.parquet")
+        print(f"{sym}: {rows.height} values", flush=True)
+    print(f"fundamentals written to {out}", flush=True)
     return EXIT_OK
 
 
@@ -786,6 +830,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--first", default="2016-01-04")
     p.add_argument("--last", default="2026-10-27")
     p.add_argument("--out", default="data/processed/alpaca_daily")
+    p.add_argument("--adjustment", default="all", choices=["all", "raw", "split", "dividend"],
+                   help="raw: unadjusted prices, e.g. for market value with filed share counts")
     p.set_defaults(func=_cmd_fetch_daily)
 
     p = sub.add_parser("fetch-news", help="Download news headlines (read-only Alpaca market data) for swing research.")
@@ -800,6 +846,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", default="configs/swing_track.yaml")
     p.add_argument("--no-fetch", action="store_true", help="score the bars already downloaded")
     p.set_defaults(func=_cmd_swing_track)
+
+    p = sub.add_parser("fetch-sec", help="Download company fundamentals from SEC EDGAR (read-only) for swing research.")
+    p.add_argument("--symbols", nargs="+", required=True)
+    p.add_argument("--out", default="data/processed/sec_fundamentals")
+    p.set_defaults(func=_cmd_fetch_sec)
+
+    p = sub.add_parser("news-desk", help="Fetch new headlines, run the news readers, write the next open's briefing.")
+    p.add_argument("--config", default="configs/news_desk.yaml")
+    p.add_argument("--no-fetch", action="store_true", help="use the headlines already downloaded")
+    p.set_defaults(func=_cmd_news_desk)
 
     p = sub.add_parser("swing-walkforward", help="Walk-forward test of multi-day (swing) bots vs buy-and-hold.")
     p.add_argument("--config", required=True)

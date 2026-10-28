@@ -47,7 +47,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, time as dtime
+from datetime import UTC, date, datetime, time as dtime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -74,6 +74,21 @@ class AlpacaAuthError(PermissionError):
     """Missing or rejected market-data credentials; the session must not start."""
 
 
+class AlpacaPlanLimit(PermissionError):
+    """Valid credentials, but the request is outside the free plan (SIP data from the last 15 minutes)."""
+
+
+SIP_DELAY_MARGIN_S = 20 * 60  # the free plan serves SIP history only up to 15 minutes ago
+
+
+def history_end(last_day: str, now: datetime | None = None) -> str:
+    """End timestamp for a history request through ``last_day`` (YYYY-MM-DD): the end of that day, or 20
+    minutes ago if that is earlier, so a request for today never asks for SIP data the free plan won't serve."""
+    now = now or datetime.now(UTC)
+    end = min(datetime.fromisoformat(f"{last_day}T23:59:59+00:00"), now - timedelta(seconds=SIP_DELAY_MARGIN_S))
+    return end.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 @dataclass(frozen=True)
 class AlpacaCredentials:
     key_id: str
@@ -83,9 +98,10 @@ class AlpacaCredentials:
         return f"AlpacaCredentials(key_id={self.key_id[:4]}…)"
 
 
-def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
-    """Read market-data keys from the environment, or from a local .env file (git-ignored)."""
-    values = {KEY_ENV: os.environ.get(KEY_ENV, ""), SECRET_ENV: os.environ.get(SECRET_ENV, "")}
+def read_env(names: tuple[str, ...], env_file: Path | None = Path(".env")) -> dict[str, str]:
+    """Values of ``names`` from the environment, else from a local .env file (git-ignored); "" when unset.
+    The one place in Atlas that reads the environment, so every secret goes through the same path."""
+    values = {n: os.environ.get(n, "") for n in names}
     if env_file is not None and env_file.is_file() and not all(values.values()):
         for line in env_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -94,6 +110,12 @@ def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
             k, v = (x.strip() for x in line.split("=", 1))
             if k in values and not values[k]:
                 values[k] = v.strip('"').strip("'")
+    return values
+
+
+def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
+    """Read market-data keys from the environment, or from a local .env file (git-ignored)."""
+    values = read_env((KEY_ENV, SECRET_ENV), env_file)
     if not all(values.values()):
         raise AlpacaAuthError(f"set {KEY_ENV} and {SECRET_ENV} (environment or .env) to your Alpaca paper-account "
                               "market-data keys")
@@ -118,6 +140,10 @@ def http_fetch(credentials: AlpacaCredentials, timeout_s: float = 5.0,
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
+                body = exc.read().decode("utf-8", "replace")[:300] if exc.fp is not None else ""
+                if "recent SIP data" in body:
+                    raise AlpacaPlanLimit("Alpaca's free plan has no SIP data from the last 15 minutes: end the "
+                                          "request at least 15 minutes ago, or use --feed iex") from exc
                 raise AlpacaAuthError(f"Alpaca rejected the market-data credentials (HTTP {exc.code})") from exc
             raise FeedDisconnected(f"Alpaca HTTP {exc.code}" + (" (rate limited)" if exc.code == 429 else "")) \
                 from exc

@@ -1,0 +1,26 @@
+# Swing v8 (fundamentals) on the stocks30 universe: about the 30 largest US companies by market value at the end of 2015 (from memory, so approximate), chosen by size before the test years rather than by later winners; all still trade, so some survivorship remains.
+# v8: value and quality from SEC filings (atlas.swing.fundamentals), point in time: a figure counts from the
+# day after it was filed. Same folds, costs, activity gate, untouched holdout and T-bill cash as v4.
+# Data: python -m atlas.cli fetch-daily --out data/processed/alpaca_daily_v2 --symbols <symbols below> BIL
+experiment_name: swing_v8_fund_stocks30
+dataset_dir: data/processed/alpaca_daily_v2
+symbols: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG, VZ, T, PFE, KO, CVX, ORCL, DIS, MRK, PEP, HD, V, INTC, CSCO, BAC, IBM, GILD, CMCSA]
+cash_symbol: BIL
+fundamentals_dir: data/processed/sec_fundamentals   # python -m atlas.cli fetch-sec --symbols <symbols above>
+raw_dataset_dir: data/processed/alpaca_daily_raw    # fetch-daily --adjustment raw --out data/processed/alpaca_daily_raw ...
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [fund_rank, vol_target, session]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

@@ -1,0 +1,18 @@
+# News desk (python -m atlas.cli news-desk): fetches new Alpaca headlines (read-only), lets each reader note the
+# ones it hasn't seen, and writes the briefing for the next open to artifacts/reports/news_desk/latest.md.
+# Readers: keyword (fixed rules) and claude (Claude reads each headline with company names hidden). The claude
+# reader needs ANTHROPIC_API_KEY in .env (add it yourself) and `pip install -e .[news]`; without a key it is
+# skipped. It only ever reads headlines from start_date on, after the model's training data ends, so its
+# results are forward tests, not backtests. Cost is capped by max_articles_per_run.
+start_date: 2026-10-29
+symbols: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG, VZ, T, PFE, KO, CVX, ORCL, DIS,
+          MRK, PEP, HD, V, INTC, CSCO, BAC, IBM, GILD, CMCSA,
+          MO, AMGN, MA, C, BA, MMM, UNH, MCD, QCOM, SLB, ABBV, CVS, UPS, BMY, MDT, NKE, SBUX, UNP, HON, USB,
+          LLY, TXN, BIIB, MDLZ, COST, LOW, ACN, ABT, GS]
+news_dir: data/raw/alpaca_news/desk
+notes_dir: data/processed/news_notes
+out_dir: artifacts/reports/news_desk
+readers: [keyword, claude]
+claude_model: claude-haiku-5-5
+batch_size: 25
+max_articles_per_run: 2000

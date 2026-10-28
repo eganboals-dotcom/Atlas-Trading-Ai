@@ -347,6 +347,63 @@ def news_tone(p: Panel, g: Genome) -> np.ndarray:
     return _hold_loop(event & _trend_ok(p, g, pc), np.zeros_like(event), int(g["hold_days"]))
 
 
+def brief_drift(p: Panel, g: Genome) -> np.ndarray:
+    """Trade the news desk's briefing (see ``atlas.news.desk``): buy at the open of t when the score known at
+    that open is at least ``thr`` in ``side``'s direction (+1 good news, -1 bad news), held ``hold_days``."""
+    score = _feature(p, "brief_score")
+    pc = prev_close(p)
+    enter = (g["side"] * score >= g["thr"]) & (score != 0) & _trend_ok(p, g, pc)
+    return _hold_loop(enter, np.zeros_like(enter), int(g["hold_days"]))
+
+
+def brief_tilt(p: Panel, g: Genome) -> np.ndarray:
+    """Hold every symbol like Hold, but tilted by the briefing: over the last ``window`` opens, symbols whose
+    summed score is at most -``thr`` are dropped and those at least +``thr`` get ``1 + tilt`` times the weight;
+    always fully invested. Weights are reset every ``rebalance`` days."""
+    score = _feature(p, "brief_score")
+    recent = np.nan_to_num(sma(score, int(g["window"]))) * int(g["window"])
+    pc = prev_close(p)
+    n = pc.shape[1]
+
+    def target(t: int) -> np.ndarray:
+        w = np.where(recent[t] <= -g["thr"], 0.0, np.where(recent[t] >= g["thr"], 1 + g["tilt"], 1.0))
+        w = w * ~np.isnan(pc[t])
+        return w * n / w.sum() if w.sum() > 0 else w
+
+    return _hold_between_rebalances(target, len(pc), n, int(g["rebalance"]))
+
+
+def _xs_rank(x: np.ndarray) -> np.ndarray:
+    """Cross-sectional percentile rank per day (0 worst .. 1 best), NaN stays NaN."""
+    out = np.full_like(x, np.nan)
+    for t in range(len(x)):
+        ok = ~np.isnan(x[t])
+        if ok.sum() > 1:
+            out[t, ok] = np.argsort(np.argsort(x[t, ok])) / (ok.sum() - 1)
+    return out
+
+
+FUND_FACTORS = {0.0: "gross profitability", 1.0: "return on assets", 2.0: "book-to-market", 3.0: "earnings yield",
+                4.0: "quality + value"}
+
+
+def fund_rank(p: Panel, g: Genome) -> np.ndarray:
+    """Hold the ``top_k`` companies by a fundamental factor (see ``atlas.swing.fundamentals``), equal weight,
+    re-picked every ``rebalance`` days. ``factor`` 4 averages the ranks of quality (gross profitability, else
+    return on assets) and value (earnings yield), in the spirit of Greenblatt's "magic formula"."""
+    feat = {k: _feature(p, k) if k in p.features else np.full(p.close.shape, np.nan)
+            for k in ("fund_gpa", "fund_roa", "fund_bm", "fund_ep")}
+    f = g["factor"]
+    if f == 4.0:
+        quality = np.where(np.isnan(feat["fund_gpa"]), feat["fund_roa"], feat["fund_gpa"])
+        score = (_xs_rank(quality) + _xs_rank(feat["fund_ep"])) / 2
+    else:
+        score = feat[{0.0: "fund_gpa", 1.0: "fund_roa", 2.0: "fund_bm", 3.0: "fund_ep"}[f]]
+    pc = prev_close(p)
+    score = np.where(np.isnan(pc), np.nan, score)
+    return _rank_pick(score, int(g["top_k"]), int(g["rebalance"]), highest=True)
+
+
 def leg_select(p: Panel, g: Genome) -> tuple[np.ndarray, np.ndarray]:
     """Per symbol, hold each leg (overnight, open-to-close) while its own trailing mean return clears a bar."""
     look, every = int(g["lookback"]), int(g["rebalance"])
@@ -450,6 +507,15 @@ FAMILIES: dict[str, Family] = {f.name: f for f in (
     Family("earnings_drift", {**_FILTER, "direction": ParamSpec("choice", choices=(-1.0, 1.0)),
                               "gap_bps": ParamSpec("float", 0.0, 800.0), "delay": ParamSpec("choice", choices=(0.0, 1.0)),
                               "hold_days": ParamSpec("int", 1, 60, log=True)}, earnings_drift, fixed_mode=0.0),
+    Family("brief_drift", {**_FILTER, "side": ParamSpec("choice", choices=(-1.0, 1.0)),
+                           "thr": ParamSpec("float", 0.2, 3.0, log=True), "hold_days": ParamSpec("int", 1, 60, log=True)},
+           brief_drift, fixed_mode=0.0),
+    Family("brief_tilt", {"window": ParamSpec("int", 1, 63, log=True), "thr": ParamSpec("float", 0.2, 3.0, log=True),
+                          "tilt": ParamSpec("float", 0.0, 2.0), "rebalance": ParamSpec("int", 1, 21)},
+           brief_tilt, fixed_mode=0.0),
+    # needs fundamentals on the panel (``fundamentals_dir`` in the config)
+    Family("fund_rank", {"factor": ParamSpec("choice", choices=tuple(FUND_FACTORS)), "top_k": ParamSpec("int", 3, 15),
+                         "rebalance": ParamSpec("int", 5, 126, log=True)}, fund_rank, fixed_mode=0.0),
     Family("news_tone", {**_FILTER, "source": ParamSpec("choice", choices=(0.0, 1.0, 2.0)),
                          "side": ParamSpec("choice", choices=(-1.0, 1.0)), "delay": ParamSpec("choice", choices=(0.0, 1.0)),
                          "hold_days": ParamSpec("int", 1, 60, log=True)}, news_tone, fixed_mode=0.0),
