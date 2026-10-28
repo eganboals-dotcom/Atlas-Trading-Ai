@@ -3,6 +3,10 @@
 A signal for day t may only use what is known at the open of t: closes up to t-1 (``prev_close``) and the
 open of t. ``mode`` then maps s to the two exposures of day t: 0 = held through (open-to-close and
 overnight), 1 = overnight only (buy at the close, sell at the next open), 2 = open-to-close only.
+
+Exposures are in units of an equal-weight slot (1 = this symbol's 1/N share of capital). Cross-sectional
+families (``rotation``) put more in fewer symbols: holding the top k of N gives each one N/k, so the
+portfolio is still fully invested at most. Families with ``legs`` set the two exposures directly.
 """
 
 from __future__ import annotations
@@ -133,12 +137,87 @@ def gap(p: Panel, g: Genome) -> np.ndarray:
         return ((g["direction"] * gp > g["gap_bps"] / 1e4) & _trend_ok(p, g, pc)).astype(float)
 
 
+def _hold_between_rebalances(target: Callable[[int], np.ndarray], days: int, n: int, every: int) -> np.ndarray:
+    """Weights recomputed on every ``every``-th day (a fixed grid from the first day) and held in between."""
+    w = np.zeros((days, n))
+    cur = np.zeros(n)
+    for t in range(days):
+        if t % every == 0:
+            cur = target(t)
+        w[t] = cur
+    return w
+
+
+def rotation(p: Panel, g: Genome) -> np.ndarray:
+    """Hold the top ``top_k`` symbols by return over ``lookback`` days (ending ``skip`` days ago), rebalanced
+    every ``rebalance`` days; with ``abs_filter`` a slot whose symbol is down over the lookback stays in cash."""
+    pc = prev_close(p)
+    n = pc.shape[1]
+    k = min(int(g["top_k"]), n)
+    skip, look = int(g["skip"]), int(g["lookback"])
+    with np.errstate(invalid="ignore"):
+        score = lag(pc, skip) / lag(pc, skip + look) - 1
+
+    def target(t: int) -> np.ndarray:
+        sc = score[t]
+        w = np.zeros(n)
+        ok = ~np.isnan(sc)
+        if ok.sum() < k:
+            return w
+        top = np.argsort(np.where(ok, -sc, np.inf), kind="stable")[:k]
+        if g["abs_filter"]:
+            top = top[sc[top] > 0]
+        w[top] = n / k
+        return w
+
+    return _hold_between_rebalances(target, len(pc), n, int(g["rebalance"]))
+
+
+def leg_select(p: Panel, g: Genome) -> tuple[np.ndarray, np.ndarray]:
+    """Per symbol, hold each leg (overnight, open-to-close) while its own trailing mean return clears a bar."""
+    look, every = int(g["lookback"]), int(g["rebalance"])
+    m_on = sma(lag(p.overnight, 1), look)  # legs up to t-1, both known at the open of t
+    m_id = sma(lag(p.intraday, 1), look)
+    with np.errstate(invalid="ignore"):
+        x_on, x_id = (m_on > g["on_bps"] / 1e4).astype(float), (m_id > g["id_bps"] / 1e4).astype(float)
+    n = x_on.shape[1]
+    return (_hold_between_rebalances(lambda t: x_id[t], len(x_id), n, every),
+            _hold_between_rebalances(lambda t: x_on[t], len(x_on), n, every))
+
+
+def month_position(dates: tuple) -> tuple[np.ndarray, np.ndarray]:
+    """(trading day of the month counted from 1, trading days left in the month counting the day itself).
+    The exchange calendar is published in advance, so both are known before the day starts. The last
+    month of a truncated panel looks shorter than it is; walk-forward windows never reach it."""
+    months = [(d.year, d.month) for d in dates]
+    first = np.zeros(len(dates), dtype=int)
+    left = np.zeros(len(dates), dtype=int)
+    i = 0
+    while i < len(dates):
+        j = i
+        while j < len(dates) and months[j] == months[i]:
+            j += 1
+        first[i:j] = np.arange(1, j - i + 1)
+        left[i:j] = np.arange(j - i, 0, -1)
+        i = j
+    return first, left
+
+
+def calendar(p: Panel, g: Genome) -> np.ndarray:
+    """In the market over the turn of the month: the last ``before`` and the first ``after`` trading days."""
+    first, left = month_position(p.dates)
+    on = (left <= int(g["before"])) | (first <= int(g["after"]))
+    pc = prev_close(p)
+    return on[:, None] * _trend_ok(p, g, pc).astype(float) * ~np.isnan(pc)
+
+
 @dataclass(frozen=True)
 class Family:
     name: str
     space: dict[str, ParamSpec]
-    signal: Callable[[Panel, Genome], np.ndarray]
+    signal: Callable[[Panel, Genome], np.ndarray] | None = None
     fixed_mode: float | None = None
+    legs: Callable[[Panel, Genome], tuple[np.ndarray, np.ndarray]] | None = None
 
 
 FAMILIES: dict[str, Family] = {f.name: f for f in (
@@ -155,14 +234,25 @@ FAMILIES: dict[str, Family] = {f.name: f for f in (
     Family("session", {**_MODE, **_FILTER}, session),
     Family("gap", {**_FILTER, "gap_bps": ParamSpec("float", 20.0, 500.0, log=True),
                    "direction": ParamSpec("choice", choices=(-1.0, 1.0))}, gap, fixed_mode=2.0),
+    Family("rotation", {**_MODE, "lookback": ParamSpec("int", 20, 252, log=True), "skip": ParamSpec("int", 0, 21),
+                        "top_k": ParamSpec("int", 1, 8), "rebalance": ParamSpec("int", 5, 63, log=True),
+                        "abs_filter": ParamSpec("choice", choices=(0.0, 1.0))}, rotation),
+    Family("leg_select", {"lookback": ParamSpec("int", 20, 252, log=True), "on_bps": ParamSpec("float", -5.0, 10.0),
+                          "id_bps": ParamSpec("float", -5.0, 10.0), "rebalance": ParamSpec("int", 5, 63, log=True)},
+           legs=leg_select),
+    Family("calendar", {**_MODE, **_FILTER, "before": ParamSpec("int", 0, 5), "after": ParamSpec("int", 0, 5)},
+           calendar),
 )}
 
 HOLD = ("session", {"mode": 0.0, "trend_filter": 0.0, "trend_n": 200})
 
 
 def exposures(p: Panel, family: str, g: Genome) -> tuple[np.ndarray, np.ndarray]:
-    """(open-to-close exposure, overnight exposure) for every day, each (days, symbols) in [0, 1]."""
+    """(open-to-close exposure, overnight exposure) for every day, each (days, symbols), in equal-weight slots."""
     fam = FAMILIES[family]
+    if fam.legs is not None:
+        x_id, x_on = fam.legs(p, g)
+        return np.nan_to_num(x_id, nan=0.0), np.nan_to_num(x_on, nan=0.0)
     s = np.nan_to_num(fam.signal(p, g), nan=0.0)
     mode = fam.fixed_mode if fam.fixed_mode is not None else g["mode"]
     zero = np.zeros_like(s)

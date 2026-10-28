@@ -31,9 +31,12 @@ def run(p: Panel, x_id: np.ndarray, x_on: np.ndarray, start: int, end: int, cost
     prev = np.vstack([np.zeros((1, xo.shape[1])), xo[:-1]])
     open_turn = np.abs(xi - prev)
     close_turn = np.abs(xo - xi)
-    sym = (1 + prev * on) * (1 + xi * intra) - 1 - c * (open_turn + close_turn)
+    # Legs compound at the portfolio level: x is in equal-weight slots, so the portfolio's leg return is the
+    # mean over symbols (a symbol holding N/k slots carries weight 1/k).
+    night, day = (prev * on).mean(axis=1), (xi * intra).mean(axis=1)
+    cost = c * (open_turn + close_turn).mean(axis=1)
     trades = float(((open_turn > 1e-9).sum() + (close_turn > 1e-9).sum()) / xo.shape[1])
-    return Result(sym.mean(axis=1), float((xi.mean() + prev.mean()) / 2), trades)
+    return Result((1 + night) * (1 + day) - 1 - cost, float((xi.mean() + prev.mean()) / 2), trades)
 
 
 def sharpe(r: np.ndarray) -> float:

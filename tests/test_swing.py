@@ -103,8 +103,9 @@ def test_walkforward_never_reads_the_holdout(tmp_path) -> None:
 
     rep = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert rep["holdout_days"] == 100 and rep["development_days"][1] == str(p.dates[cut - 1])
-    vals = [h[k][m] for h in rep["headline"].values() for k in ("champion", "hold")
+    vals = [h[sc][k][m] for strat, h in rep["headline"].items() for sc in h for k in (strat, "hold")
             for m in ("ann_return", "sharpe", "max_drawdown")]
+    vals += [m["sharpe"] for v in rep["others"].values() for m in v.values()]
     assert all(math.isfinite(v) for v in vals)  # NaN holdout closes never reached a computation
     assert (out / "report.md").read_text(encoding="utf-8").startswith("# Swing walk-forward")
 
@@ -121,3 +122,41 @@ def test_a_bot_that_barely_trades_cannot_beat_an_active_one() -> None:
     assert fitness(lucky, cfg) < fitness(active, cfg)
     assert fitness(lucky, cfg) < fitness(busy_but_idle, cfg) < fitness(active, cfg)  # closer to the gate ranks higher
     assert fitness(active, cfg) == pytest.approx(float(active.returns.mean() / active.returns.std() * np.sqrt(252)))
+
+
+def test_rotation_puts_the_whole_portfolio_in_its_top_pick() -> None:
+    p = panel(n=4)
+    g = {"mode": 0.0, "lookback": 60, "skip": 0, "top_k": 1, "rebalance": 1000, "abs_filter": 0.0}
+    xi, xo = exposures(p, "rotation", g)
+    assert xi.max() == 0 and xo.max() == 0  # only day 0 is a rebalance day, and nothing is ranked yet: cash
+    g["rebalance"] = 100
+    xi, _ = exposures(p, "rotation", g)
+    pc = p.close
+    day = 200  # a rebalance day: the pick is the best 60-day return up to the close of day 199
+    best = int(np.argmax(pc[day - 1] / pc[day - 61] - 1))
+    assert xi[day, best] == 4 and xi[day].sum() == 4  # 4 slots of 1/4 each, all in one symbol
+    r = run(p, xi, xi, day, day + 50, cost_bps=0.0).returns  # held through: one symbol's return
+    one = run(Panel(p.dates, p.symbols[best:best + 1], *(getattr(p, c)[:, best:best + 1]
+                                                         for c in ("open", "high", "low", "close", "volume"))),
+              np.ones((600, 1)), np.ones((600, 1)), day, day + 50, cost_bps=0.0).returns
+    np.testing.assert_allclose(r, one, atol=1e-12)
+
+
+def test_leg_select_holds_only_the_leg_that_has_been_paying() -> None:
+    p = panel(n=1)
+    o, c = np.empty((600, 1)), np.empty((600, 1))
+    o[0], c[0] = 100.0, 99.95
+    for t in range(1, 600):  # every night +10 bps, every day session -5 bps
+        o[t] = c[t - 1] * 1.001
+        c[t] = o[t] * 0.9995
+    q = Panel(p.dates, p.symbols, o, np.maximum(o, c), np.minimum(o, c), c, p.volume)
+    xi, xo = exposures(q, "leg_select", {"lookback": 20, "on_bps": 0.0, "id_bps": 0.0, "rebalance": 5})
+    assert xo[100:].min() == 1 and xi[100:].max() == 0
+
+
+def test_month_position_counts_trading_days() -> None:
+    from atlas.swing.families import month_position
+
+    dates = (date(2024, 1, 30), date(2024, 1, 31), date(2024, 2, 1), date(2024, 2, 2), date(2024, 2, 5))
+    first, left = month_position(dates)
+    assert list(first) == [1, 2, 1, 2, 3] and list(left) == [2, 1, 3, 2, 1]

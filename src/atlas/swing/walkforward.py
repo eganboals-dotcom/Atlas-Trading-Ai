@@ -58,6 +58,21 @@ def fitness(r: Result, cfg: SwingConfig) -> float:
     return -100.0 + min(r.exposure / cfg.min_exposure, 1.0) + min(per_year / cfg.min_trades_per_year, 1.0)
 
 
+# Published rules, run exactly as fixed here and never tuned, so they carry no selection bias of ours.
+TEXTBOOK: dict[str, tuple[str, Genome]] = {
+    "200-day trend filter": ("session", {"mode": 0.0, "trend_filter": 1.0, "trend_n": 200}),
+    "dual momentum top 3 (12-1 months)": ("rotation", {"mode": 0.0, "lookback": 231, "skip": 21, "top_k": 3,
+                                                       "rebalance": 21, "abs_filter": 1.0}),
+    "sector momentum top 3 (6 months)": ("rotation", {"mode": 0.0, "lookback": 126, "skip": 0, "top_k": 3,
+                                                      "rebalance": 21, "abs_filter": 0.0}),
+    "overnight only": ("session", {"mode": 1.0, "trend_filter": 0.0, "trend_n": 200}),
+    "turn of the month (-1..+3)": ("calendar", {"mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "before": 1,
+                                                "after": 3}),
+    "volatility target 15%": ("vol_target", {"mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "vol_n": 20,
+                                             "target_vol": 0.15}),
+}
+
+
 def folds(n_days: int, cfg: SwingConfig) -> list[tuple[int, int, int, int]]:
     out, s = [], cfg.warmup_days
     while True:
@@ -110,6 +125,8 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
     if not plan:
         raise ValueError("not enough days for one fold")
     oos: dict[str, dict[str, list[np.ndarray]]] = {}  # strategy -> scenario -> per-fold returns
+    fixed = {f"rule:{name}": (fam, g) for name, (fam, g) in TEXTBOOK.items()}  # never tuned
+    fixed_x = {name: exposures(p, fam, g) for name, (fam, g) in fixed.items()}
     fold_rows, trials = [], 0
     for k, (t0, t1, v0, v1) in enumerate(plan):
         best: dict[str, tuple[float, Genome]] = {}
@@ -118,44 +135,64 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
             best[fam] = ranked[0]
             trials += n
         champ = max(best, key=lambda f: best[f][0])
+        passing = [f for f, (fit_, _) in best.items() if fit_ > -50] or [champ]  # cleared the gate in training
         hold_is = sharpe(run(p, *hold_x, t0, t1, cfg.costs_bps["base"]).returns)
         row = {"fold": k, "train": [str(p.dates[t0]), str(p.dates[t1 - 1])],
                "validation": [str(p.dates[v0]), str(p.dates[v1 - 1])], "champion_family": champ,
                "champion_genome": best[champ][1], "in_sample_sharpe": best[champ][0], "hold_in_sample_sharpe": hold_is,
+               "ensemble_families": passing,
                "family_best": {f: {"in_sample_sharpe": s, "genome": g} for f, (s, g) in best.items()}, "oos": {}}
-        strategies = {"champion": (champ, best[champ][1]), "hold": HOLD,
-                      **{f"family:{f}": (f, g) for f, (_, g) in best.items()}}
-        for name, (fam, g) in strategies.items():
-            x = hold_x if name == "hold" else exposures(p, fam, g)
-            for sc, cost in cfg.costs_bps.items():
+        xs = {"champion": exposures(p, champ, best[champ][1]), "hold": hold_x,
+              **{f"family:{f}": exposures(p, f, g) for f, (_, g) in best.items()}, **fixed_x}
+        for sc, cost in cfg.costs_bps.items():
+            rets = {}
+            for name, x in xs.items():
                 r = run(p, *x, v0, v1, cost)
-                oos.setdefault(name, {}).setdefault(sc, []).append(r.returns)
+                rets[name] = r.returns
                 if sc == "base":
                     row["oos"][name] = {**summary(r.returns), "exposure": r.exposure, "trades": r.trades}
+            # equal capital in each family's best bot that cleared the gate: no pick between families at all
+            rets["ensemble"] = np.mean([rets[f"family:{f}"] for f in passing], axis=0)
+            if sc == "base":
+                row["oos"]["ensemble"] = summary(rets["ensemble"])
+            for name, r in rets.items():
+                oos.setdefault(name, {}).setdefault(sc, []).append(r)
         fold_rows.append(row)
         print(f"fold {k}: {row['validation'][0]}..{row['validation'][1]} champion {champ} "
               f"IS Sharpe {best[champ][0]:.2f} | OOS champion {row['oos']['champion']['ann_return']:+.1%} "
-              f"hold {row['oos']['hold']['ann_return']:+.1%}", flush=True)
+              f"ensemble {row['oos']['ensemble']['ann_return']:+.1%} hold {row['oos']['hold']['ann_return']:+.1%}",
+              flush=True)
 
     stitched = {n: {sc: np.concatenate(v) for sc, v in d.items()} for n, d in oos.items()}
-    headline = {}
-    for sc in cfg.costs_bps:
-        a, h = stitched["champion"][sc], stitched["hold"][sc]
-        ci_sharpe = block_bootstrap([a, h], lambda x, y: sharpe(x) - sharpe(y), cfg.bootstrap_samples,
-                                    cfg.block_days, cfg.seed)
-        ci_excess = block_bootstrap([a - h], lambda d: float(d.mean() * 252), cfg.bootstrap_samples,
-                                    cfg.block_days, cfg.seed)
-        headline[sc] = {"champion": summary(a), "hold": summary(h), "sharpe_diff": sharpe(a) - sharpe(h),
-                        "sharpe_diff_ci90": ci_sharpe, "excess_return_ann": float((a - h).mean() * 252),
-                        "excess_return_ci90": ci_excess}
-    families = {n.split(":", 1)[1]: summary(v["base"]) for n, v in stitched.items() if n.startswith("family:")}
+    headline: dict[str, dict[str, Any]] = {}
+    for strat in ("champion", "ensemble"):
+        for sc in cfg.costs_bps:
+            a, h = stitched[strat][sc], stitched["hold"][sc]
+            ci_sharpe = block_bootstrap([a, h], lambda x, y: sharpe(x) - sharpe(y), cfg.bootstrap_samples,
+                                        cfg.block_days, cfg.seed)
+            ci_excess = block_bootstrap([a - h], lambda d: float(d.mean() * 252), cfg.bootstrap_samples,
+                                        cfg.block_days, cfg.seed)
+            headline.setdefault(strat, {})[sc] = {
+                strat: summary(a), "hold": summary(h), "sharpe_diff": sharpe(a) - sharpe(h),
+                "sharpe_diff_ci90": ci_sharpe, "excess_return_ann": float((a - h).mean() * 252),
+                "excess_return_ci90": ci_excess}
+    hold_base = summary(stitched["hold"]["base"])
+
+    def passes(m: dict[str, float]) -> bool:
+        return m["sharpe"] > hold_base["sharpe"] and m["ann_return"] >= hold_base["ann_return"]
+
+    others = {n: {sc: summary(v) for sc, v in d.items()} for n, d in stitched.items()
+              if n.startswith(("family:", "rule:"))}
+    verdict = {n: passes(summary(stitched[n]["base"])) for n in stitched if n != "hold"}
     run_id = f"{cfg.experiment_name}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     out = out_root / run_id
     out.mkdir(parents=True, exist_ok=True)
     report = {"run_id": run_id, "config": json.loads(cfg.model_dump_json()), "symbols": list(p.symbols),
               "development_days": [str(p.dates[0]), str(p.dates[-1])], "holdout_days": holdout_days,
               "holdout_status": "untouched by this run", "trials": trials, "headline": headline,
-              "families_base": families, "folds": fold_rows,
+              "hold_base": hold_base, "others": others, "passes": verdict,
+              "pass_rule": "base costs, stitched unseen days: Sharpe above Hold's and annual return at least Hold's",
+              "textbook": {n: {"family": f, "genome": g} for n, (f, g) in TEXTBOOK.items()}, "folds": fold_rows,
               "selection": {"mean_in_sample_sharpe": float(np.mean([r["in_sample_sharpe"] for r in fold_rows])),
                             "mean_oos_sharpe": float(np.mean([r["oos"]["champion"]["sharpe"] for r in fold_rows]))}}
     (out / "report.json").write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
@@ -168,45 +205,61 @@ def _pct(x: float) -> str:
 
 
 def render(r: dict[str, Any]) -> str:
+    hb = r["hold_base"]
     L = [f"# Swing walk-forward: {r['run_id']}", "",
          "> Research evidence under simple cost assumptions, not a promise of profit. Fills are assumed at the "
          "official open and close prices; costs are a flat bps charge per unit of exposure changed.", "",
          f"Symbols ({len(r['symbols'])}, equal weight): {', '.join(r['symbols'])}  ",
          f"Development days: {r['development_days'][0]} to {r['development_days'][1]}; "
          f"holdout: last {r['holdout_days']} days, {r['holdout_status']}.  ",
-         f"Genomes evaluated: {r['trials']:,} across {len(r['folds'])} folds.", "",
-         "## Out-of-sample: fold champions vs Hold (stitched unseen days)", "",
-         "| Costs | Champion return/yr | Champion Sharpe | Champion max DD | Hold return/yr | Hold Sharpe | Hold max DD "
-         "| Sharpe diff [90% CI] | Excess return/yr [90% CI] |", "|---|---|---|---|---|---|---|---|---|"]
-    for sc, h in r["headline"].items():
-        c, b = h["champion"], h["hold"]
-        lo, hi = h["sharpe_diff_ci90"]
-        elo, ehi = h["excess_return_ci90"]
-        L.append(f"| {sc} | {_pct(c['ann_return'])} | {c['sharpe']:.2f} | {c['max_drawdown']:.1%} | "
-                 f"{_pct(b['ann_return'])} | {b['sharpe']:.2f} | {b['max_drawdown']:.1%} | "
-                 f"{h['sharpe_diff']:+.2f} [{lo:+.2f}, {hi:+.2f}] | {_pct(h['excess_return_ann'])} [{_pct(elo)}, {_pct(ehi)}] |")
+         f"Genomes evaluated: {r['trials']:,} across {len(r['folds'])} folds.  ",
+         f"Pass rule (fixed before the run): {r['pass_rule']}.", "",
+         f"Hold on the same unseen days (base costs): {_pct(hb['ann_return'])}/yr, Sharpe {hb['sharpe']:.2f}, "
+         f"max drawdown {hb['max_drawdown']:.1%}.", ""]
+    titles = {"champion": "Fold champions (best family in training)",
+              "ensemble": "Ensemble (equal capital in every family's best bot)"}
+    for strat, rows in r["headline"].items():
+        L += [f"## {titles[strat]} vs Hold, stitched unseen days", "",
+              "| Costs (bps/side) | Return/yr | Sharpe | Max DD | Hold return/yr | Hold Sharpe | Sharpe diff [90% CI] "
+              "| Excess return/yr [90% CI] |", "|---|---|---|---|---|---|---|---|"]
+        for sc, h in rows.items():
+            c, b = h[strat], h["hold"]
+            lo, hi = h["sharpe_diff_ci90"]
+            elo, ehi = h["excess_return_ci90"]
+            L.append(f"| {sc} ({r['config']['costs_bps'][sc]:g}) | {_pct(c['ann_return'])} | {c['sharpe']:.2f} | "
+                     f"{c['max_drawdown']:.1%} | {_pct(b['ann_return'])} | {b['sharpe']:.2f} | "
+                     f"{h['sharpe_diff']:+.2f} [{lo:+.2f}, {hi:+.2f}] | {_pct(h['excess_return_ann'])} "
+                     f"[{_pct(elo)}, {_pct(ehi)}] |")
+        L.append("")
     s = r["selection"]
-    L += ["", f"Selection: mean in-sample Sharpe of champions {s['mean_in_sample_sharpe']:.2f}, "
-              f"mean out-of-sample {s['mean_oos_sharpe']:.2f}.", "",
-          "## Each family's best, out of sample (base costs)", "",
-          "| Family | Return/yr | Sharpe | Max DD |", "|---|---|---|---|"]
-    for f, m in sorted(r["families_base"].items(), key=lambda kv: -kv[1]["sharpe"]):
-        L.append(f"| {f} | {_pct(m['ann_return'])} | {m['sharpe']:.2f} | {m['max_drawdown']:.1%} |")
+    L += [f"Selection: mean in-sample Sharpe of champions {s['mean_in_sample_sharpe']:.2f}, "
+          f"mean out-of-sample {s['mean_oos_sharpe']:.2f}.", "",
+          "## Every strategy on the unseen days", "",
+          "Family rows are each family's best bot per fold; rule rows are published rules, never tuned. "
+          "Many rows means many chances for one to look good by luck.", "",
+          "| Strategy | Return/yr (base) | Sharpe (base) | Max DD | Return/yr (pessimistic) | Passes |",
+          "|---|---|---|---|---|---|"]
+    rows = sorted(r["others"].items(), key=lambda kv: -kv[1]["base"]["sharpe"])
+    for name, m in rows:
+        b, pe = m["base"], m["pessimistic"]
+        L.append(f"| {name} | {_pct(b['ann_return'])} | {b['sharpe']:.2f} | {b['max_drawdown']:.1%} | "
+                 f"{_pct(pe['ann_return'])} | {'yes' if r['passes'][name] else 'no'} |")
     L += ["", "## Folds (base costs)", "",
-          "| Fold | Validation | Champion | Mode | IS Sharpe | OOS return/yr | OOS Sharpe | Hold OOS return/yr | Exposure | Trades/sym |",
-          "|---|---|---|---|---|---|---|---|---|---|"]
+          "| Fold | Validation | Champion | Mode | IS Sharpe | OOS return/yr | OOS Sharpe | Ensemble OOS | Hold OOS |",
+          "|---|---|---|---|---|---|---|---|---|"]
     mode_name = {0.0: "held", 1.0: "overnight", 2.0: "day"}
     for f in r["folds"]:
-        o, h, g = f["oos"]["champion"], f["oos"]["hold"], f["champion_genome"]
-        mode = mode_name.get(g.get("mode", 2.0), "?")
+        o, h, e, g = f["oos"]["champion"], f["oos"]["hold"], f["oos"]["ensemble"], f["champion_genome"]
+        fam = FAMILIES[f["champion_family"]]
+        mode = "legs" if fam.legs else mode_name[g.get("mode", fam.fixed_mode)]
         L.append(f"| {f['fold']} | {f['validation'][0]}..{f['validation'][1]} | {f['champion_family']} | {mode} | "
-                 f"{f['in_sample_sharpe']:.2f} | {_pct(o['ann_return'])} | {o['sharpe']:.2f} | {_pct(h['ann_return'])} | "
-                 f"{o['exposure']:.0%} | {o['trades']:.0f} |")
+                 f"{f['in_sample_sharpe']:.2f} | {_pct(o['ann_return'])} | {o['sharpe']:.2f} | "
+                 f"{_pct(e['ann_return'])} | {_pct(h['ann_return'])} |")
     L += ["", "## Limitations", "",
           "* Prices are split- and dividend-adjusted daily SIP bars; fills at the official open/close with no auction "
           "imbalance or size limits.",
           "* Decisions are made at the open only, from closes up to the day before and the day's open.",
-          "* Long-only, no leverage, equal weight across symbols.",
+          "* Long-only, no leverage; Hold is equal weight across symbols, rebalanced daily.",
           "* The symbol list was chosen today; all of them still trade, so there is survivorship in the universe.",
           "* Daily returns are not independent; the block bootstrap intervals are approximate."]
     return "\n".join(L) + "\n"
