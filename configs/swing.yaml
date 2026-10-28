@@ -1,0 +1,29 @@
+# Swing (multi-day) research: bots that may hold overnight and for days, on adjusted daily bars.
+# Each fold evolves on 2 years, then scores the winners on the next 6 months, which they never saw;
+# folds roll forward through 2016-2026 and are compared with equal-weight buy-and-hold.
+# Days from holdout_start on are cut off before anything runs: they are kept for one final test.
+# Create the data with:
+#   python -m atlas.cli fetch-daily --symbols SPY QQQ IWM DIA XLK XLF XLE XLV XLY XLP XLI XLU XLB SMH TLT GLD
+experiment_name: swing_etf_v2
+dataset_dir: data/processed/alpaca_daily
+# ETFs only: picking today's big single stocks would favor past winners.
+symbols: [SPY, QQQ, IWM, DIA, XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLU, XLB, SMH, TLT, GLD]
+holdout_start: 2026-04-28     # same untouched ~6 months as the intraday research
+
+warmup_days: 260
+train_days: 504               # ~2 years
+embargo_days: 5
+validation_days: 126          # ~6 months out of sample per fold
+step_days: 126
+
+population: 30                # per family
+generations: 12
+seed: 7
+
+# Flat cost per unit of exposure changed (half spread + slippage at the open/close), in bps.
+costs_bps: {optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+
+# Activity gate (v2): bots in the market less than this, or trading less often, can't win a fold.
+# v1 had no gate; its winners were rarely-trading dip bots whose few lucky trades didn't hold up.
+min_exposure: 0.25
+min_trades_per_year: 4

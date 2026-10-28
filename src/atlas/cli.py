@@ -636,6 +636,34 @@ def _cmd_fetch_bars(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_fetch_daily(args: argparse.Namespace) -> int:
+    """Download split- and dividend-adjusted daily bars (read-only) for swing (multi-day) research."""
+    from atlas.feeds.alpaca import HISTORY_BARS_PATH, HISTORY_PATHS, http_fetch, iter_history, load_credentials
+    from atlas.swing.data import daily_rows, save_daily
+
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
+    rows = {}
+    for sym in args.symbols:  # ~1 request per symbol, paced well under the free plan's limit
+        rows[sym] = daily_rows(iter_history(fetch, HISTORY_BARS_PATH, sym, f"{args.first}T00:00:00Z",
+                                            f"{args.last}T23:59:59Z", args.feed, min_interval_s=1.0,
+                                            extra={"timeframe": "1Day", "adjustment": "all"}))
+        print(f"{sym}: {len(rows[sym])} days", flush=True)
+    out = Path(args.out)
+    save_daily(rows, out, {"source": f"alpaca-{args.feed}-1Day", "adjustment": "all (splits and dividends)",
+                           "license_notes": "Alpaca historical market data, downloaded for personal research; check "
+                                            "Alpaca's data terms before sharing or redistributing"})
+    print(f"daily bars written to {out}", flush=True)
+    return EXIT_OK
+
+
+def _cmd_swing_walkforward(args: argparse.Namespace) -> int:
+    from atlas.swing.walkforward import SwingConfig, walkforward
+
+    out = walkforward(load_config(Path(args.config), SwingConfig))
+    print(f"report: {out / 'report.md'}")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Project Atlas research CLI (simulation only).")
     parser.add_argument("--log-level", default="INFO")
@@ -695,6 +723,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--spread-bps", type=float, default=1.0, help="modeled quoted spread (live IEX median ~0.75)")
     p.add_argument("--min-bars", type=int, default=380, help="skip early closes and gappy days")
     p.set_defaults(func=_cmd_fetch_bars)
+
+    p = sub.add_parser("fetch-daily", help="Download real adjusted daily bars (read-only) for swing research.")
+    p.add_argument("--symbols", nargs="+", required=True)
+    p.add_argument("--feed", default="sip", choices=["sip", "iex"])
+    p.add_argument("--first", default="2016-01-04")
+    p.add_argument("--last", default="2026-10-27")
+    p.add_argument("--out", default="data/processed/alpaca_daily")
+    p.set_defaults(func=_cmd_fetch_daily)
+
+    p = sub.add_parser("swing-walkforward", help="Walk-forward test of multi-day (swing) bots vs buy-and-hold.")
+    p.add_argument("--config", required=True)
+    p.set_defaults(func=_cmd_swing_walkforward)
 
     p = sub.add_parser("walkforward", help="Nested walk-forward evaluation (the outer holdout stays untouched).")
     p.add_argument("--config", required=True)

@@ -587,7 +587,26 @@ python -m atlas.cli walkforward --config configs/walkforward_slow.yaml
 
 Bars carry no bid/ask. Each minute becomes one trade at the close and one quote with a 1.0 bps
 spread around it. That's a little wider than live IEX's median (~0.75 bps), so costs are, if
-anything, overstated.
+anything, overstated. For single stocks, pass that symbol's own spread (`fetch-bars --symbols NVDA
+--spread-bps 3.1 --dataset alpaca_bars_1min_nvda`): they quote 1–8 bps wide. A walk-forward on
+NVDA, TSLA, AMD, META, AAPL, SMH, IWM and XLE separately found no edge on any of them.
+
+**Swing research** (overnight and multi-day, [src/atlas/swing/](src/atlas/swing/)) runs on
+split- and dividend-adjusted daily bars, separately from the intraday simulator. Each day has
+two legs: open to close, and close to the next open. A bot decides both at the open, from
+closes up to the day before and the day's open. Seven families (trend, momentum, dip, breakout,
+volatility target, session and gap) can hold through, overnight only or during the day only.
+Each fold evolves them on 2 years and scores them on the next 6 months against equal-weight
+buy-and-hold; the last ~6 months are cut off before anything runs. Bots must be in the market
+25% of the time and trade 4 times a year, or a few lucky trades win:
+
+```bash
+python -m atlas.cli fetch-daily --symbols SPY QQQ IWM DIA XLK XLF XLE XLV XLY XLP XLI XLU XLB SMH TLT GLD
+python -m atlas.cli swing-walkforward --config configs/swing.yaml   # a few minutes
+```
+
+On 16 ETFs (2019–2026, unseen days) the fold winners made about +3% a year against Hold's
++16%. Research only: nothing in `swing` trades, and the live session is intraday only.
 
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)

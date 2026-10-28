@@ -38,7 +38,8 @@ from atlas.timeutils import MARKET_TZ, NS_PER_S, datetime_to_ns
 
 NS_PER_MIN = 60 * NS_PER_S
 SESSION_MIN = 390  # 09:30-16:00 ET
-MAX_ENTRY_SPREAD_BPS = 5.0  # fixed guard: training spreads are modeled, so evolution cannot tune this
+MAX_ENTRY_SPREAD_BPS = 20.0  # fixed guard against broken or stale quotes (single stocks often quote 2-8 bps wide);
+#                              training spreads are modeled, so evolution cannot tune this
 _DAY_NS = 86_400 * NS_PER_S
 _PENDING_NS = 30 * NS_PER_S  # an entry order that has not filled by then is treated as missed
 
