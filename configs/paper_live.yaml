@@ -25,21 +25,25 @@ feed:
     wait_for_open: true
     env_file: .env
 
-# Six bots listed here + the permanent coin-flip bot = 7 bots, plus the permanent buy-and-hold benchmark.
+# Nine bots listed here + the permanent coin-flip bot = 10 bots, plus the permanent buy-and-hold benchmark.
 # All are frozen: nothing trains during the session.
-# NOTE: these champions were evolved on synthetic data, so their live results are not evidence of an edge.
+# NOTE: the first three were evolved on synthetic data; TrendFollow, Pullback and SmartHold were evolved on
+# 1-minute SIP bars but showed no out-of-sample edge over buy-and-hold. Live results are not evidence of an edge.
 # Each bot's `name` is what you see on the leaderboard, in reports, and in the fund ledger.
-candidate: {name: Liquidity, source: checkpoint, path: bots/live_lineup_v1.json, rank: 0}
+candidate: {name: Liquidity, source: checkpoint, path: bots/live_lineup_v2.json, rank: 0}
 shadows:
-  - {name: Regime, source: checkpoint, path: bots/live_lineup_v1.json, rank: 1}
-  - {name: MomentumEvo, source: checkpoint, path: bots/live_lineup_v1.json, rank: 2}
+  - {name: Regime, source: checkpoint, path: bots/live_lineup_v2.json, rank: 1}
+  - {name: MomentumEvo, source: checkpoint, path: bots/live_lineup_v2.json, rank: 2}
   - {name: Momentum, source: baseline, baseline: baseline_momentum}
   - {name: MeanRevert, source: baseline, baseline: baseline_mean_reversion}
   - {name: Random, source: baseline, baseline: baseline_random}
+  - {name: TrendFollow, source: checkpoint, path: bots/live_lineup_v2.json, rank: 3}
+  - {name: Pullback, source: checkpoint, path: bots/live_lineup_v2.json, rank: 4}
+  - {name: SmartHold, source: checkpoint, path: bots/live_lineup_v2.json, rank: 5}
 # Always added automatically and can't be removed: "Flip" (every 5 min, per symbol: coin flip, hold 1 share
 # or none) and "Hold" (the buy-and-hold benchmark). These two names are reserved.
 
-# Fund: $100,000 split equally across the 7 bots on day 1 ($14,285.71 each). Each bot trades only its share;
+# Fund: $100,000 split equally across the 10 bots on day 1 ($10,000 each). Each bot trades only its share;
 # at the close its positions are sold at the bid, and it starts the next day with whatever it ended with.
 # The ledger is artifacts/paper/fund_ledger.json. `--reset-fund` archives it and splits afresh.
 fund: {total_capital: 100000, flatten_at_close: true}

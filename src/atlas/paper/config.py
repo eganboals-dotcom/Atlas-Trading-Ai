@@ -160,7 +160,7 @@ class PaperConfig(Strict):
     risk_config: Path
     feed: FeedConfig
     candidate: CandidateSource
-    shadows: list[CandidateSource] = Field(default_factory=list, max_length=7)
+    shadows: list[CandidateSource] = Field(default_factory=list, max_length=10)
     agent_limits: AgentLimits
     decision_interval_ms: PosF
     alerts: AlertsConfig = AlertsConfig()

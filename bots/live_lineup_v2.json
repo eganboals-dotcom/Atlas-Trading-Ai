@@ -1,0 +1,211 @@
+{
+  "format": 1,
+  "population_version": "v1-non-rl",
+  "description": "Frozen bots used by configs/paper_live.yaml. Ranks 0-2 are the v1 bots, unchanged (evolved on synthetic data). Ranks 3-5 are slow (minutes-to-hours) bots: the best of each surviving slow family in the last walk-forward fold, picked on that fold's validation days (2025-08-21 to 2026-02-24). That walk-forward found no out-of-sample edge over buy-and-hold; they are in the lineup to watch, not because they passed. Never edit by hand: changing a genome makes it a different bot.",
+  "provenance": {
+    "v1": {
+      "experiment": "synthetic_baseline_v1",
+      "checkpoint": "gen_005",
+      "generation": 5,
+      "config_fingerprint": "0f923e4990a55ed0",
+      "atlas_version": "0.1.0",
+      "agent_session_evaluations": 750,
+      "trained_on": "synthetic random-walk data (configs/evolution.yaml windows)"
+    },
+    "slow": {
+      "run_id": "wf_slow_bars_v1-20261027T234919Z",
+      "checkpoint": "fold_17/gen_010",
+      "config_fingerprint": "bee2c38ccb1a9d5b",
+      "atlas_version": "0.1.0",
+      "trained_on": "1-minute SIP bars, SPY and QQQ, 2024-08-09 to 2025-08-13 (fold 17 training)",
+      "score": "mean per-session net bps on the validation days, base costs",
+      "outer_holdout": "2026-04-28 to 2026-10-26, untouched"
+    }
+  },
+  "archives": {
+    "champions": [
+      {
+        "generation_evaluated": 3,
+        "record": {
+          "agent_id": "g003-a05",
+          "family": "liquidity",
+          "generation": 3,
+          "genome": {
+            "exit_spread_mult": 4.677153874444089,
+            "imbalance_entry": 0.256469302671132,
+            "imbalance_exit": -0.8001951765194052,
+            "max_hold_s": 172.19763662550545,
+            "max_spread_bps": 0.3476872417778776,
+            "min_depth": 1041,
+            "size_frac": 0.13673365274384774
+          },
+          "mutations": [
+            "exit_spread_mult: 4.9185 -> 4.67715",
+            "imbalance_entry: 0.247933 -> 0.256469",
+            "size_frac: 0.178606 -> 0.136734"
+          ],
+          "origin": "small_mutation",
+          "parents": [
+            "g002-a17"
+          ]
+        },
+        "score": -0.08776161220928616,
+        "name": "Liquidity",
+        "genome_hash": "b9946d9715492b5e"
+      },
+      {
+        "generation_evaluated": 4,
+        "record": {
+          "agent_id": "g004-a23",
+          "family": "regime_adaptive",
+          "generation": 4,
+          "genome": {
+            "exit_bps": 1.6875985171828682,
+            "high_vol_flat": 0,
+            "horizon_s": 5.0,
+            "max_hold_s": 12.539576205361461,
+            "max_spread_bps": 2.2630986160295694,
+            "mom_entry_bps": 1.2153348184111974,
+            "mr_entry_z": 2.7175294489533486,
+            "size_frac": 0.05,
+            "vol_ratio_threshold": 0.7801744410135257
+          },
+          "mutations": [
+            "horizon_s: 0.5 -> 5",
+            "max_hold_s: 23.1503 -> 12.5396",
+            "max_spread_bps: 2.15339 -> 2.2631",
+            "mr_entry_z: 2.38951 -> 2.71753",
+            "size_frac: 0.05 -> 0.05"
+          ],
+          "origin": "small_mutation",
+          "parents": [
+            "g003-a27"
+          ]
+        },
+        "score": -0.16549587196451085,
+        "name": "Regime",
+        "genome_hash": "bd560756dcbfdff7"
+      },
+      {
+        "generation_evaluated": 4,
+        "record": {
+          "agent_id": "g004-a12",
+          "family": "momentum",
+          "generation": 4,
+          "genome": {
+            "entry_bps": 4.35291378543875,
+            "exit_bps": 0.10000000000000002,
+            "horizon_s": 1.0,
+            "max_hold_s": 28.72414282268629,
+            "max_spread_bps": 3.9000583779596436,
+            "size_frac": 0.13902086090238877
+          },
+          "mutations": [
+            "exit_bps: 0.10704 -> 0.1"
+          ],
+          "origin": "crossover",
+          "parents": [
+            "g003-a10",
+            "g003-a32"
+          ]
+        },
+        "score": -0.27144504339493275,
+        "name": "MomentumEvo",
+        "genome_hash": "6539c8f8310df9be"
+      },
+      {
+        "generation_evaluated": 10,
+        "record": {
+          "agent_id": "g010-a11",
+          "artifact": null,
+          "family": "trend_follow",
+          "generation": 10,
+          "genome": {
+            "cooldown_min": 60,
+            "entry_bps": 10.169838764622972,
+            "exit_bps": 18.547450269828065,
+            "fast_min": 4.362525880366472,
+            "flatten_min": 7,
+            "max_hold_min": 65.35449748099744,
+            "size_frac": 0.19023570715539737,
+            "slow_ratio": 3.0530700081922943,
+            "stop_bps": 38.37968685004362
+          },
+          "mutations": [
+            "fast_min: 4.63981 -> 4.36253",
+            "max_hold_min: 72.5633 -> 65.3545"
+          ],
+          "origin": "small_mutation",
+          "parents": [
+            "g009-a14"
+          ]
+        },
+        "score": 0.7066853864332607,
+        "name": "TrendFollow",
+        "genome_hash": "98075b5b6d107b06"
+      },
+      {
+        "generation_evaluated": 10,
+        "record": {
+          "agent_id": "g010-a28",
+          "artifact": null,
+          "family": "pullback",
+          "generation": 10,
+          "genome": {
+            "cooldown_min": 20,
+            "drop_bps": 39.1462025033793,
+            "flatten_min": 10,
+            "lookback_min": 5,
+            "max_hold_min": 273.7720288357902,
+            "mode": 0,
+            "size_frac": 0.2531032790077796,
+            "stop_bps": 87.15891786604277,
+            "target_bps": 199.99999999999991,
+            "trend_filter": 0
+          },
+          "mutations": [
+            "cooldown_min: 22 -> 20",
+            "mode: 1 -> 0",
+            "size_frac: 0.190677 -> 0.253103",
+            "target_bps: 200 -> 200"
+          ],
+          "origin": "large_mutation",
+          "parents": [
+            "g009-a35"
+          ]
+        },
+        "score": 0.797844223551789,
+        "name": "Pullback",
+        "genome_hash": "ff7f8123965511a4"
+      },
+      {
+        "generation_evaluated": 10,
+        "record": {
+          "agent_id": "g010-a40",
+          "artifact": null,
+          "family": "smart_hold",
+          "generation": 10,
+          "genome": {
+            "calm_min": 180,
+            "dd_bps": 21.048124372111953,
+            "entry_min": 60,
+            "flatten_min": 15,
+            "max_hold_min": 11.600060642437587,
+            "size_frac": 0.1,
+            "stop_bps": 19.003341508898867,
+            "vol_limit_bps": 2.0,
+            "vol_window_min": 60
+          },
+          "mutations": [],
+          "origin": "elite",
+          "parents": [
+            "g009-a42"
+          ]
+        },
+        "score": -0.32442207128156153,
+        "name": "SmartHold",
+        "genome_hash": "183657b02c1f678b"
+      }
+    ]
+  }
+}

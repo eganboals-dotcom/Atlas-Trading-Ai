@@ -4,7 +4,7 @@ Live-style market data goes through the same validation, features, and frozen ag
 research. Order proposals go through the independent risk manager into the internal
 ``PaperBroker`` only.
 
-Accounts: one **champion**, up to five **shadows** for comparison, and a buy-and-hold
+Accounts: one **champion**, up to ten **shadows** for comparison, and a buy-and-hold
 **benchmark**. Each has its own paper broker, ledger, and risk state. Agents are frozen:
 nothing in this module trains or mutates a model.
 

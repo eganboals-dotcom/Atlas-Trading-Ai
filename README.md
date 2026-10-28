@@ -359,7 +359,7 @@ crash, `--resume`:
 
 ### Paper trading on live prices (Alpaca)
 
-Paper trading on **live market prices** from Alpaca: seven frozen bots plus a
+Paper trading on **live market prices** from Alpaca: ten frozen bots plus a
 buy-and-hold benchmark, with a live page that opens automatically. **Market data only.**
 Atlas reads prices from two GET endpoints on `data.alpaca.markets` and contains no code
 that can place an order at Alpaca or anywhere else. Every order and fill is simulated by
@@ -420,7 +420,7 @@ hours, so they run in their own window or in the background.
   git-ignored). A recording failure only switches recording off; trading continues. A
   full day is about 6 MB of CSV plus 1 MB of Parquet.
 * **The bots are in the repo.** The evolved bots' frozen parameters live in
-  [bots/live_lineup_v1.json](bots/live_lineup_v1.json), and [bots/README.md](bots/README.md)
+  [bots/live_lineup_v2.json](bots/live_lineup_v2.json), and [bots/README.md](bots/README.md)
   explains each bot. A test ensures configs never depend on untracked files.
 * **Coin-flip bot.** `baseline_coin_flip` flips a fair coin per symbol every 5 minutes:
   heads holds 1 share, tails holds none. It is long-or-flat because Atlas does not short.
