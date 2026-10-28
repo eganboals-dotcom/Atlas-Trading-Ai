@@ -433,6 +433,12 @@ FAMILIES: dict[str, Family] = {f.name: f for f in (
                        "tp_bps": ParamSpec("float", 50.0, 300.0, log=True),
                        "sl_bps": ParamSpec("float", 50.0, 800.0, log=True), "max_days": ParamSpec("int", 1, 20)},
            legs=bracket),
+    # swing targets: +3% to +20% per trade, held up to ~6 months
+    Family("wide_bracket", {**_FILTER, "entry": ParamSpec("choice", choices=(0.0, 1.0, 2.0)),
+                            "drop_bps": ParamSpec("float", 25.0, 500.0, log=True),
+                            "tp_bps": ParamSpec("float", 300.0, 2000.0, log=True),
+                            "sl_bps": ParamSpec("float", 200.0, 1500.0, log=True),
+                            "max_days": ParamSpec("int", 5, 126, log=True)}, legs=bracket),
     Family("event_drift", {**_MODE, **_FILTER, "direction": ParamSpec("choice", choices=(-1.0, 1.0)),
                            "gap_bps": ParamSpec("float", 100.0, 1000.0, log=True),
                            "vol_mult": ParamSpec("float", 1.0, 5.0), "confirm": ParamSpec("choice", choices=(0.0, 1.0)),

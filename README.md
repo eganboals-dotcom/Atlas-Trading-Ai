@@ -636,6 +636,13 @@ within ~2 bps per trade. Nothing beat Hold on more than one list:
   about Hold's Sharpe, for less return. They had small positive alpha on every list, but none
   of it was significant.
 
+* Wider take-profit targets (`wide_bracket`: +3% to +20%, held up to ~6 months, and fixed rules
+  of +5%/−3% and +10%/−5%) did much better than the ±1% day trade, but still made less than Hold
+  on all four lists tested (+5%/−3%: +6.5% to +14.2% a year, against Hold's +11.7% to +17.0%).
+* Training on less history (1 year or 6 months instead of 2, scored on the same days) didn't
+  help consistently. Momentum with risk caps trained on 1 year beat Hold on both stock lists
+  with one random seed and lost on both with four others.
+
 No strategy earned a holdout check, so the swing holdout is still used only once.
 
 **Forward tracker.** Backtests can be overfit; days that haven't happened yet can't. Six rules

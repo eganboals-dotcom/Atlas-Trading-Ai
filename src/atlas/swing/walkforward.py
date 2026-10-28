@@ -82,6 +82,12 @@ TEXTBOOK: dict[str, tuple[str, Genome]] = {
     "day trade +1% target / -1% stop": ("bracket", {"trend_filter": 0.0, "trend_n": 200, "entry": 0.0,
                                                     "drop_bps": 100.0, "tp_bps": 100.0, "sl_bps": 100.0,
                                                     "max_days": 1}),
+    "swing +10% target / -5% stop, above 200-day trend, up to 60 days": ("wide_bracket", {
+        "trend_filter": 1.0, "trend_n": 200, "entry": 0.0, "drop_bps": 100.0, "tp_bps": 1000.0, "sl_bps": 500.0,
+        "max_days": 60}),
+    "swing +5% target / -3% stop, up to 20 days": ("wide_bracket", {
+        "trend_filter": 0.0, "trend_n": 200, "entry": 0.0, "drop_bps": 100.0, "tp_bps": 500.0, "sl_bps": 300.0,
+        "max_days": 20}),
     "post-event drift (2% gap, 2x volume, 20 days)": ("event_drift", {
         "mode": 0.0, "trend_filter": 0.0, "trend_n": 200, "direction": 1.0, "gap_bps": 200.0, "vol_mult": 2.0,
         "confirm": 0.0, "hold_days": 20}),
