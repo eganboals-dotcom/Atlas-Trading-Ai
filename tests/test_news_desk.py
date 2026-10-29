@@ -121,14 +121,22 @@ def test_ai_reader_hides_names_maps_notes_back_and_ignores_invented_ones() -> No
         return out
 
     d = date(2024, 3, 7)
-    arts = articles([(at(d, 8, i), syms, h) for i, (syms, h) in enumerate([
+    arts = articles([(at(d, 7 + i // 60, i % 60), syms, h) for i, (syms, h) in enumerate([
         (["AAPL"], "Apple signs deal"), (["AAPL", "MSFT"], "Apple and Microsoft partner"),
-        (["AAPL", "MSFT", "IBM"], "Tech roundup"), (["XOM"], "Exxon outlook")] * 15)])
+        (["AAPL", "MSFT", "IBM"], "Tech roundup"), (["XOM"], "Exxon outlook"),
+        (["IBM"], "Xylem stock plunges after cutting its outlook"), (["MSFT", "IBM"], "Microsoft cuts prices")] * 15)])
     notes = LlmReader(fake, batch_size=7, tracked={"AAPL", "MSFT", "IBM"}).read(arts)
     assert all("Apple" not in it["headline"] and "Microsoft" not in it["headline"] for it in sent)
-    assert len(sent) == 30  # roundups (3 companies) and untracked companies are never sent
-    assert notes.height == 45 and set(notes["symbol"]) == {"AAPL", "MSFT"}
+    # roundups (3 companies), untracked companies and companies the headline never names are never sent
+    assert len(sent) == 45 and all(it["companies"] == ["Company A"] for it in sent[2::3])  # IBM isn't named
+    assert notes.height == 60 and set(notes["symbol"]) == {"AAPL", "MSFT"}
     assert notes["direction"].max() == 1.0 and set(notes["reader"]) == {"claude"}  # clipped to [-1, 1]
+    # two share classes of one company: asked about once, as one company, and noted for both tickers
+    sent.clear()
+    g = LlmReader(fake, tracked={"GOOGL", "MSFT"}).read(articles([(at(d, 9, 0), ["GOOG", "GOOGL", "MSFT"],
+                                                                   "Google and Microsoft sign cloud deal")]))
+    assert sent[0]["companies"] == ["Company A", "Company B"] and "Google" not in sent[0]["headline"]
+    assert sorted(g["symbol"]) == ["GOOG", "GOOGL", "MSFT"]
 
 
 def test_daily_desk_fetches_only_new_headlines_and_never_rereads(tmp_path) -> None:
@@ -137,7 +145,7 @@ def test_daily_desk_fetches_only_new_headlines_and_never_rereads(tmp_path) -> No
     from atlas.news.daily import DeskConfig, briefing_window, next_open, run_desk
 
     cfg = DeskConfig(start_date=date(2026, 10, 29), symbols=["AAPL", "MSFT"], news_dir=tmp_path / "news",
-                     notes_dir=tmp_path / "notes", out_dir=tmp_path / "out", readers=["keyword", "claude"])
+                     notes_dir=tmp_path / "notes", out_dir=tmp_path / "out", readers=["keyword", "local", "claude"])
     d = date(2026, 10, 29)
     feed = [{"id": 1, "created_at": "2026-10-29T15:00:00Z", "symbols": ["AAPL"],
              "headline": "Barclays Upgrades Apple to Overweight"},
@@ -157,14 +165,20 @@ def test_daily_desk_fetches_only_new_headlines_and_never_rereads(tmp_path) -> No
         return classify
 
     now = datetime(2026, 10, 29, 18, 0, tzinfo=MARKET_TZ).astimezone(UTC)  # after the close
-    out = run_desk(cfg, fetch, factory, now=now, log=lambda m: None)
+    logs: list[str] = []
+    out = run_desk(cfg, fetch, {"local": factory, "claude": "no key"}, now=now, log=logs.append)
     assert asked[0][0] == "2026-10-29T04:00:00Z" and len(sent) == 2
+    assert "claude reader skipped: no key" in logs
     text = out.read_text(encoding="utf-8")
     assert "open of 2026-10-30" in text and "| MSFT | +1.00 | 1 |" in text and "| AAPL | +0.50 | 1 |" in text
+    assert "## Reader: local" in text and "## Reader: claude\n\nNo notes" in text
     # second run: asks only for headlines after the last one stored, and sends nothing new to the AI reader
     feed.append({"id": 3, "created_at": "2026-10-29T20:30:00Z", "symbols": ["AAPL"], "headline": "Apple news"})
-    run_desk(cfg, fetch, factory, now=now + timedelta(hours=1), log=lambda m: None)
+    run_desk(cfg, fetch, {"local": factory}, now=now + timedelta(hours=1), log=lambda m: None)
     assert asked[1][0] == "2026-10-29T15:00:01Z" and len(sent) == 3
+    # a reader that couldn't run (Ollama off) catches up on everything it missed the next time it can
+    run_desk(cfg, None, {"local": factory, "claude": factory}, now=now + timedelta(hours=2), log=lambda m: None)
+    assert len(sent) == 6
     assert next_open(datetime(2026, 10, 30, 17, 0, tzinfo=MARKET_TZ)) == date(2026, 11, 2)  # Friday -> Monday
     lo, hi = briefing_window(date(2026, 11, 2))
     assert lo == at(date(2026, 10, 30), 9, 15) and hi == at(d + timedelta(days=4), 9, 15)

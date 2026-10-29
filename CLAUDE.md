@@ -8,9 +8,11 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 
 - **No live trading.** There is no live-order path, and none may be added without the user's explicit,
   separate approval for Phase 7/8. Never add trading endpoints, broker SDKs, or order-placing code. Only
-  three modules may use the network, each pinned to its own read-only job (approved by the user on
-  2026-10-28): `src/atlas/feeds/alpaca.py` (Alpaca market data and news, `urllib`), `src/atlas/feeds/anthropic_api.py`
-  (the AI news reader's Claude `messages.create` calls, `anthropic`), and `src/atlas/feeds/sec.py` (SEC EDGAR
+  four modules may use the network, each pinned to its own read-only job (approved by the user on
+  2026-10-28): `src/atlas/feeds/alpaca.py` (Alpaca market data and news, `urllib`), `src/atlas/feeds/local_llm.py`
+  (the default AI news reader: Ollama on this PC's loopback address only, no proxies or redirects, `urllib`),
+  `src/atlas/feeds/anthropic_api.py` (the optional Claude reader's `messages.create` calls, `anthropic`; it uses
+  paid credits, and the user chose the free local model instead), and `src/atlas/feeds/sec.py` (SEC EDGAR
   filings, `urllib` GET). Never add another. The tests in `tests/test_paper_cannot_trade_live.py` enforce
   this; never weaken them to make something pass.
 - **Keys stay in `.env`.** Alpaca market-data keys, `ANTHROPIC_API_KEY` (AI news reader) and `SEC_USER_AGENT`

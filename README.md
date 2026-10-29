@@ -663,11 +663,14 @@ Expect noise for months: a real edge needs about a year of days or more to stand
 direction (−1 to +1), importance (0 to 1) and category. A briefing turns the notes into what is
 known at each open (anything published before 09:15 counts), and bots trade only the briefing,
 so readers can be swapped. Reader #1 (`keyword`) uses fixed rules: analyst up/downgrades and EPS
-beats/misses. Reader #2 (`claude`) has Claude Haiku 5.5 read each headline with company names
-hidden. It needs `pip install -e .[news]` and `ANTHROPIC_API_KEY` in `.env`. It costs cents a day,
-and its run cap is set in [configs/news_desk.yaml](configs/news_desk.yaml). A model may remember what
-followed an old headline, so the AI reader is never backtested: it only reads headlines from
-2026-10-29 on. `python -m atlas.cli news-desk` fetches new headlines, runs the readers and writes
+beats/misses. Reader #2 (`local`) has a free AI model on this PC read each headline with company
+names hidden. It is served by [Ollama](https://ollama.com) and reached only on 127.0.0.1, so no
+headline leaves the computer and nothing is billed. Set it up once: install Ollama, then run
+`ollama pull gemma3:12b` (the `local_model` in [configs/news_desk.yaml](configs/news_desk.yaml); about
+8 GB, fits a 16 GB graphics card). Until Ollama is running, the reader is skipped and catches up on
+the next run. The `claude` reader (Claude Haiku 5.5, paid API credits, `ANTHROPIC_API_KEY` in `.env`,
+`pip install -e .[news]`) is still available but off by default. A model may remember what followed
+an old headline, so the AI readers are never backtested: they only read headlines from 2026-10-29 on. `python -m atlas.cli news-desk` fetches new headlines, runs the readers and writes
 the next briefing to `artifacts/reports/news_desk/latest.md`. Two news bots per reader
 (`brief_tilt` holds everything but leans away from bad news; `brief_drift` buys good news for 5
 days) are frozen in [configs/swing_track_news.yaml](configs/swing_track_news.yaml), so the two
@@ -677,7 +680,12 @@ readers are compared on the same future days. Backtested on 10 years with the ke
 
 **Fundamentals** ([src/atlas/swing/fundamentals.py](src/atlas/swing/fundamentals.py)). Annual
 figures come from SEC EDGAR filings, point in time: a figure counts from the day after it was
-filed. Market value uses unadjusted prices, because filed share counts aren't split-adjusted. The
+filed. Market value uses unadjusted prices, because filed share counts aren't split-adjusted. Filings
+are messy, so: when a company switches concepts (Meta's revenue in 2018), the newer concept only
+fills the years the older one lacks; a figure expires 18 months after its period ends (Berkshire's
+Class A share counts stop in 2011, so Berkshire and Visa have no market value); Exxon's and Disney's
+earlier filers are merged in (`EARLIER_CIKS` in `feeds/sec.py`); and banks and health insurers
+have no gross profit. The
 factors are gross profitability, return on assets, book-to-market, earnings yield and a
 quality + value blend (`fund_rank` and four fixed rules, in `configs/swing_v8_fund_*.yaml`). The
 SEC requires a contact in every request: set `SEC_USER_AGENT=<name> <email>` in `.env`, then run:
@@ -688,7 +696,28 @@ python -m atlas.cli fetch-daily --adjustment raw --out data/processed/alpaca_dai
 python -m atlas.cli swing-walkforward --config configs/swing_v8_fund_stocks30.yaml
 ```
 
-`scripts/swing_track.cmd` runs the news desk and both trackers after the close. `swing_track.cmd
+Results (2 bps per trade, unseen validation days 2019 on). Value (book-to-market, earnings yield) and
+the trained `fund_rank` bots lost to Hold on every list. Quality (top 10 by gross profitability,
+quarterly; Novy-Marx's published rule, not tuned here) is the first rule to pass Hold's test on three
+stock lists, including `stocks30c` ([configs/swing_v9_fund_stocks30c.yaml](configs/swing_v9_fund_stocks30c.yaml)),
+whose pass test was written down before its data was downloaded:
+
+| List | Quality top 10 | Hold | Beats random 10 from the same companies | Bottom 10 by gross profitability |
+|---|---|---|---|---|
+| stocks30 | +18.2%, Sharpe 0.84 | +17.0%, 0.83 | 59% of the time | +16.0% |
+| stocks30b | +14.2%, 0.63 | +11.7%, 0.54 | 85% | +8.2% |
+| stocks30c | +20.6%, 0.90 | +16.9%, 0.75 | 95% | +21.2% |
+
+It is a candidate, not an edge. The ranking itself is not clearly what works: on `stocks30` random
+picks among companies with a gross profit did as well, on `stocks30c` the least profitable 10 did
+even better, and pooling all 90 companies the top third (+16.2%) beat Hold (+14.7%) but the middle
+third (+12.8%) was below the bottom third (+14.0%). Part of the gain is what it can't hold (banks,
+insurers, utilities and telecoms have no gross profit) in a period that favoured other sectors.
+Details: `artifacts/reports/swing/robustness_v8_gpa.json`. The rule is now tracked forward, unchanged,
+on all three lists from 2026-10-29 ([configs/swing_track_fund.yaml](configs/swing_track_fund.yaml); each
+run refreshes the bars, unadjusted bars and SEC filings).
+
+`scripts/swing_track.cmd` runs the news desk and the three trackers after the close. `swing_track.cmd
 auto` is the unattended form for a scheduled task.
 
 **Baselines.** These are scored every run, but they are never bred or selected:

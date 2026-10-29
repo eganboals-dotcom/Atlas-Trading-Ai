@@ -43,6 +43,7 @@ ALIASES: dict[str, list[str]] = {
     "LOW": ["Lowe's", "Lowes"], "ACN": ["Accenture"], "ABT": ["Abbott Laboratories", "Abbott"],
     "GS": ["Goldman Sachs", "Goldman"],
 }
+SAME_COMPANY = {"GOOG": "GOOGL"}  # share classes of one company: asked about once, noted for each
 LABELS = ("Company A", "Company B")
 MAX_COMPANIES = len(LABELS)  # like the keyword reader, skip roundups that name many companies
 
@@ -69,12 +70,18 @@ class LlmReader:
 
     def read(self, articles: pl.DataFrame) -> pl.DataFrame:
         items, meta = [], []
-        for aid, ns, syms, head in articles.select("id", "created_ns", "symbols", "headline").iter_rows():
-            if not syms or len(syms) > MAX_COMPANIES or (self.tracked and not set(syms) & self.tracked):
+        for aid, ns, tagged, head in articles.select("id", "created_ns", "symbols", "headline").iter_rows():
+            syms = list(dict.fromkeys(SAME_COMPANY.get(s, s) for s in tagged or []))
+            if not syms or len(syms) > MAX_COMPANIES or (self.tracked and not set(tagged) & self.tracked):
                 continue
-            meta.append((aid, ns, list(syms)))
-            items.append({"i": len(items), "headline": anonymize(head, list(syms)),
-                          "companies": list(LABELS[:len(syms)])})
+            text = anonymize(head, syms)
+            # Alpaca sometimes tags companies a headline never names ("Xylem plunges" tagged AMZN); a model
+            # asked about them would guess, so only the companies the headline actually names are asked about.
+            named = [label for label in LABELS[:len(syms)] if label in text]
+            if not named:
+                continue
+            meta.append((aid, ns, syms, list(tagged)))
+            items.append({"i": len(items), "headline": text, "companies": named})
         rows = []
         for start in range(0, len(items), self.batch_size):
             batch = items[start:start + self.batch_size]
@@ -83,8 +90,9 @@ class LlmReader:
                 k = n.get("i")
                 if not isinstance(k, int) or not 0 <= k < len(batch) or n.get("company") not in batch[k]["companies"]:
                     continue  # malformed or invented: ignore it rather than guess
-                aid, ns, syms = meta[start + k]
+                aid, ns, syms, tagged = meta[start + k]
                 sym = syms[LABELS.index(n["company"])]
-                rows.append((aid, ns, sym, self.name, float(np.clip(n["direction"], -1, 1)),
-                             float(np.clip(n["importance"], 0, 1)), str(n["category"])))
+                for s in [t for t in tagged if SAME_COMPANY.get(t, t) == sym]:
+                    rows.append((aid, ns, s, self.name, float(np.clip(n["direction"], -1, 1)),
+                                 float(np.clip(n["importance"], 0, 1)), str(n["category"])))
         return pl.DataFrame(rows, schema=NOTE_SCHEMA, orient="row") if rows else empty_notes()

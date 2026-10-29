@@ -6,12 +6,13 @@ import dataclasses
 from datetime import date, timedelta
 
 import numpy as np
+import polars as pl
 import pytest
 
 from atlas.agents.genome import sample_genome
 from atlas.swing.data import Panel
 from atlas.swing.families import FAMILIES, exposures
-from atlas.swing.fundamentals import as_of, extract, fundamental_features
+from atlas.swing.fundamentals import SCHEMA, as_of, extract, fundamental_features
 
 
 def fact(val, end, filed, form="10-K", fp="FY", start=None):
@@ -44,6 +45,47 @@ def test_extract_keeps_full_fiscal_years_and_all_share_counts() -> None:
     gp = rows.filter(rows["item"] == "gross_profit").sort("filed")
     assert gp["val"].to_list() == [100.0, 120.0, 110.0]
     assert rows.filter(rows["item"] == "shares")["val"].to_list() == [10.0, 40.0]
+
+
+def test_extract_falls_back_for_equity_with_minority_interest_and_multi_class_shares() -> None:
+    facts = {"facts": {"us-gaap": {
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": {"units": {"USD": [
+            fact(70.0, "2020-12-31", "2021-02-18")]}},
+        "WeightedAverageNumberOfDilutedSharesOutstanding": {"units": {"shares": [
+            fact(12.0, "2020-12-31", "2021-02-18", start="2020-01-01"),
+            fact(13.0, "2021-03-31", "2021-04-30", form="10-Q", fp="Q1", start="2021-01-01")]}},
+    }}}
+    rows = extract(facts)
+    assert rows.filter(rows["item"] == "equity")["val"].to_list() == [70.0]
+    assert rows.filter(rows["item"] == "shares")["val"].to_list() == [12.0, 13.0]
+
+
+def test_a_later_concept_fills_only_periods_the_preferred_one_lacks() -> None:
+    """Meta reported Revenues until 2017, then the newer revenue concept: both are used, each for its own
+    years, and the newer concept's restated old years never replace the preferred ones."""
+    old = [fact(float(y), f"{y}-12-31", f"{y + 1}-02-01", start=f"{y}-01-01") for y in (2015, 2016, 2017)]
+    new = [fact(1000.0 + y, f"{y}-12-31", f"{y + 1}-02-01", start=f"{y}-01-01") for y in (2016, 2017, 2018, 2019)]
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": old}},
+                                   "RevenueFromContractWithCustomerExcludingAssessedTax": {"units": {"USD": new}}}}}
+    rev = extract(facts).filter(pl.col("item") == "revenue").sort("end")
+    assert rev["val"].to_list() == [2015.0, 2016.0, 2017.0, 3018.0, 3019.0]
+    # Thermo Fisher: CostOfGoodsSold as first filed, the newer concept's restatement of the same year in a
+    # later filing; both kept, so the year is known from its first filing and the restatement wins later
+    first = [fact(10.0, "2017-12-31", "2018-02-20", start="2017-01-01")]
+    later = [fact(11.0, "2017-12-31", "2019-02-20", start="2017-01-01"),
+             fact(12.0, "2018-12-31", "2019-02-20", start="2018-01-01")]
+    facts = {"facts": {"us-gaap": {"CostOfGoodsAndServicesSold": {"units": {"USD": later}},
+                                   "CostOfGoodsSold": {"units": {"USD": first}}}}}
+    cost = extract(facts).filter(pl.col("item") == "cost_of_revenue")
+    days = (date(2018, 3, 1), date(2019, 3, 1))
+    assert sorted(cost["val"].to_list()) == [10.0, 11.0, 12.0]
+    assert as_of(cost, "cost_of_revenue", days).tolist() == [10.0, 12.0]
+
+
+def test_stale_figures_expire_18_months_after_their_period() -> None:
+    rows = pl.DataFrame([("shares", date(2011, 3, 31), 5.0, date(2011, 4, 29))], schema=SCHEMA, orient="row")
+    days = (date(2011, 5, 2), date(2012, 9, 30), date(2012, 10, 3), date(2016, 1, 4))
+    assert np.isnan(as_of(rows, "shares", days)).tolist() == [False, False, True, True]
 
 
 def test_values_count_only_from_the_day_after_filing_and_later_years_win() -> None:

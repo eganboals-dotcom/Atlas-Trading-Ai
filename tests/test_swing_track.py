@@ -100,7 +100,32 @@ def test_tracker_writes_a_report_and_handles_no_days_yet(tmp_path) -> None:
     assert "No completed days" in track(later).read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("path", ["configs/swing_track.yaml", "configs/swing_track_news.yaml"])
+def test_fund_rank_rules_hold_the_most_profitable_from_filed_figures(tmp_path) -> None:
+    import polars as pl
+
+    from atlas.swing.fundamentals import SCHEMA
+
+    rule = {"name": "quality", "universe": "u", "family": "fund_rank",
+            "genome": {"factor": 0.0, "top_k": 1, "rebalance": 63}}
+    cfg = make_cfg(tmp_path, rules=[rule], fundamentals_dir=tmp_path / "sec", raw_dataset_dir=tmp_path / "daily")
+    write_data(cfg)
+    cfg.fundamentals_dir.mkdir()
+    for sym, gp in (("S0", 10.0), ("S1", 50.0), ("S2", 30.0)):  # S1 the most profitable, from its 2016 10-K on
+        rows = [("gross_profit", date(2016, 12, 31), gp, date(2017, 2, 20)),
+                ("assets", date(2016, 12, 31), 100.0, date(2017, 2, 20))]
+        pl.DataFrame(rows, schema=SCHEMA, orient="row").write_parquet(cfg.fundamentals_dir / f"{sym}.parquet")
+    out = track(cfg).read_text(encoding="utf-8")
+    assert "| quality |" in out
+    rep = json.loads((cfg.out_dir / "tracker.json").read_text(encoding="utf-8"))
+    assert rep["universes"]["u"]["rows"]["quality"]["holding_last_day"] == {"S1": 1.0}
+    with pytest.raises(ValueError, match="fundamentals_dir"):  # a fund_rank rule without filings is refused
+        track(make_cfg(tmp_path / "b", rules=[rule], dataset_dir=cfg.dataset_dir, raw_dataset_dir=cfg.dataset_dir))
+    # where the filings live doesn't change the fingerprint, and old trackers keep theirs
+    assert check_frozen(make_cfg(tmp_path, rules=[rule], fundamentals_dir=tmp_path / "x", raw_dataset_dir=tmp_path))
+
+
+@pytest.mark.parametrize("path", ["configs/swing_track.yaml", "configs/swing_track_news.yaml",
+                                  "configs/swing_track_fund.yaml"])
 def test_the_shipped_tracker_configs_are_valid(path: str) -> None:
     from pathlib import Path
 

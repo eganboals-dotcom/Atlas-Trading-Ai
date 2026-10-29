@@ -700,15 +700,25 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
         last = last_complete_day(now)
         end = history_end(str(now.date()), now)  # the free plan has no SIP data newer than 15 minutes
         fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=HISTORY_PATHS)
-        rows = {}
-        for sym in cfg.symbols():  # ~1 request per symbol, paced well under the free plan's limit
-            got = daily_rows(iter_history(fetch, HISTORY_BARS_PATH, sym, f"{cfg.history_start}T00:00:00Z", end, "sip",
-                                          min_interval_s=1.0, extra={"timeframe": "1Day", "adjustment": "all"}))
-            rows[sym] = [r for r in got if r["date"] <= last]  # today's bar only once it is final
-        save_daily(rows, cfg.dataset_dir, {"source": "alpaca-sip-1Day", "adjustment": "all (splits and dividends)",
-                                           "through": str(last), "license_notes": "Alpaca historical market data, "
-                                           "downloaded for personal research; check Alpaca's data terms before sharing"})
-        print(f"daily bars through {last} for {len(rows)} symbols", flush=True)
+        sets = [(cfg.symbols(), "all", cfg.dataset_dir, "all (splits and dividends)")]
+        if cfg.raw_dataset_dir:  # unadjusted closes, for market value against filed share counts
+            sets.append((cfg.stock_symbols(), "raw", cfg.raw_dataset_dir, "raw (none)"))
+        for syms, adjustment, out_dir, label in sets:
+            rows = {}
+            for sym in syms:  # ~1 request per symbol, paced well under the free plan's limit
+                got = daily_rows(iter_history(fetch, HISTORY_BARS_PATH, sym, f"{cfg.history_start}T00:00:00Z", end,
+                                              "sip", min_interval_s=1.0,
+                                              extra={"timeframe": "1Day", "adjustment": adjustment}))
+                rows[sym] = [r for r in got if r["date"] <= last]  # today's bar only once it is final
+            save_daily(rows, out_dir, {"source": "alpaca-sip-1Day", "adjustment": label, "through": str(last),
+                                       "license_notes": "Alpaca historical market data, downloaded for personal "
+                                                        "research; check Alpaca's data terms before sharing"})
+            print(f"daily bars ({adjustment}) through {last} for {len(rows)} symbols", flush=True)
+        if cfg.fundamentals_dir:  # new filings since the last run (point in time: each counts from its filing)
+            try:
+                _refresh_sec(cfg.stock_symbols(), Path(cfg.fundamentals_dir), verbose=False)
+            except (OSError, PermissionError, ValueError) as e:  # EDGAR down: score on the filings already stored
+                print(f"SEC refresh failed ({e}); using the filings already downloaded", flush=True)
     out = track(cfg)
     print(out.read_text(encoding="utf-8"))
     print(f"report: {out}")
@@ -717,7 +727,7 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
 
 def _cmd_news_desk(args: argparse.Namespace) -> int:
     """Fetch new headlines (read-only), run the news desk's readers, write the next open's briefing."""
-    from atlas.feeds import anthropic_api
+    from atlas.feeds import anthropic_api, local_llm
     from atlas.feeds.alpaca import NEWS_PATHS, http_fetch, iter_news, load_credentials
     from atlas.news.daily import DeskConfig, run_desk
 
@@ -727,33 +737,44 @@ def _cmd_news_desk(args: argparse.Namespace) -> int:
     def fetch(syms: list[str], start: str, end: str):
         return iter_news(http, syms, start, end, min_interval_s=1.0)
 
-    def classifier():
-        return anthropic_api.claude_classifier(cfg.claude_model, Path(".env"))
-
-    has_key = "claude" in cfg.readers and not anthropic_api.missing_key(Path(".env"))
-    out = run_desk(cfg, fetch if http else None, classifier if has_key else None)
+    classifiers: dict = {}
+    if "local" in cfg.readers:
+        why = local_llm.not_ready(cfg.local_model)
+        classifiers["local"] = why or (lambda: local_llm.local_classifier(cfg.local_model))
+    if "claude" in cfg.readers:
+        classifiers["claude"] = ("no ANTHROPIC_API_KEY in .env" if anthropic_api.missing_key(Path(".env"))
+                                 else lambda: anthropic_api.claude_classifier(cfg.claude_model, Path(".env")))
+    out = run_desk(cfg, fetch if http else None, classifiers)
     print(f"briefing: {out}")
     return EXIT_OK
 
 
 def _cmd_fetch_sec(args: argparse.Namespace) -> int:
     """Download companies' SEC filings data (read-only EDGAR) and keep the annual figures the factors use."""
+    _refresh_sec(args.symbols, Path(args.out))
+    return EXIT_OK
+
+
+def _refresh_sec(symbols: list[str], out: Path, verbose: bool = True) -> None:
+    import polars as pl
+
     from atlas.feeds import sec
     from atlas.swing.fundamentals import extract
 
     get = sec.http_get(sec.user_agent(Path(".env")))
     ciks = sec.ciks(get)
-    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    for sym in args.symbols:
-        if sym not in ciks:
+    for sym in symbols:
+        cik = ciks.get(sym, sec.DELISTED_CIKS.get(sym))
+        if cik is None:
             print(f"{sym}: not in EDGAR's ticker list, skipped", flush=True)
             continue
-        rows = extract(sec.company_facts(get, ciks[sym]))
+        filers = (*sec.EARLIER_CIKS.get(sym, ()), cik)
+        rows = pl.concat([extract(sec.company_facts(get, cik)) for cik in filers]).unique(maintain_order=True)
         rows.write_parquet(out / f"{sym}.parquet")
-        print(f"{sym}: {rows.height} values", flush=True)
-    print(f"fundamentals written to {out}", flush=True)
-    return EXIT_OK
+        if verbose:
+            print(f"{sym}: {rows.height} values", flush=True)
+    print(f"fundamentals for {len(symbols)} symbols written to {out}", flush=True)
 
 
 def _cmd_swing_walkforward(args: argparse.Namespace) -> int:

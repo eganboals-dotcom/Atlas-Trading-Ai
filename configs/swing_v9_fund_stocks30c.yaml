@@ -1,0 +1,35 @@
+# Swing v9: a third, untouched stock list to replicate the gross-profitability result of v8 (stocks30b passed,
+# stocks30 tied Hold). stocks30c: roughly the 61st-90th largest US companies at the end of 2015 (from memory,
+# approximate), chosen by size alone, none in stocks30 or stocks30b. Companies whose ticker changed since
+# (Booking, Chubb, Elevance, BNY Mellon: BK -> BNY) and companies since acquired are left out, so survivorship remains, as in v4-v8.
+#
+# Written down before any stocks30c data was downloaded. The test: the fixed, published rule
+# "quality: top 10 by gross profitability (Novy-Marx), quarterly" passes Hold's rule on the unseen validation
+# days (Sharpe above Hold's and annual return at least Hold's, base costs), and beats at least 90% of random
+# 10-stock picks from the same companies with a gross profit. Anything else on this list is a side result.
+# Data: python -m atlas.cli fetch-daily --out data/processed/alpaca_daily_v9c --symbols <symbols below> BIL
+#       python -m atlas.cli fetch-daily --adjustment raw --out data/processed/alpaca_daily_raw --symbols <symbols>
+#       python -m atlas.cli fetch-sec --symbols <symbols below>
+experiment_name: swing_v9_fund_stocks30c
+dataset_dir: data/processed/alpaca_daily_v9c
+symbols: [PM, AVGO, KHC, MS, AXP, LMT, CHTR, BLK, AIG, MET, PYPL, CL, COP, CAT, TMO, DHR, TGT, NEE, DUK, SO,
+          ADP, CRM, NFLX, ADBE, PNC, GD, TJX, F, GM, EOG]
+cash_symbol: BIL
+fundamentals_dir: data/processed/sec_fundamentals
+raw_dataset_dir: data/processed/alpaca_daily_raw
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [fund_rank, vol_target, session]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

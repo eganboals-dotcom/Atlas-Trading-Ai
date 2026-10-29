@@ -1,9 +1,10 @@
 # News desk (python -m atlas.cli news-desk): fetches new Alpaca headlines (read-only), lets each reader note the
 # ones it hasn't seen, and writes the briefing for the next open to artifacts/reports/news_desk/latest.md.
-# Readers: keyword (fixed rules) and claude (Claude reads each headline with company names hidden). The claude
-# reader needs ANTHROPIC_API_KEY in .env (add it yourself) and `pip install -e .[news]`; without a key it is
-# skipped. It only ever reads headlines from start_date on, after the model's training data ends, so its
-# results are forward tests, not backtests. Cost is capped by max_articles_per_run.
+# Readers: keyword (fixed rules) and local (a free AI model on this PC reads each headline with company names
+# hidden). The local reader needs Ollama (ollama.com) running and `ollama pull <local_model>` done once; until
+# then it is skipped and catches up on later runs. It never sends headlines off this PC and costs nothing.
+# Optional: add `claude` to readers to use Claude Haiku instead (paid API credits, ANTHROPIC_API_KEY in .env).
+# AI readers only ever read headlines from start_date on, so their results are forward tests, not backtests.
 start_date: 2026-10-29
 symbols: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG, VZ, T, PFE, KO, CVX, ORCL, DIS,
           MRK, PEP, HD, V, INTC, CSCO, BAC, IBM, GILD, CMCSA,
@@ -12,7 +13,8 @@ symbols: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG,
 news_dir: data/raw/alpaca_news/desk
 notes_dir: data/processed/news_notes
 out_dir: artifacts/reports/news_desk
-readers: [keyword, claude]
+readers: [keyword, local]
+local_model: gemma3:12b
 claude_model: claude-haiku-5-5
 batch_size: 25
 max_articles_per_run: 2000

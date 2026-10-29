@@ -64,6 +64,14 @@ def http_get(ua: str, timeout_s: float = 60.0, min_interval_s: float = 0.25) -> 
     return get
 
 
+# Earlier filers whose history a ticker's current EDGAR company lacks: in 2026 a new holding company took over
+# XOM's ticker, and Exxon Mobil Corporation's filings before that stay under its own CIK; Disney's new parent
+# (after the 2019 Fox deal) files from fiscal 2017 on, the old Walt Disney Co before that.
+EARLIER_CIKS: dict[str, tuple[int, ...]] = {"XOM": (34088,), "DIS": (1001039,)}
+# Companies no longer listed, so missing from EDGAR's ticker file (Walgreens went private in 2025).
+DELISTED_CIKS: dict[str, int] = {"WBA": 1618921}
+
+
 def ciks(get: Get) -> dict[str, int]:
     """Ticker -> CIK. EDGAR writes class shares with a dash (BRK-B); Alpaca with a dot (BRK.B)."""
     data = get(TICKERS_URL)

@@ -94,8 +94,9 @@ def test_no_live_broker_module_exists() -> None:
 DATA_ONLY_MODULE = Path("feeds") / "alpaca.py"  # market data: the only module allowed to read the environment
 AI_READER_MODULE = Path("feeds") / "anthropic_api.py"  # the AI news reader's Claude API calls
 SEC_MODULE = Path("feeds") / "sec.py"  # company filings from SEC EDGAR
+LOCAL_AI_MODULE = Path("feeds") / "local_llm.py"  # the free AI model on this PC (Ollama, loopback only)
 NETWORK_ALLOWED = {DATA_ONLY_MODULE: {"urllib"}, AI_READER_MODULE: {"anthropic"},
-                   SEC_MODULE: {"urllib"}}  # module -> the only network client it may import
+                   SEC_MODULE: {"urllib"}, LOCAL_AI_MODULE: {"urllib"}}  # module -> the only network client it may import
 
 
 def _imports(path: Path) -> list[str]:
@@ -151,6 +152,73 @@ def test_sec_module_can_only_GET_two_public_edgar_endpoints(monkeypatch) -> None
     monkeypatch.delenv(sec.UA_ENV, raising=False)
     with pytest.raises(PermissionError):  # no contact address: refuses before any request
         sec.user_agent(env_file=None)
+
+
+def test_local_ai_module_can_only_reach_ollama_on_this_pc(monkeypatch) -> None:
+    """Loopback only, two Ollama paths only, no proxies (an HTTP_PROXY would carry headlines off the PC)."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from atlas.feeds import local_llm
+
+    text = (SRC / LOCAL_AI_MODULE).read_text(encoding="utf-8")
+    code = text.replace(ast.get_docstring(ast.parse(text), clean=False), "")
+    assert set(re.findall(r"https?://[a-z0-9.]+", code)) == {"http://127.0.0.1"}
+    for banned in ("os.environ", "getenv", "alpaca", "submit", "order", "socket"):
+        assert banned not in code, banned
+    for bad in ("http://example.com:11434", "https://127.0.0.1:11434", "http://127.0.0.1.evil.com:11434",
+                "http://user@127.0.0.1:11434", "http://10.0.0.5:11434", "http://127.0.0.1:11434/x"):
+        with pytest.raises(PermissionError):
+            local_llm.check_host(bad)
+        with pytest.raises(PermissionError):
+            local_llm.local_classifier("m", host=bad)
+    with pytest.raises(PermissionError):
+        local_llm._request(local_llm.HOST, "/api/pull", {}, 1.0)
+    with pytest.raises(PermissionError):
+        local_llm._request(local_llm.HOST, "/api/delete", None, 1.0)
+
+    seen: list[tuple[str, str, dict]] = []
+
+    class Fake(BaseHTTPRequestHandler):  # stands in for Ollama on 127.0.0.1
+        def log_message(self, *a):
+            pass
+
+        def _send(self, obj):
+            body = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            seen.append(("GET", self.path, {}))
+            self._send({"models": [{"name": "gemma3:12b"}]})
+
+        def do_POST(self):
+            req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append(("POST", self.path, req))
+            notes = [{"i": 0, "company": "Company A", "direction": 0.7, "importance": 0.9, "category": "earnings"}]
+            self._send({"message": {"content": json.dumps({"notes": notes})}, "done_reason": "stop"})
+
+    server = HTTPServer(("127.0.0.1", 0), Fake)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    host = f"http://127.0.0.1:{server.server_port}"
+    monkeypatch.setenv("HTTP_PROXY", "http://10.255.255.1:9")  # would hang or fail if the proxy were used
+    monkeypatch.setenv("NO_PROXY", "")
+    try:
+        assert local_llm.not_ready("gemma3:12b", host) is None
+        assert "ollama pull qwen3:14b" in local_llm.not_ready("qwen3:14b", host)
+        notes = local_llm.local_classifier("gemma3:12b", host=host)([{"i": 0, "headline": "Company A beats",
+                                                                     "companies": ["Company A"]}])
+    finally:
+        server.shutdown()
+    assert notes[0]["direction"] == 0.7
+    assert [(m, p) for m, p, _ in seen] == [("GET", "/api/tags"), ("GET", "/api/tags"), ("POST", "/api/chat")]
+    sent = seen[-1][2]
+    assert sent["model"] == "gemma3:12b" and sent["format"]["required"] == ["notes"] and sent["stream"] is False
+    assert "Company A beats" in sent["messages"][1]["content"]
+    assert "Ollama is not running" in local_llm.not_ready("gemma3:12b", "http://127.0.0.1:9")  # nothing there
 
 
 def test_only_the_market_data_module_reads_the_environment() -> None:

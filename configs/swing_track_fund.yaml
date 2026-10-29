@@ -1,0 +1,34 @@
+# Forward tracker for the fundamentals candidate (python -m atlas.cli swing-track --config configs/swing_track_fund.yaml).
+# Frozen on 2026-10-28, before any scored day. One fixed, published rule, not tuned here: "quality: top 10 by
+# gross profitability (Novy-Marx), quarterly", which beat Hold on the unseen days of all three stock lists
+# (configs/swing_v8_fund_*.yaml, configs/swing_v9_fund_stocks30c.yaml) but with mixed controls: the ranking
+# itself beat random picks clearly on only two of the three. These future days are the test that can't be
+# fitted. Walgreens (WBA, taken private in 2025) is left out of stocks30b because it no longer trades.
+# Each run downloads adjusted and unadjusted daily bars (~3 minutes) and refreshes the SEC filings (~1 minute).
+start_date: 2026-10-29
+history_start: 2016-01-04     # fixed, so the quarterly rebalance days never shift between runs
+out_dir: artifacts/reports/swing_track_fund
+dataset_dir: data/processed/swing_track_fund
+raw_dataset_dir: data/processed/swing_track_fund_raw
+fundamentals_dir: data/processed/sec_fundamentals
+cash_symbol: BIL
+cost_bps: 2.0
+
+universes:
+  stocks30: [AAPL, GOOGL, MSFT, BRK.B, XOM, AMZN, META, GE, JNJ, WFC, JPM, WMT, PG, VZ, T, PFE, KO, CVX, ORCL, DIS, MRK, PEP, HD, V, INTC, CSCO, BAC, IBM, GILD, CMCSA]
+  stocks30b: [MO, AMGN, MA, C, BA, MMM, UNH, MCD, QCOM, SLB, ABBV, CVS, UPS, BMY, MDT, NKE, SBUX, UNP, HON, USB, LLY, TXN, BIIB, MDLZ, COST, LOW, ACN, ABT, GS]
+  stocks30c: [PM, AVGO, KHC, MS, AXP, LMT, CHTR, BLK, AIG, MET, PYPL, CL, COP, CAT, TMO, DHR, TGT, NEE, DUK, SO, ADP, CRM, NFLX, ADBE, PNC, GD, TJX, F, GM, EOG]
+
+rules:
+  - name: "quality: top 10 by gross profitability, quarterly"
+    universe: stocks30
+    family: fund_rank
+    genome: {factor: 0.0, top_k: 10, rebalance: 63}
+  - name: "quality: top 10 by gross profitability, quarterly"
+    universe: stocks30b
+    family: fund_rank
+    genome: {factor: 0.0, top_k: 10, rebalance: 63}
+  - name: "quality: top 10 by gross profitability, quarterly"
+    universe: stocks30c
+    family: fund_rank
+    genome: {factor: 0.0, top_k: 10, rebalance: 63}

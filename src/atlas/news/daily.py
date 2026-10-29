@@ -25,9 +25,13 @@ class DeskConfig(StrictModel):
     notes_dir: Path = Path("data/processed/news_notes")
     out_dir: Path = Path("artifacts/reports/news_desk")
     readers: list[str] = Field(default_factory=lambda: ["keyword"])
-    claude_model: str = "claude-haiku-5-5"
+    local_model: str = "gemma3:12b"  # the "local" reader: a free model on this PC, run by Ollama
+    claude_model: str = "claude-haiku-5-5"  # the "claude" reader (optional; uses paid API credits)
     batch_size: int = 25
-    max_articles_per_run: int = 2000  # cost cap for the AI reader per run
+    max_articles_per_run: int = 2000  # cap per run for each AI reader (time for local, cost for claude)
+
+
+AI_READERS = ("local", "claude")
 
 
 FetchNews = Callable[[list[str], str, str], Iterable[dict[str, Any]]]
@@ -120,8 +124,10 @@ def render(cfg: DeskConfig, open_day: date, headlines: pl.DataFrame) -> str:
     return "\n".join(L) + "\n"
 
 
-def run_desk(cfg: DeskConfig, fetch: FetchNews | None, classify_factory: Callable[[], Any] | None,
+def run_desk(cfg: DeskConfig, fetch: FetchNews | None, classifiers: dict[str, Callable[[], Any] | str],
              now: datetime | None = None, log: Callable[[str], None] = print) -> Path:
+    """``classifiers``: for each AI reader, a factory for its classify function, or why it can't run today
+    (it is then skipped and reads the missed headlines on a later run)."""
     now = now or datetime.now(UTC)
     if fetch is not None:
         log(f"news: {fetch_new(cfg, fetch, now)} new headlines")
@@ -129,13 +135,14 @@ def run_desk(cfg: DeskConfig, fetch: FetchNews | None, classify_factory: Callabl
     for name in cfg.readers:
         if name == "keyword":
             readers[name] = KeywordReader()
-        elif name == "claude":
-            if classify_factory is None:
-                log("claude reader skipped: no ANTHROPIC_API_KEY in .env")
+        elif name in AI_READERS:
+            factory = classifiers.get(name, "not set up")
+            if isinstance(factory, str):
+                log(f"{name} reader skipped: {factory}")
                 continue
             from atlas.news.llm_reader import LlmReader
 
-            readers[name] = LlmReader(classify_factory(), name, cfg.batch_size, set(cfg.symbols))
+            readers[name] = LlmReader(factory(), name, cfg.batch_size, set(cfg.symbols))
         else:
             raise ValueError(f"unknown reader {name!r}")
     for name, n in run_readers(cfg, readers, now).items():

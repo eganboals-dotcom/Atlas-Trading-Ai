@@ -1,7 +1,8 @@
 # Forward tracker for the news desk (python -m atlas.cli swing-track --config configs/swing_track_news.yaml).
-# Frozen on 2026-10-28, before any scored day. Each news bot trades one reader's briefing (see
-# configs/news_desk.yaml): claude (AI, names hidden) and keyword (fixed rules), so the two readers are compared
-# on the same days, next to Hold. Run `news-desk` before this so the notes are up to date.
+# Frozen on 2026-10-28, before any scored day (re-frozen that evening when the AI reader moved from Claude to
+# a free model on this PC; no day had been scored). Each news bot trades one reader's briefing (see
+# configs/news_desk.yaml): local (free AI model on this PC, names hidden) and keyword (fixed rules), so the two
+# readers are compared on the same days, next to Hold. Run `news-desk` before this so the notes are up to date.
 # Uses the bars downloaded by configs/swing_track.yaml (same dataset_dir); --no-fetch is enough after that run.
 start_date: 2026-10-29
 history_start: 2016-01-04
@@ -16,25 +17,25 @@ universes:
   stocks30b: [MO, AMGN, MA, C, BA, MMM, UNH, MCD, QCOM, SLB, ABBV, CVS, UPS, BMY, MDT, NKE, SBUX, UNP, HON, USB, LLY, TXN, BIIB, MDLZ, COST, LOW, ACN, ABT, GS]
 
 rules:
-  - name: "claude: tilt toward good news, away from bad"
+  - name: "local AI: tilt toward good news, away from bad"
     universe: stocks30
     family: brief_tilt
-    reader: claude
+    reader: local
     genome: {window: 5, thr: 1.0, tilt: 0.5, rebalance: 1}
-  - name: "claude: buy good news, hold 5 days"
+  - name: "local AI: buy good news, hold 5 days"
     universe: stocks30
     family: brief_drift
-    reader: claude
+    reader: local
     genome: {trend_filter: 0.0, trend_n: 200, side: 1.0, thr: 0.8, hold_days: 5}
-  - name: "claude: tilt toward good news, away from bad"
+  - name: "local AI: tilt toward good news, away from bad"
     universe: stocks30b
     family: brief_tilt
-    reader: claude
+    reader: local
     genome: {window: 5, thr: 1.0, tilt: 0.5, rebalance: 1}
-  - name: "claude: buy good news, hold 5 days"
+  - name: "local AI: buy good news, hold 5 days"
     universe: stocks30b
     family: brief_drift
-    reader: claude
+    reader: local
     genome: {trend_filter: 0.0, trend_n: 200, side: 1.0, thr: 0.8, hold_days: 5}
   - name: "keyword: tilt toward good news, away from bad"
     universe: stocks30

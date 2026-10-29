@@ -47,15 +47,25 @@ class TrackConfig(StrictModel):
     universes: dict[str, list[str]]
     rules: list[TrackedRule]
     notes_dir: Path | None = None  # news desk notes, for rules with a reader
+    # SEC fundamentals and unadjusted daily bars (for market value), for fund_rank rules; both refreshed by
+    # swing-track's download step
+    fundamentals_dir: Path | None = None
+    raw_dataset_dir: Path | None = None
 
     def symbols(self) -> list[str]:
         return sorted({s for syms in self.universes.values() for s in syms} | {self.cash_symbol})
+
+    def stock_symbols(self) -> list[str]:
+        return sorted({s for syms in self.universes.values() for s in syms})
+
+
+DATA_DIRS = {"out_dir", "dataset_dir", "notes_dir", "fundamentals_dir", "raw_dataset_dir"}
 
 
 def fingerprint(cfg: TrackConfig) -> str:
     """Hash of everything that decides the results: start, history, costs, universes and rules. Unset
     optional fields are left out, so adding one never changes an existing tracker's fingerprint."""
-    frozen = cfg.model_dump(mode="json", exclude={"out_dir", "dataset_dir", "notes_dir"}, exclude_none=True)
+    frozen = cfg.model_dump(mode="json", exclude=DATA_DIRS, exclude_none=True)
     return hashlib.sha256(json.dumps(frozen, sort_keys=True).encode()).hexdigest()
 
 
@@ -92,9 +102,21 @@ def _cash_returns(p: Panel, cash_symbol: str) -> np.ndarray:
     return r
 
 
-def score(cfg: TrackConfig, panels: dict[str, Panel]) -> dict[str, Any]:
+def _fund_features(cfg: TrackConfig, p: Panel, raw: Panel) -> dict[str, np.ndarray]:
+    from atlas.swing.fundamentals import fundamental_features
+
+    if cfg.fundamentals_dir is None:
+        raise ValueError("fund_rank rules need fundamentals_dir (and raw_dataset_dir) in the tracker config")
+    idx = {d: i for i, d in enumerate(raw.dates)}
+    j = [raw.symbols.index(s) for s in p.symbols]
+    rc = np.array([raw.close[idx[d], j] if d in idx else np.full(len(j), np.nan) for d in p.dates])
+    return fundamental_features(p, cfg.fundamentals_dir, rc)
+
+
+def score(cfg: TrackConfig, panels: dict[str, Panel], raw: dict[str, Panel] | None = None) -> dict[str, Any]:
     """Every rule and each universe's Hold, from ``start_date`` to the last day of that universe's panel
-    (``panels[universe]`` holds the universe's symbols plus the cash symbol)."""
+    (``panels[universe]`` holds the universe's symbols plus the cash symbol; ``raw[universe]`` its unadjusted
+    bars, for fund_rank rules)."""
     out: dict[str, Any] = {"start_date": str(cfg.start_date), "universes": {}}
     for uni, syms in cfg.universes.items():
         p = panels[uni].select(syms)
@@ -110,6 +132,8 @@ def score(cfg: TrackConfig, panels: dict[str, Panel]) -> dict[str, Any]:
 
                 notes = load_notes(Path(cfg.notes_dir or "data/processed/news_notes") / reader)
                 q = dataclasses.replace(p, features=briefing_features(p, notes))
+            if fam == "fund_rank":
+                q = dataclasses.replace(p, features=_fund_features(cfg, p, (raw or {})[uni]))
             x = exposures(q, fam, g)
             days = len(p.dates) - s
             res = simulate(q, x, s, len(p.dates), cfg.cost_bps, cash) if days else None
@@ -156,7 +180,9 @@ def render(cfg: TrackConfig, res: dict[str, Any], frozen: dict[str, Any]) -> str
 def track(cfg: TrackConfig) -> Path:
     frozen = check_frozen(cfg)
     panels = {u: load_panel(cfg.dataset_dir, [*syms, cfg.cash_symbol]) for u, syms in cfg.universes.items()}
-    res = score(cfg, panels)
+    raw = ({u: load_panel(cfg.raw_dataset_dir, syms) for u, syms in cfg.universes.items()}
+           if cfg.raw_dataset_dir else None)
+    res = score(cfg, panels, raw)
     res["fingerprint"] = frozen["fingerprint"]
     res["generated_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
