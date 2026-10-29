@@ -768,8 +768,12 @@ also less in the first half; the basket +3.9% vs +6.0%. Other averages (20, 100,
 worst by coin, a sign of luck. What trend rules did reliably was cut the worst fall: Bitcoin's from 77% to 40-60%.
 Details: `artifacts/reports/swing/crypto_trend.json`.
 
-`scripts/swing_track.cmd` runs the news desk and the three trackers after the close. `swing_track.cmd
-auto` is the unattended form for a scheduled task.
+`scripts/swing_track.cmd` runs the news desk and the five trackers after the close. `swing_track.cmd
+auto` is the unattended form for a scheduled task. `scripts/nightly_wake.ps1` wraps it for a PC that the
+motherboard's alarm ("Power On By RTC") switches on: it waits for the internet, starts Ollama if needed,
+keeps the PC awake while the research runs, then shuts it down (`-After sleep` sleeps it; `-After none`
+leaves it on). It stays on if someone is signed in or used the PC in the last 10 minutes, or a live paper
+session is running. Each step is logged to `artifacts/reports/swing_track/runs.log`.
 
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)
