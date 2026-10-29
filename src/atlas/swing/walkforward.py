@@ -108,6 +108,13 @@ FUND_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run
     "quality + value (magic-formula style): top 10, quarterly": ("fund_rank", {"factor": 4.0, "top_k": 10,
                                                                                "rebalance": 63}),
 }
+TILT_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run's families include tilt
+    "tilt: quality + momentum + low volatility, tilt 0.5, quarterly": ("tilt", {"factor": 3.0, "tilt": 0.5,
+                                                                                 "rebalance": 63}),
+    "tilt: quality, tilt 0.5, quarterly": ("tilt", {"factor": 0.0, "tilt": 0.5, "rebalance": 63}),
+    "tilt: momentum, tilt 0.5, quarterly": ("tilt", {"factor": 1.0, "tilt": 0.5, "rebalance": 63}),
+    "tilt: low volatility, tilt 0.5, quarterly": ("tilt", {"factor": 2.0, "tilt": 0.5, "rebalance": 63}),
+}
 NEWS_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run has news
     "news gaps: follow with news, fade without (1% gap, 5 days)": ("news_gap", {
         "trend_filter": 0.0, "trend_n": 200, "rule": 2.0, "gap_bps": 100.0, "min_articles": 1, "hold_days": 5}),
@@ -188,6 +195,11 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
         raw_close = np.array([raw.close[idx[d]] if d in idx else np.full(len(cfg.symbols), np.nan) for d in p.dates])
         p = dataclasses.replace(p, features={**p.features, **fundamental_features(p, cfg.fundamentals_dir, raw_close)})
         rules |= FUND_TEXTBOOK
+    if "tilt" in cfg.families:
+        from atlas.swing.families import tilt_features
+
+        p = dataclasses.replace(p, features={**p.features, **tilt_features(p)})  # ranked once, not per bot
+        rules |= TILT_TEXTBOOK
     cash = np.zeros(len(p.dates))  # no interest unless a cash symbol is configured
     if cfg.cash_symbol:
         c = full.select([cfg.cash_symbol]).close[:, 0]

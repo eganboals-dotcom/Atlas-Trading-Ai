@@ -9,7 +9,7 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 - **No live trading.** There is no live-order path, and none may be added without the user's explicit,
   separate approval for Phase 7/8. Never add trading endpoints, broker SDKs, or order-placing code. Only
   four modules may use the network, each pinned to its own read-only job (approved by the user on
-  2026-10-28): `src/atlas/feeds/alpaca.py` (Alpaca market data and news, `urllib`), `src/atlas/feeds/local_llm.py`
+  2026-10-28): `src/atlas/feeds/alpaca.py` (Alpaca market data, news and daily crypto bars, `urllib`), `src/atlas/feeds/local_llm.py`
   (the default AI news reader: Ollama on this PC's loopback address only, no proxies or redirects, `urllib`),
   `src/atlas/feeds/anthropic_api.py` (the optional Claude reader's `messages.create` calls, `anthropic`; it uses
   paid credits, and the user chose the free local model instead), and `src/atlas/feeds/sec.py` (SEC EDGAR

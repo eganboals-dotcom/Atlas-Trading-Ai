@@ -1,0 +1,50 @@
+# Swing v10 on u300: always-invested tilt bots on a wide list. The 300 most-traded US companies in January
+# 2016 (average daily dollar volume; scratch screen of EDGAR's current tickers), one share class each, with a US
+# annual report (10-K) filed by 2016. Left out before any returns were looked at: funds and trusts, tickers
+# whose 2016 prices belong to another company (reused tickers, spin-offs: APC BMR FIT SE B LB TW AMTD GEN MBLY
+# DOC CB DOW DD UA FOXA JCI AA WTW BFH VMRK MRSH), and companies whose current SEC filer only starts after 2016
+# (new holding companies such as Broadcom, BlackRock, Cigna). Survivorship remains: today's tickers only.
+#
+# Written down before these prices were downloaded. The test: the fixed rule "tilt: quality + momentum + low
+# volatility, tilt 0.5, quarterly" (always fully invested; weights from 0.5x to 1.5x of equal weight by the
+# average rank of the three) passes Hold's rule on the unseen validation days at base costs (Sharpe above Hold's
+# and annual return at least Hold's). Single-factor tilts and everything else are side results.
+# Data: python -m atlas.cli fetch-daily --out data/processed/alpaca_daily_u300 --symbols <symbols below> BIL
+#       python -m atlas.cli fetch-daily --adjustment raw --out data/processed/alpaca_daily_raw --symbols <symbols>
+#       python -m atlas.cli fetch-sec --symbols <symbols below>
+experiment_name: swing_v10_tilt_u300
+dataset_dir: data/processed/alpaca_daily_u300
+symbols: [AAPL, META, AMZN, MSFT, NFLX, GOOGL, BAC, GE, XOM, JPM, C, GILD, CVX, WFC, T, PFE, JNJ, DIS, VZ, MCD,
+          INTC, V, CSCO, HD, PG, BKNG, BA, WMT, IBM, GS, CMG, SLB, TSLA, SBUX, CMCSA, BRK.B, AMGN, QCOM, AXP, ORCL,
+          KO, F, MRK, COP, ABBV, RTX, BIIB, NKE, UNP, MA, AIG, GM, MDLZ, PEP, BHC, BMY, DAL, CAT, KMI, VLO,
+          UNH, CVS, MDT, REGN, MS, LLY, PM, MMM, AAL, MCK, OXY, TXN, MO, LMT, TGT, HAL, LOW, MET, EQIX, WMB,
+          EBAY, EOG, USB, COST, MU, SCHW, PSX, CFG, UAL, HON, ABT, M, KR, CRM, TMO, SWKS, PYPL, CCL, ACN, KMB,
+          DHR, LYB, CTSH, FDX, UPS, ILMN, NEE, YUM, KHC, AMAT, LUV, HCA, VRTX, SYF, COF, FCX, NVDA, CL, TAP, ET,
+          MPC, ADBE, ELV, SPG, MAR, BNY, PRGO, CHTR, NOC, COR, PANW, RCL, EXPE, STZ, GD, ISRG, LVS, ICE, SO, WYNN,
+          SHW, WDC, DVN, PNC, AMT, EXR, GLW, DG, TJX, TRV, ORLY, PRU, TSN, DE, CCI, LRCX, CSX, EMR, SYK, APD,
+          PSA, DLTR, ITW, GIS, CAH, NWL, DHI, DUK, D, TPR, EXC, FITB, MNST, CMI, AEP, TEL, BAX, PPG, NOV, WELL,
+          AZO, LBTYK, INCY, HPQ, EPD, SYY, KSS, KEY, LULU, VFC, NOW, RF, TFC, ED, SIG, BBY, STX, STT, BDX, KMX,
+          ALL, HBAN, HUM, ADP, ZTS, ADM, BSX, HLT, HPE, ETN, BX, RRC, CME, FFIV, PAYX, INTU, HOG, IP, SRE, ADI,
+          PPL, GWW, BMRN, SWK, FSLR, MCO, ULTA, ZBH, GAP, PCG, WHR, URI, CLX, ECL, MOS, FAST, JBLU, ROST, LEN, PH,
+          EW, EL, MGM, VTR, NEM, AAP, BEN, EIX, TMUS, KDP, ADSK, MTB, AMP, PII, CAG, TDG, PLD, TRIP, HST, WDAY,
+          AFL, AKAM, MCHP, SBAC, WY, MAT, GPN, HP, MAS, TROW, TSCO, CF, XEL, HRL, EQT, PHM, HSY, CHRW, LUMN, HIG,
+          ROK, WM, DRI, PEG, FE, NSC, PCAR, O, PGR, RIG, AYI, ALK, NUE, GT, CPB, MLM, RL, SPGI, CNC, LHX]
+cash_symbol: BIL
+fundamentals_dir: data/processed/sec_fundamentals
+raw_dataset_dir: data/processed/alpaca_daily_raw
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [tilt, fund_rank, vol_target]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

@@ -22,8 +22,13 @@ verified against Alpaca's docs on 2026-10-28; headlines and timestamps only are 
 
     GET https://data.alpaca.markets/v1beta1/news?symbols=...&start=...&end=...&limit=50
 
+For crypto research (requested by the user on 2026-10-28), ``iter_crypto_bars`` uses one more GET endpoint on
+the same host (``CRYPTO_PATHS``; daily bars of coins quoted in US dollars):
+
+    GET https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=BTC/USD&timeframe=1Day&start=...&end=...
+
 Paper sessions never use them: ``http_fetch`` allows only the live paths unless it is
-explicitly given ``HISTORY_PATHS`` or ``NEWS_PATHS``.
+explicitly given ``HISTORY_PATHS``, ``NEWS_PATHS`` or ``CRYPTO_PATHS``.
 
 It has **no trading endpoint** and no way to send an order: Atlas's paper orders go only
 to the internal ``PaperBroker``. Use API keys from an Alpaca *paper* account. Alpaca
@@ -65,6 +70,8 @@ HISTORY_BARS_PATH = "/v2/stocks/bars"
 HISTORY_PATHS = frozenset({HISTORY_QUOTES_PATH, HISTORY_TRADES_PATH, HISTORY_BARS_PATH})
 NEWS_PATH = "/v1beta1/news"
 NEWS_PATHS = frozenset({NEWS_PATH})
+CRYPTO_BARS_PATH = "/v1beta3/crypto/us/bars"
+CRYPTO_PATHS = frozenset({CRYPTO_BARS_PATH})
 KEY_ENV, SECRET_ENV = "APCA_API_KEY_ID", "APCA_API_SECRET_KEY"
 
 Fetch = Callable[[str, dict[str, str]], dict[str, Any]]
@@ -124,7 +131,7 @@ def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
 
 def http_fetch(credentials: AlpacaCredentials, timeout_s: float = 5.0,
                allowed: frozenset[str] = ALLOWED_PATHS) -> Fetch:
-    readable = ALLOWED_PATHS | HISTORY_PATHS | NEWS_PATHS
+    readable = ALLOWED_PATHS | HISTORY_PATHS | NEWS_PATHS | CRYPTO_PATHS
     if not allowed <= readable:
         raise PermissionError(f"refusing non-market-data paths {sorted(allowed - readable)}")
 
@@ -292,6 +299,31 @@ class AlpacaPollingFeed(LiveFeed):
                                 price=float(tr.get("p") or 0.0), size=int(tr.get("s") or 0),
                                 timestamp_kind=TimestampKind.VENDOR, conditions=tuple(tr.get("c") or ())))
         return events
+
+
+def iter_crypto_bars(fetch: Fetch, symbol: str, start: str, end: str, timeframe: str = "1Day",
+                     min_interval_s: float = 1.0, retries: int = 8,
+                     sleep: Callable[[float], None] = time.sleep) -> Any:
+    """Yield one coin's historical bars (e.g. ``BTC/USD``; raw Alpaca dicts, oldest first), page by page."""
+    token: str | None = None
+    while True:
+        params = {"symbols": symbol, "timeframe": timeframe, "start": start, "end": end, "limit": "10000",
+                  "sort": "asc"}
+        if token:
+            params["page_token"] = token
+        for attempt in range(retries + 1):
+            try:
+                data = fetch(CRYPTO_BARS_PATH, params)
+                break
+            except FeedDisconnected:
+                if attempt == retries:
+                    raise
+                sleep(min(60.0, 2.0 * (attempt + 1)))
+        sleep(min_interval_s)
+        yield from (data.get("bars") or {}).get(symbol) or []
+        token = data.get("next_page_token")
+        if not token:
+            return
 
 
 def iter_history(fetch: Fetch, path: str, symbol: str, start: str, end: str, feed: str = "iex",

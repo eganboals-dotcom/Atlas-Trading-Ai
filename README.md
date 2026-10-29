@@ -717,6 +717,34 @@ Details: `artifacts/reports/swing/robustness_v8_gpa.json`. The rule is now track
 on all three lists from 2026-10-29 ([configs/swing_track_fund.yaml](configs/swing_track_fund.yaml); each
 run refreshes the bars, unadjusted bars and SEC filings).
 
+**Wide list and always-invested tilts** ([configs/swing_v10_tilt_u300.yaml](configs/swing_v10_tilt_u300.yaml)).
+The 300 most-traded US companies of January 2016 (from EDGAR's current tickers, so survivors only; reused
+tickers and companies without a US annual report by 2016 left out before any returns were seen). `tilt` bots stay
+invested exactly like Hold and only lean the weights, from 0.5x to 1.5x, by a rank. On the unseen days 2019-2026
+(Hold +16.1% a year, Sharpe 0.70):
+
+| Rule (fixed) | Return/yr | Sharpe | Note |
+|---|---|---|---|
+| tilt: quality + momentum + low volatility | +15.6% | 0.71 | the pre-registered test: failed (return below Hold) |
+| tilt: quality | +16.3% | 0.71 | passes; stronger tilt more return, reversed less; top fifth +16.8% vs bottom +14.5% |
+| quality: top 10 by gross profitability | +19.6% | 0.83 | passes |
+| dual momentum top 3 | +37.4% | 0.91 | passes, 54% drawdown, a few AI/EV winners; failed on stocks30b |
+| tilt: low volatility | +14.6% | 0.67 | the most volatile fifth made +24% a year |
+| trained bots (fold champions) | +10.8% | 0.55 | below Hold |
+
+Quality is the one effect that now looks real everywhere, and it is small. These four are tracked forward from
+2026-10-29 in [configs/swing_track_u300.yaml](configs/swing_track_u300.yaml). Controls:
+`artifacts/reports/swing/tilt_controls_u300.json`.
+
+**Crypto** (`python -m atlas.cli fetch-crypto --symbols BTC/USD ETH/USD ...`; Alpaca's crypto history starts in
+January 2021, so there is one boom-and-bust cycle to test on). Hold the coin while yesterday's close is above its
+50-day average, else cash, at 25 bps per trade, vs buy-and-hold, July 2021 to October 2026. The test, written down
+first, needed it to win on Bitcoin, Ether and a five-coin basket in both halves of the period; it failed.
+Bitcoin +21.0% a year vs +20.1% (Sharpe 0.72 vs 0.61) but less than Hold in the first half; Ether +26.4% vs +5.0%,
+also less in the first half; the basket +3.9% vs +6.0%. Other averages (20, 100, 200 days) swing from best to
+worst by coin, a sign of luck. What trend rules did reliably was cut the worst fall: Bitcoin's from 77% to 40-60%.
+Details: `artifacts/reports/swing/crypto_trend.json`.
+
 `scripts/swing_track.cmd` runs the news desk and the three trackers after the close. `swing_track.cmd
 auto` is the unattended form for a scheduled task.
 

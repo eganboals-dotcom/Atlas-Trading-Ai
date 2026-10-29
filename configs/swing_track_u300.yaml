@@ -1,0 +1,51 @@
+# Forward tracker for the 300-company list (python -m atlas.cli swing-track --config configs/swing_track_u300.yaml).
+# Frozen on 2026-10-28, before any scored day. Fixed rules, not tuned here, that passed Hold's test on the
+# unseen days of configs/swing_v10_tilt_u300.yaml (2019-2026) but can't be trusted from that alone:
+#  * quality top 10 and the quality tilt: small but consistent (top fifth +16.8% vs bottom fifth +14.5%)
+#  * dual momentum top 3: +37% a year with a 54% drawdown, from a few AI and EV winners; it failed on stocks30b,
+#    and a list of today's survivors flatters it
+# The combined tilt failed its pass test and is tracked as the control it was meant to be.
+# Each run downloads ~600 daily bar histories (~12 minutes) and refreshes SEC filings older than a week.
+start_date: 2026-10-29
+history_start: 2016-01-04     # fixed, so rebalance days never shift between runs
+out_dir: artifacts/reports/swing_track_u300
+dataset_dir: data/processed/swing_track_u300
+raw_dataset_dir: data/processed/swing_track_u300_raw
+fundamentals_dir: data/processed/sec_fundamentals
+cash_symbol: BIL
+cost_bps: 2.0
+
+universes:
+  u300: [AAPL, META, AMZN, MSFT, NFLX, GOOGL, BAC, GE, XOM, JPM, C, GILD, CVX, WFC, T, PFE, JNJ, DIS, VZ, MCD,
+             INTC, V, CSCO, HD, PG, BKNG, BA, WMT, IBM, GS, CMG, SLB, TSLA, SBUX, CMCSA, BRK.B, AMGN, QCOM, AXP, ORCL,
+             KO, F, MRK, COP, ABBV, RTX, BIIB, NKE, UNP, MA, AIG, GM, MDLZ, PEP, BHC, BMY, DAL, CAT, KMI, VLO,
+             UNH, CVS, MDT, REGN, MS, LLY, PM, MMM, AAL, MCK, OXY, TXN, MO, LMT, TGT, HAL, LOW, MET, EQIX, WMB,
+             EBAY, EOG, USB, COST, MU, SCHW, PSX, CFG, UAL, HON, ABT, M, KR, CRM, TMO, SWKS, PYPL, CCL, ACN, KMB,
+             DHR, LYB, CTSH, FDX, UPS, ILMN, NEE, YUM, KHC, AMAT, LUV, HCA, VRTX, SYF, COF, FCX, NVDA, CL, TAP, ET,
+             MPC, ADBE, ELV, SPG, MAR, BNY, PRGO, CHTR, NOC, COR, PANW, RCL, EXPE, STZ, GD, ISRG, LVS, ICE, SO, WYNN,
+             SHW, WDC, DVN, PNC, AMT, EXR, GLW, DG, TJX, TRV, ORLY, PRU, TSN, DE, CCI, LRCX, CSX, EMR, SYK, APD,
+             PSA, DLTR, ITW, GIS, CAH, NWL, DHI, DUK, D, TPR, EXC, FITB, MNST, CMI, AEP, TEL, BAX, PPG, NOV, WELL,
+             AZO, LBTYK, INCY, HPQ, EPD, SYY, KSS, KEY, LULU, VFC, NOW, RF, TFC, ED, SIG, BBY, STX, STT, BDX, KMX,
+             ALL, HBAN, HUM, ADP, ZTS, ADM, BSX, HLT, HPE, ETN, BX, RRC, CME, FFIV, PAYX, INTU, HOG, IP, SRE, ADI,
+             PPL, GWW, BMRN, SWK, FSLR, MCO, ULTA, ZBH, GAP, PCG, WHR, URI, CLX, ECL, MOS, FAST, JBLU, ROST, LEN, PH,
+             EW, EL, MGM, VTR, NEM, AAP, BEN, EIX, TMUS, KDP, ADSK, MTB, AMP, PII, CAG, TDG, PLD, TRIP, HST, WDAY,
+             AFL, AKAM, MCHP, SBAC, WY, MAT, GPN, HP, MAS, TROW, TSCO, CF, XEL, HRL, EQT, PHM, HSY, CHRW, LUMN, HIG,
+             ROK, WM, DRI, PEG, FE, NSC, PCAR, O, PGR, RIG, AYI, ALK, NUE, GT, CPB, MLM, RL, SPGI, CNC, LHX]
+
+rules:
+  - name: "quality: top 10 by gross profitability, quarterly"
+    universe: u300
+    family: fund_rank
+    genome: {factor: 0.0, top_k: 10, rebalance: 63}
+  - name: "tilt: quality, tilt 0.5, quarterly"
+    universe: u300
+    family: tilt
+    genome: {factor: 0.0, tilt: 0.5, rebalance: 63}
+  - name: "tilt: quality + momentum + low volatility, tilt 0.5, quarterly"
+    universe: u300
+    family: tilt
+    genome: {factor: 3.0, tilt: 0.5, rebalance: 63}
+  - name: "dual momentum top 3 (12-1 months)"
+    universe: u300
+    family: rotation
+    genome: {mode: 0.0, lookback: 231, skip: 21, top_k: 3, rebalance: 21, abs_filter: 1.0}

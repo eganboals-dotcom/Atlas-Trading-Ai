@@ -125,7 +125,7 @@ def test_fund_rank_rules_hold_the_most_profitable_from_filed_figures(tmp_path) -
 
 
 @pytest.mark.parametrize("path", ["configs/swing_track.yaml", "configs/swing_track_news.yaml",
-                                  "configs/swing_track_fund.yaml"])
+                                  "configs/swing_track_fund.yaml", "configs/swing_track_u300.yaml"])
 def test_the_shipped_tracker_configs_are_valid(path: str) -> None:
     from pathlib import Path
 

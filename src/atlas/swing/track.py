@@ -132,7 +132,7 @@ def score(cfg: TrackConfig, panels: dict[str, Panel], raw: dict[str, Panel] | No
 
                 notes = load_notes(Path(cfg.notes_dir or "data/processed/news_notes") / reader)
                 q = dataclasses.replace(p, features=briefing_features(p, notes))
-            if fam == "fund_rank":
+            if fam in ("fund_rank", "tilt"):  # tilt's quality rank comes from filings too
                 q = dataclasses.replace(p, features=_fund_features(cfg, p, (raw or {})[uni]))
             x = exposures(q, fam, g)
             days = len(p.dates) - s

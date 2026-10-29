@@ -276,6 +276,26 @@ def test_news_download_adds_only_one_read_only_market_data_endpoint() -> None:
     assert [a["id"] for a in got] == [1, 2] and set(calls) == {"/v1beta1/news"}
 
 
+def test_crypto_download_adds_only_one_read_only_market_data_endpoint() -> None:
+    from atlas.feeds import alpaca
+
+    assert alpaca.CRYPTO_PATHS == {"/v1beta3/crypto/us/bars"}
+    live = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"))  # what paper sessions use
+    with pytest.raises(PermissionError):
+        live("/v1beta3/crypto/us/bars", {})
+    crypto = alpaca.http_fetch(alpaca.AlpacaCredentials("k", "s"), allowed=alpaca.CRYPTO_PATHS)
+    for bad in ("/v2/orders", "/v2/positions", "/v2/account", "/v1beta3/crypto/us/orders", "/v2/stocks/bars",
+                "/v1beta3/crypto/us/latest/orderbooks"):
+        with pytest.raises(PermissionError):
+            crypto(bad, {})
+    calls = []
+    pages = iter([{"bars": {"BTC/USD": [{"c": 1}]}, "next_page_token": "x"},
+                  {"bars": {"BTC/USD": [{"c": 2}]}, "next_page_token": None}])
+    got = list(alpaca.iter_crypto_bars(lambda p, q: (calls.append(p), next(pages))[1], "BTC/USD", "a", "b",
+                                       sleep=lambda s: None))
+    assert [b["c"] for b in got] == [1, 2] and set(calls) == {"/v1beta3/crypto/us/bars"}
+
+
 def test_no_trading_host_or_order_endpoint_appears_in_source() -> None:
     forbidden = ("api.alpaca.markets", "paper-api.alpaca.markets", "/v2/orders", "/v1/orders",
                  "trader/v1", "accounts/{", "/orders")

@@ -716,7 +716,7 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
             print(f"daily bars ({adjustment}) through {last} for {len(rows)} symbols", flush=True)
         if cfg.fundamentals_dir:  # new filings since the last run (point in time: each counts from its filing)
             try:
-                _refresh_sec(cfg.stock_symbols(), Path(cfg.fundamentals_dir), verbose=False)
+                _refresh_sec(cfg.stock_symbols(), Path(cfg.fundamentals_dir), verbose=False, max_age_days=6.5)
             except (OSError, PermissionError, ValueError) as e:  # EDGAR down: score on the filings already stored
                 print(f"SEC refresh failed ({e}); using the filings already downloaded", flush=True)
     out = track(cfg)
@@ -749,13 +749,45 @@ def _cmd_news_desk(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_fetch_crypto(args: argparse.Namespace) -> int:
+    """Download daily crypto bars (UTC days, read-only market data) for crypto research."""
+    from datetime import UTC, datetime, timedelta
+
+    import polars as pl
+
+    from atlas.feeds.alpaca import CRYPTO_PATHS, http_fetch, iter_crypto_bars, load_credentials
+
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=CRYPTO_PATHS)
+    today = datetime.now(UTC).date()  # only finished UTC days
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for sym in args.symbols:
+        bars = [b for b in iter_crypto_bars(fetch, sym, f"{args.first}T00:00:00Z",
+                                            f"{today - timedelta(days=1)}T23:59:59Z") if b["t"][:10] < str(today)]
+        df = pl.DataFrame({"date": [datetime.fromisoformat(b["t"].replace("Z", "+00:00")).date() for b in bars],
+                           **{k: [float(b[c]) for b in bars] for k, c in
+                              (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c"), ("volume", "v"))}})
+        df.write_parquet(out / f"{sym.replace('/', '-')}.parquet")
+        print(f"{sym}: {df.height} days", flush=True)
+    print(f"crypto bars written to {out} (Alpaca market data, for personal research)", flush=True)
+    return EXIT_OK
+
+
 def _cmd_fetch_sec(args: argparse.Namespace) -> int:
     """Download companies' SEC filings data (read-only EDGAR) and keep the annual figures the factors use."""
     _refresh_sec(args.symbols, Path(args.out))
     return EXIT_OK
 
 
-def _refresh_sec(symbols: list[str], out: Path, verbose: bool = True) -> None:
+def _refresh_sec(symbols: list[str], out: Path, verbose: bool = True, max_age_days: float = 0.0) -> None:
+    """``max_age_days``: skip companies whose stored filings are younger than this (a week's delay only
+    means a new 10-K counts a few days later, never earlier)."""
+    import time
+
+    if max_age_days:
+        fresh = time.time() - max_age_days * 86400
+        symbols = [s for s in symbols if not ((out / f"{s}.parquet").exists()
+                                              and (out / f"{s}.parquet").stat().st_mtime > fresh)]
     import polars as pl
 
     from atlas.feeds import sec
@@ -872,6 +904,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--symbols", nargs="+", required=True)
     p.add_argument("--out", default="data/processed/sec_fundamentals")
     p.set_defaults(func=_cmd_fetch_sec)
+
+    p = sub.add_parser("fetch-crypto", help="Download daily crypto bars (read-only market data) for research.")
+    p.add_argument("--symbols", nargs="+", required=True, help="pairs like BTC/USD ETH/USD")
+    p.add_argument("--first", default="2021-01-01")
+    p.add_argument("--out", default="data/processed/crypto_daily")
+    p.set_defaults(func=_cmd_fetch_crypto)
 
     p = sub.add_parser("news-desk", help="Fetch new headlines, run the news readers, write the next open's briefing.")
     p.add_argument("--config", default="configs/news_desk.yaml")

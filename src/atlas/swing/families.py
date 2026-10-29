@@ -11,6 +11,7 @@ portfolio is still fully invested at most. Families with ``legs`` set the two ex
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Callable
 
@@ -404,6 +405,59 @@ def fund_rank(p: Panel, g: Genome) -> np.ndarray:
     return _rank_pick(score, int(g["top_k"]), int(g["rebalance"]), highest=True)
 
 
+TILT_FACTORS = {0.0: "quality", 1.0: "momentum", 2.0: "low volatility", 3.0: "quality + momentum + low volatility"}
+TILT_FEATURES = ("tilt_quality", "tilt_momentum", "tilt_lowvol")
+
+
+def tilt_features(p: Panel) -> dict[str, np.ndarray]:
+    """Cross-sectional ranks (0 worst .. 1 best) known at each open: quality (gross profitability, else return on
+    assets, from filings already public), momentum (return from 12 to 1 months ago) and low volatility (lower
+    daily volatility over the last year), all from closes up to t-1."""
+    pc = prev_close(p)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mom = lag(pc, 21) / lag(pc, 252) - 1
+        r = pc / lag(pc, 1) - 1
+        vol = np.sqrt(np.clip(sma(r * r, 252) - sma(r, 252) ** 2, 0, None))
+    gpa = p.features.get("fund_gpa", np.full(pc.shape, np.nan))
+    roa = p.features.get("fund_roa", np.full(pc.shape, np.nan))
+    quality = np.where(np.isnan(gpa), roa, gpa)
+    return {"tilt_quality": _xs_rank(np.where(np.isnan(pc), np.nan, quality)), "tilt_momentum": _xs_rank(mom),
+            "tilt_lowvol": _xs_rank(-vol)}
+
+
+def tilt(p: Panel, g: Genome) -> np.ndarray:
+    """Always fully invested, like Hold, but each symbol's weight leans with a factor's rank: from 1 - ``tilt``
+    to 1 + ``tilt`` times equal weight (best ranked highest). A symbol without a value keeps equal weight.
+    Re-weighted every ``rebalance`` days. ``factor`` 3 uses the mean of the three ranks (see ``tilt_features``)."""
+    feats = {k: p.features[k] for k in TILT_FEATURES} if all(k in p.features for k in TILT_FEATURES) \
+        else tilt_features(p)
+    f = g["factor"]
+    if f == 3.0:
+        stack = np.stack([feats[k] for k in TILT_FEATURES])
+        with np.errstate(invalid="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN days: no rank, equal weight
+            score = np.nanmean(stack, axis=0)
+        score = _xs_rank(score)
+    else:
+        score = feats[TILT_FEATURES[int(f)]]
+    listed = ~np.isnan(prev_close(p))
+    n = p.close.shape[1]
+
+    def target(t: int) -> np.ndarray:
+        w = np.where(listed[t], 1.0, 0.0)
+        ok = listed[t] & ~np.isnan(score[t])
+        w[ok] = 1 + g["tilt"] * (2 * score[t, ok] - 1)
+        return w
+
+    every = int(g["rebalance"])
+    w = _hold_between_rebalances(target, len(p.dates), n, every)
+    last_pick = listed[np.arange(len(p.dates)) // every * every]
+    w = np.where(listed & ~last_pick, 1.0, np.where(listed, w, 0.0))  # listed since the last pick: equal weight
+    total = w.sum(axis=1, keepdims=True)
+    with np.errstate(invalid="ignore", divide="ignore"):  # invested like Hold every day, only the mix changes
+        return np.where(total > 0, w * listed.sum(axis=1, keepdims=True) / total, 0.0)
+
+
 def leg_select(p: Panel, g: Genome) -> tuple[np.ndarray, np.ndarray]:
     """Per symbol, hold each leg (overnight, open-to-close) while its own trailing mean return clears a bar."""
     look, every = int(g["lookback"]), int(g["rebalance"])
@@ -516,6 +570,8 @@ FAMILIES: dict[str, Family] = {f.name: f for f in (
     # needs fundamentals on the panel (``fundamentals_dir`` in the config)
     Family("fund_rank", {"factor": ParamSpec("choice", choices=tuple(FUND_FACTORS)), "top_k": ParamSpec("int", 3, 15),
                          "rebalance": ParamSpec("int", 5, 126, log=True)}, fund_rank, fixed_mode=0.0),
+    Family("tilt", {"factor": ParamSpec("choice", choices=tuple(TILT_FACTORS)), "tilt": ParamSpec("float", 0.0, 1.0),
+                    "rebalance": ParamSpec("int", 5, 126, log=True)}, tilt, fixed_mode=0.0),
     Family("news_tone", {**_FILTER, "source": ParamSpec("choice", choices=(0.0, 1.0, 2.0)),
                          "side": ParamSpec("choice", choices=(-1.0, 1.0)), "delay": ParamSpec("choice", choices=(0.0, 1.0)),
                          "hold_days": ParamSpec("int", 1, 60, log=True)}, news_tone, fixed_mode=0.0),
