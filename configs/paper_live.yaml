@@ -54,6 +54,9 @@ record: {enabled: true, dataset: alpaca_iex_live}
 
 agent_limits: {max_position_shares: 1000, max_order_shares: 500, max_position_frac: 0.5}
 decision_interval_ms: 2000        # polled data: decide at most every 2 s
+# No bot (Flip and Hold too) trades before 09:35 ET: in the first 5 minutes spreads were ~8 bps vs ~1.4 later
+# (live sessions of Oct 27-28, 2026), and the bots' losses were their spread costs. They still watch the data.
+trade_start: "09:35:00"
 alerts: {console: true, file: true}
 output_dir: artifacts/paper
 state_flush_events: 200

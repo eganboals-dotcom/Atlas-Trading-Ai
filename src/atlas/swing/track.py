@@ -51,6 +51,8 @@ class TrackConfig(StrictModel):
     # swing-track's download step
     fundamentals_dir: Path | None = None
     raw_dataset_dir: Path | None = None
+    short_interest_path: Path | None = None  # FINRA short interest (refreshed by swing-track), for tilt rules
+    fetch_bars: bool = True  # False: another tracker downloads the same bars just before this one
 
     def symbols(self) -> list[str]:
         return sorted({s for syms in self.universes.values() for s in syms} | {self.cash_symbol})
@@ -59,7 +61,8 @@ class TrackConfig(StrictModel):
         return sorted({s for syms in self.universes.values() for s in syms})
 
 
-DATA_DIRS = {"out_dir", "dataset_dir", "notes_dir", "fundamentals_dir", "raw_dataset_dir"}
+DATA_DIRS = {"out_dir", "dataset_dir", "notes_dir", "fundamentals_dir", "raw_dataset_dir", "short_interest_path",
+             "fetch_bars"}  # where data lives and how it is fetched: not part of the frozen rules
 
 
 def fingerprint(cfg: TrackConfig) -> str:
@@ -110,7 +113,12 @@ def _fund_features(cfg: TrackConfig, p: Panel, raw: Panel) -> dict[str, np.ndarr
     idx = {d: i for i, d in enumerate(raw.dates)}
     j = [raw.symbols.index(s) for s in p.symbols]
     rc = np.array([raw.close[idx[d], j] if d in idx else np.full(len(j), np.nan) for d in p.dates])
-    return fundamental_features(p, cfg.fundamentals_dir, rc)
+    feats = fundamental_features(p, cfg.fundamentals_dir, rc)
+    if cfg.short_interest_path:
+        from atlas.swing import shorts
+
+        feats |= shorts.short_features(p, shorts.load(cfg.short_interest_path))
+    return feats
 
 
 def score(cfg: TrackConfig, panels: dict[str, Panel], raw: dict[str, Panel] | None = None) -> dict[str, Any]:

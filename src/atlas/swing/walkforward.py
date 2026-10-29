@@ -59,6 +59,9 @@ class SwingConfig(StrictModel):
     # SEC fundamentals (``fetch-sec``) and unadjusted daily bars of the same symbols (for market value)
     fundamentals_dir: Path | None = None
     raw_dataset_dir: Path | None = None
+    # SEC insider purchases (``fetch-insider`` + ``build-insider``) and FINRA short interest (``fetch-short``)
+    insider_dir: Path | None = None
+    short_interest_path: Path | None = None
 
 
 def fitness(r: Result, cfg: SwingConfig, rf: np.ndarray | None = None) -> float:
@@ -107,6 +110,15 @@ FUND_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run
     "value: top 10 by earnings yield, quarterly": ("fund_rank", {"factor": 3.0, "top_k": 10, "rebalance": 63}),
     "quality + value (magic-formula style): top 10, quarterly": ("fund_rank", {"factor": 4.0, "top_k": 10,
                                                                                "rebalance": 63}),
+    "earnings surprise (SUE): top 10, monthly": ("fund_rank", {"factor": 5.0, "top_k": 10, "rebalance": 21}),
+    "tilt: earnings surprise, tilt 0.5, monthly": ("tilt", {"factor": 4.0, "tilt": 0.5, "rebalance": 21}),
+}
+INSIDER_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added when a run has insider purchases
+    "insider clusters: hold companies with 2+ insiders buying (90 days)": ("insider_buy", {"min_buyers": 2}),
+    "tilt: insider buying clusters, tilt 0.5, monthly": ("tilt", {"factor": 5.0, "tilt": 0.5, "rebalance": 21}),
+}
+SHORT_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added when a run has short interest (June 2021 on)
+    "tilt: low short interest, tilt 0.5, monthly": ("tilt", {"factor": 6.0, "tilt": 0.5, "rebalance": 21}),
 }
 TILT_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run's families include tilt
     "tilt: quality + momentum + low volatility, tilt 0.5, quarterly": ("tilt", {"factor": 3.0, "tilt": 0.5,
@@ -195,6 +207,18 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
         raw_close = np.array([raw.close[idx[d]] if d in idx else np.full(len(cfg.symbols), np.nan) for d in p.dates])
         p = dataclasses.replace(p, features={**p.features, **fundamental_features(p, cfg.fundamentals_dir, raw_close)})
         rules |= FUND_TEXTBOOK
+    if cfg.insider_dir:
+        from atlas.swing import insiders
+
+        purchases, ciks = insiders.load(cfg.insider_dir)
+        p = dataclasses.replace(p, features={**p.features, **insiders.insider_features(p, purchases, ciks)})
+        rules |= INSIDER_TEXTBOOK
+    if cfg.short_interest_path:
+        from atlas.swing import shorts
+
+        p = dataclasses.replace(p, features={**p.features,
+                                             **shorts.short_features(p, shorts.load(cfg.short_interest_path))})
+        rules |= SHORT_TEXTBOOK
     if "tilt" in cfg.families:
         from atlas.swing.families import tilt_features
 

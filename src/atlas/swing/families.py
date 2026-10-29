@@ -385,28 +385,46 @@ def _xs_rank(x: np.ndarray) -> np.ndarray:
 
 
 FUND_FACTORS = {0.0: "gross profitability", 1.0: "return on assets", 2.0: "book-to-market", 3.0: "earnings yield",
-                4.0: "quality + value"}
+                4.0: "quality + value", 5.0: "earnings surprise"}
 
 
 def fund_rank(p: Panel, g: Genome) -> np.ndarray:
     """Hold the ``top_k`` companies by a fundamental factor (see ``atlas.swing.fundamentals``), equal weight,
     re-picked every ``rebalance`` days. ``factor`` 4 averages the ranks of quality (gross profitability, else
-    return on assets) and value (earnings yield), in the spirit of Greenblatt's "magic formula"."""
+    return on assets) and value (earnings yield), in the spirit of Greenblatt's "magic formula"; ``factor`` 5
+    picks the largest recent earnings surprises (companies without one in the last quarter are skipped)."""
     feat = {k: _feature(p, k) if k in p.features else np.full(p.close.shape, np.nan)
-            for k in ("fund_gpa", "fund_roa", "fund_bm", "fund_ep")}
+            for k in ("fund_gpa", "fund_roa", "fund_bm", "fund_ep", "fund_sue")}
     f = g["factor"]
     if f == 4.0:
         quality = np.where(np.isnan(feat["fund_gpa"]), feat["fund_roa"], feat["fund_gpa"])
         score = (_xs_rank(quality) + _xs_rank(feat["fund_ep"])) / 2
     else:
-        score = feat[{0.0: "fund_gpa", 1.0: "fund_roa", 2.0: "fund_bm", 3.0: "fund_ep"}[f]]
+        score = feat[{0.0: "fund_gpa", 1.0: "fund_roa", 2.0: "fund_bm", 3.0: "fund_ep", 5.0: "fund_sue"}[f]]
     pc = prev_close(p)
     score = np.where(np.isnan(pc), np.nan, score)
     return _rank_pick(score, int(g["top_k"]), int(g["rebalance"]), highest=True)
 
 
-TILT_FACTORS = {0.0: "quality", 1.0: "momentum", 2.0: "low volatility", 3.0: "quality + momentum + low volatility"}
-TILT_FEATURES = ("tilt_quality", "tilt_momentum", "tilt_lowvol")
+TILT_FACTORS = {0.0: "quality", 1.0: "momentum", 2.0: "low volatility", 3.0: "quality + momentum + low volatility",
+                4.0: "earnings surprise", 5.0: "insider buying", 6.0: "low short interest"}
+TILT_FEATURES = ("tilt_quality", "tilt_momentum", "tilt_lowvol")  # factor 3 averages exactly these three
+EXTRA_TILT = {4.0: "tilt_earnings", 5.0: "tilt_insider", 6.0: "tilt_short"}
+INSIDER_MIN_BUYERS = 2  # a "cluster": at least two different insiders buying on the open market
+
+
+def _extra_tilt(p: Panel, key: str) -> np.ndarray:
+    """Scores for the event-like tilts; NaN (equal weight) where there is no information."""
+    pc = prev_close(p)
+    nan = np.full(pc.shape, np.nan)
+    if key == "tilt_earnings":
+        return _xs_rank(np.where(np.isnan(pc), np.nan, p.features.get("fund_sue", nan)))
+    if key == "tilt_insider":  # flagged names get the top score, the rest stay at equal weight
+        n = p.features.get("ins_buyers", nan)
+        return np.where(np.isnan(pc) | np.isnan(n), np.nan, np.where(n >= INSIDER_MIN_BUYERS, 1.0, 0.5))
+    if key == "tilt_short":  # fewest days-to-cover best; no data before June 2021
+        return _xs_rank(np.where(np.isnan(pc), np.nan, -p.features.get("short_dtc", nan)))
+    raise KeyError(key)
 
 
 def tilt_features(p: Panel) -> dict[str, np.ndarray]:
@@ -421,18 +439,30 @@ def tilt_features(p: Panel) -> dict[str, np.ndarray]:
     gpa = p.features.get("fund_gpa", np.full(pc.shape, np.nan))
     roa = p.features.get("fund_roa", np.full(pc.shape, np.nan))
     quality = np.where(np.isnan(gpa), roa, gpa)
-    return {"tilt_quality": _xs_rank(np.where(np.isnan(pc), np.nan, quality)), "tilt_momentum": _xs_rank(mom),
-            "tilt_lowvol": _xs_rank(-vol)}
+    out = {"tilt_quality": _xs_rank(np.where(np.isnan(pc), np.nan, quality)), "tilt_momentum": _xs_rank(mom),
+           "tilt_lowvol": _xs_rank(-vol)}
+    for key, src in (("tilt_earnings", "fund_sue"), ("tilt_insider", "ins_buyers"), ("tilt_short", "short_dtc")):
+        if src in p.features:
+            out[key] = _extra_tilt(p, key)
+    return out
 
 
 def tilt(p: Panel, g: Genome) -> np.ndarray:
     """Always fully invested, like Hold, but each symbol's weight leans with a factor's rank: from 1 - ``tilt``
     to 1 + ``tilt`` times equal weight (best ranked highest). A symbol without a value keeps equal weight.
-    Re-weighted every ``rebalance`` days. ``factor`` 3 uses the mean of the three ranks (see ``tilt_features``)."""
-    feats = {k: p.features[k] for k in TILT_FEATURES} if all(k in p.features for k in TILT_FEATURES) \
-        else tilt_features(p)
+    Re-weighted every ``rebalance`` days. ``factor`` 3 uses the mean of the three ranks (see ``tilt_features``);
+    4-6 lean on earnings surprises, insider buying clusters and low short interest."""
     f = g["factor"]
-    if f == 3.0:
+    if f in EXTRA_TILT:
+        key = EXTRA_TILT[f]
+        feats = {key: p.features[key] if key in p.features else _extra_tilt(p, key)}
+    elif all(k in p.features for k in TILT_FEATURES):
+        feats = {k: p.features[k] for k in TILT_FEATURES}
+    else:
+        feats = tilt_features(p)
+    if f in EXTRA_TILT:
+        score = feats[EXTRA_TILT[f]]
+    elif f == 3.0:
         stack = np.stack([feats[k] for k in TILT_FEATURES])
         with np.errstate(invalid="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN days: no rank, equal weight
@@ -456,6 +486,13 @@ def tilt(p: Panel, g: Genome) -> np.ndarray:
     total = w.sum(axis=1, keepdims=True)
     with np.errstate(invalid="ignore", divide="ignore"):  # invested like Hold every day, only the mix changes
         return np.where(total > 0, w * listed.sum(axis=1, keepdims=True) / total, 0.0)
+
+
+def insider_buy(p: Panel, g: Genome) -> np.ndarray:
+    """Hold, equal weight, every company where at least ``min_buyers`` different directors or officers bought
+    shares on the open market in the last 90 days (filings already public; see ``atlas.swing.insiders``)."""
+    n = p.features.get("ins_buyers", np.zeros(p.close.shape))
+    return ((n >= g["min_buyers"]) & ~np.isnan(prev_close(p))).astype(float)
 
 
 def leg_select(p: Panel, g: Genome) -> tuple[np.ndarray, np.ndarray]:
@@ -572,6 +609,7 @@ FAMILIES: dict[str, Family] = {f.name: f for f in (
                          "rebalance": ParamSpec("int", 5, 126, log=True)}, fund_rank, fixed_mode=0.0),
     Family("tilt", {"factor": ParamSpec("choice", choices=tuple(TILT_FACTORS)), "tilt": ParamSpec("float", 0.0, 1.0),
                     "rebalance": ParamSpec("int", 5, 126, log=True)}, tilt, fixed_mode=0.0),
+    Family("insider_buy", {"min_buyers": ParamSpec("int", 1, 4)}, insider_buy, fixed_mode=0.0),
     Family("news_tone", {**_FILTER, "source": ParamSpec("choice", choices=(0.0, 1.0, 2.0)),
                          "side": ParamSpec("choice", choices=(-1.0, 1.0)), "delay": ParamSpec("choice", choices=(0.0, 1.0)),
                          "hold_days": ParamSpec("int", 1, 60, log=True)}, news_tone, fixed_mode=0.0),

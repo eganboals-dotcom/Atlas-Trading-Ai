@@ -703,6 +703,8 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
         sets = [(cfg.symbols(), "all", cfg.dataset_dir, "all (splits and dividends)")]
         if cfg.raw_dataset_dir:  # unadjusted closes, for market value against filed share counts
             sets.append((cfg.stock_symbols(), "raw", cfg.raw_dataset_dir, "raw (none)"))
+        if not cfg.fetch_bars:
+            sets = []
         for syms, adjustment, out_dir, label in sets:
             rows = {}
             for sym in syms:  # ~1 request per symbol, paced well under the free plan's limit
@@ -719,6 +721,11 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
                 _refresh_sec(cfg.stock_symbols(), Path(cfg.fundamentals_dir), verbose=False, max_age_days=6.5)
             except (OSError, PermissionError, ValueError) as e:  # EDGAR down: score on the filings already stored
                 print(f"SEC refresh failed ({e}); using the filings already downloaded", flush=True)
+        if cfg.short_interest_path:  # FINRA files published since the last run
+            try:
+                _refresh_short(Path("data/raw/finra_short"), Path(cfg.short_interest_path), "2021-06")
+            except (OSError, ValueError) as e:  # FINRA down: score on the figures already stored
+                print(f"short-interest refresh failed ({e}); using the figures already downloaded", flush=True)
     out = track(cfg)
     print(out.read_text(encoding="utf-8"))
     print(f"report: {out}")
@@ -770,6 +777,87 @@ def _cmd_fetch_crypto(args: argparse.Namespace) -> int:
         df.write_parquet(out / f"{sym.replace('/', '-')}.parquet")
         print(f"{sym}: {df.height} days", flush=True)
     print(f"crypto bars written to {out} (Alpaca market data, for personal research)", flush=True)
+    return EXIT_OK
+
+
+def _cmd_fetch_insider(args: argparse.Namespace) -> int:
+    """Download the SEC's quarterly insider-transactions data sets (Forms 3/4/5, read-only), skipping ones kept."""
+    from datetime import UTC, datetime
+
+    from atlas.feeds import sec
+
+    get_file = sec.http_get_file(sec.user_agent(Path(".env")))
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(UTC)
+    for year in range(args.first_year, now.year + 1):
+        for q in range(1, 5):
+            f = out / f"{year}q{q}_form345.zip"
+            if (year, q) >= (now.year, (now.month - 1) // 3 + 1):
+                break  # the current quarter isn't published yet
+            if f.exists() and not (args.refresh_last and (year, q) == (now.year, (now.month - 1) // 3)):
+                continue
+            data = sec.insider_zip(get_file, year, q)
+            if data is None:
+                print(f"{year}q{q}: not published", flush=True)
+                continue
+            f.write_bytes(data)
+            print(f"{f.name}: {f.stat().st_size / 1e6:.1f} MB", flush=True)
+    print(f"insider data sets in {out}", flush=True)
+    return EXIT_OK
+
+
+def _cmd_fetch_short(args: argparse.Namespace) -> int:
+    """Download FINRA's twice-monthly short-interest files (read-only) and keep one table of the figures."""
+    _refresh_short(Path(args.raw), Path(args.out), args.first_month)
+    return EXIT_OK
+
+
+def _refresh_short(raw: Path, out: Path, first_month: str) -> None:
+    from datetime import UTC, datetime
+
+    import polars as pl
+
+    from atlas.feeds import finra
+    from atlas.swing.shorts import parse
+
+    raw.mkdir(parents=True, exist_ok=True)
+    get = finra.http_get_file()
+    today = datetime.now(UTC).date()
+    year, month = (int(x) for x in first_month.split("-"))
+    while (year, month) <= (today.year, today.month):
+        for cands in finra.settlement_candidates(year, month):
+            if cands[0] >= today or any((raw / f"shrt{d:%Y%m%d}.csv").exists() for d in cands):
+                continue
+            got = finra.fetch_settlement(get, cands)
+            if got:
+                (raw / f"shrt{got[0]:%Y%m%d}.csv").write_bytes(got[1])
+                print(f"{got[0]}: {len(got[1]) / 1e6:.1f} MB", flush=True)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    parts = [parse(f.read_bytes()) for f in sorted(raw.glob("shrt*.csv"))]
+    table = pl.concat(parts).unique(["symbol", "settlement"], keep="last").sort(["symbol", "settlement"])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    table.write_parquet(out)
+    print(f"{table.height} figures, {table['settlement'].min()} to {table['settlement'].max()}, written to {out}",
+          flush=True)
+
+
+def _cmd_build_insider(args: argparse.Namespace) -> int:
+    """Turn the downloaded insider data sets into one table of open-market purchases, plus each symbol's SEC
+    filer numbers (from EDGAR's ticker file)."""
+    import json
+
+    from atlas.feeds import sec
+    from atlas.swing.insiders import build
+
+    out = Path(args.out)
+    df = build(Path(args.zips), out / "purchases.parquet")
+    ciks = sec.ciks(sec.http_get(sec.user_agent(Path(".env"))))
+    mapping = {s: [*sec.EARLIER_CIKS.get(s, ()), c] for s in args.symbols
+               if (c := ciks.get(s, sec.DELISTED_CIKS.get(s))) is not None}
+    (out / "ciks.json").write_text(json.dumps(mapping, indent=0), encoding="utf-8")
+    print(f"{df.height} purchases by directors and officers, {df['filed'].min()} to {df['filed'].max()}; "
+          f"{len(mapping)} of {len(args.symbols)} symbols mapped; written to {out}", flush=True)
     return EXIT_OK
 
 
@@ -904,6 +992,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--symbols", nargs="+", required=True)
     p.add_argument("--out", default="data/processed/sec_fundamentals")
     p.set_defaults(func=_cmd_fetch_sec)
+
+    p = sub.add_parser("fetch-insider", help="Download the SEC's quarterly insider-trading data sets (read-only).")
+    p.add_argument("--first-year", type=int, default=2016)
+    p.add_argument("--out", default="data/raw/sec_insider")
+    p.add_argument("--refresh-last", action="store_true", help="download the latest finished quarter again")
+    p.set_defaults(func=_cmd_fetch_insider)
+
+    p = sub.add_parser("fetch-short", help="Download FINRA's twice-monthly short-interest files (read-only).")
+    p.add_argument("--first-month", default="2021-06", help="YYYY-MM; exchange-listed stocks start June 2021")
+    p.add_argument("--raw", default="data/raw/finra_short")
+    p.add_argument("--out", default="data/processed/short_interest.parquet")
+    p.set_defaults(func=_cmd_fetch_short)
+
+    p = sub.add_parser("build-insider", help="Extract insider purchases from the downloaded SEC data sets.")
+    p.add_argument("--symbols", nargs="+", required=True)
+    p.add_argument("--zips", default="data/raw/sec_insider")
+    p.add_argument("--out", default="data/processed/insider")
+    p.set_defaults(func=_cmd_build_insider)
 
     p = sub.add_parser("fetch-crypto", help="Download daily crypto bars (read-only market data) for research.")
     p.add_argument("--symbols", nargs="+", required=True, help="pairs like BTC/USD ETH/USD")

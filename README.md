@@ -736,6 +736,29 @@ Quality is the one effect that now looks real everywhere, and it is small. These
 2026-10-29 in [configs/swing_track_u300.yaml](configs/swing_track_u300.yaml). Controls:
 `artifacts/reports/swing/tilt_controls_u300.json`.
 
+**Earnings surprises, insider buying, short interest** ([configs/swing_v11_signals_u300.yaml](configs/swing_v11_signals_u300.yaml),
+same 300 companies). Three information sources besides prices, each counted only once public: quarterly
+diluted EPS vs the same quarter a year earlier, scaled by its usual spread, from the day after the 10-Q
+(`fetch-sec`); open-market purchases by directors and officers from the SEC's Form 4 data sets (`fetch-insider`,
+`build-insider`); FINRA days-to-cover, 14 days after settlement (`fetch-short`; exchange-listed stocks from June
+2021 only). Pass tests and controls were written down first:
+
+| Test (fixed rule) | Result | Hold | Control | Verdict |
+|---|---|---|---|---|
+| earnings surprise: top 10, monthly | +17.3%, Sharpe 0.75 | +16.1%, 0.70 | top fifth by surprise +17.2% vs bottom +14.2% | pass |
+| tilt toward insider-buying clusters | +16.1%, 0.70 | +16.1%, 0.70 | companies with clusters +13.8% vs without +15.5% | fail |
+| tilt toward low short interest (from July 2021) | +11.7%, 0.54 | +10.9%, 0.50 | least-shorted fifth +15.2% vs most-shorted +6.7% | pass |
+
+Both passes are well-known effects (post-earnings drift; heavily shorted stocks lag) and modest; the short test
+covers only 4.5 years. The walk-forward's trained champions also edged Hold here (+16.6% vs +16.1%, Sharpe 0.76
+vs 0.70, inside the noise). The two passes are tracked forward from 2026-10-29 in
+[configs/swing_track_signals.yaml](configs/swing_track_signals.yaml). Controls:
+`artifacts/reports/swing/signal_controls_u300.json`.
+
+**Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
+(from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because
+spreads there averaged ~8 bps vs ~1.4 later, and the bots' losses were their spread costs.
+
 **Crypto** (`python -m atlas.cli fetch-crypto --symbols BTC/USD ETH/USD ...`; Alpaca's crypto history starts in
 January 2021, so there is one boom-and-bust cycle to test on). Hold the coin while yesterday's close is above its
 50-day average, else cash, at 25 bps per trade, vs buy-and-hold, July 2021 to October 2026. The test, written down

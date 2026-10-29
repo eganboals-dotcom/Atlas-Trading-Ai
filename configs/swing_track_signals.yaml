@@ -1,0 +1,46 @@
+# Forward tracker for the two signals that passed their tests (python -m atlas.cli swing-track --config
+# configs/swing_track_signals.yaml). Frozen on 2026-10-28, before any scored day; fixed rules from
+# configs/swing_v11_signals_u300.yaml, whose pass tests were written before they were run:
+#  * earnings surprise top 10: +17.3% a year vs Hold +16.1% (Sharpe 0.75 vs 0.70), 2019-2026; the biggest
+#    surprises beat the smallest (+17.2% vs +14.2%)
+#  * low-short-interest tilt: +11.7% vs +10.9% from July 2021 (FINRA's data starts then); the least-shorted
+#    fifth +15.2% vs the most-shorted +6.7%
+# Uses the 300-company bars downloaded by configs/swing_track_u300.yaml just before (fetch_bars: false); its own
+# run only refreshes FINRA's short-interest files (SEC filings are refreshed by the u300 tracker).
+start_date: 2026-10-29
+history_start: 2016-01-04
+out_dir: artifacts/reports/swing_track_signals
+dataset_dir: data/processed/swing_track_u300
+raw_dataset_dir: data/processed/swing_track_u300_raw
+fundamentals_dir: data/processed/sec_fundamentals
+short_interest_path: data/processed/short_interest.parquet
+fetch_bars: false
+cash_symbol: BIL
+cost_bps: 2.0
+
+universes:
+  u300: [AAPL, META, AMZN, MSFT, NFLX, GOOGL, BAC, GE, XOM, JPM, C, GILD, CVX, WFC, T, PFE, JNJ, DIS, VZ, MCD,
+             INTC, V, CSCO, HD, PG, BKNG, BA, WMT, IBM, GS, CMG, SLB, TSLA, SBUX, CMCSA, BRK.B, AMGN, QCOM, AXP, ORCL,
+             KO, F, MRK, COP, ABBV, RTX, BIIB, NKE, UNP, MA, AIG, GM, MDLZ, PEP, BHC, BMY, DAL, CAT, KMI, VLO,
+             UNH, CVS, MDT, REGN, MS, LLY, PM, MMM, AAL, MCK, OXY, TXN, MO, LMT, TGT, HAL, LOW, MET, EQIX, WMB,
+             EBAY, EOG, USB, COST, MU, SCHW, PSX, CFG, UAL, HON, ABT, M, KR, CRM, TMO, SWKS, PYPL, CCL, ACN, KMB,
+             DHR, LYB, CTSH, FDX, UPS, ILMN, NEE, YUM, KHC, AMAT, LUV, HCA, VRTX, SYF, COF, FCX, NVDA, CL, TAP, ET,
+             MPC, ADBE, ELV, SPG, MAR, BNY, PRGO, CHTR, NOC, COR, PANW, RCL, EXPE, STZ, GD, ISRG, LVS, ICE, SO, WYNN,
+             SHW, WDC, DVN, PNC, AMT, EXR, GLW, DG, TJX, TRV, ORLY, PRU, TSN, DE, CCI, LRCX, CSX, EMR, SYK, APD,
+             PSA, DLTR, ITW, GIS, CAH, NWL, DHI, DUK, D, TPR, EXC, FITB, MNST, CMI, AEP, TEL, BAX, PPG, NOV, WELL,
+             AZO, LBTYK, INCY, HPQ, EPD, SYY, KSS, KEY, LULU, VFC, NOW, RF, TFC, ED, SIG, BBY, STX, STT, BDX, KMX,
+             ALL, HBAN, HUM, ADP, ZTS, ADM, BSX, HLT, HPE, ETN, BX, RRC, CME, FFIV, PAYX, INTU, HOG, IP, SRE, ADI,
+             PPL, GWW, BMRN, SWK, FSLR, MCO, ULTA, ZBH, GAP, PCG, WHR, URI, CLX, ECL, MOS, FAST, JBLU, ROST, LEN, PH,
+             EW, EL, MGM, VTR, NEM, AAP, BEN, EIX, TMUS, KDP, ADSK, MTB, AMP, PII, CAG, TDG, PLD, TRIP, HST, WDAY,
+             AFL, AKAM, MCHP, SBAC, WY, MAT, GPN, HP, MAS, TROW, TSCO, CF, XEL, HRL, EQT, PHM, HSY, CHRW, LUMN, HIG,
+             ROK, WM, DRI, PEG, FE, NSC, PCAR, O, PGR, RIG, AYI, ALK, NUE, GT, CPB, MLM, RL, SPGI, CNC, LHX]
+
+rules:
+  - name: "earnings surprise (SUE): top 10, monthly"
+    universe: u300
+    family: fund_rank
+    genome: {factor: 5.0, top_k: 10, rebalance: 21}
+  - name: "tilt: low short interest, tilt 0.5, monthly"
+    universe: u300
+    family: tilt
+    genome: {factor: 6.0, tilt: 0.5, rebalance: 21}

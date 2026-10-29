@@ -95,8 +95,9 @@ DATA_ONLY_MODULE = Path("feeds") / "alpaca.py"  # market data: the only module a
 AI_READER_MODULE = Path("feeds") / "anthropic_api.py"  # the AI news reader's Claude API calls
 SEC_MODULE = Path("feeds") / "sec.py"  # company filings from SEC EDGAR
 LOCAL_AI_MODULE = Path("feeds") / "local_llm.py"  # the free AI model on this PC (Ollama, loopback only)
-NETWORK_ALLOWED = {DATA_ONLY_MODULE: {"urllib"}, AI_READER_MODULE: {"anthropic"},
-                   SEC_MODULE: {"urllib"}, LOCAL_AI_MODULE: {"urllib"}}  # module -> the only network client it may import
+FINRA_MODULE = Path("feeds") / "finra.py"  # FINRA's public short-interest files
+NETWORK_ALLOWED = {DATA_ONLY_MODULE: {"urllib"}, AI_READER_MODULE: {"anthropic"}, SEC_MODULE: {"urllib"},
+                   LOCAL_AI_MODULE: {"urllib"}, FINRA_MODULE: {"urllib"}}  # module -> the only network client it may import
 
 
 def _imports(path: Path) -> list[str]:
@@ -138,17 +139,26 @@ def test_ai_reader_module_can_only_ask_claude_about_headlines(monkeypatch) -> No
         anthropic_api.claude_classifier("claude-haiku-5-5", env_file=None)
 
 
-def test_sec_module_can_only_GET_two_public_edgar_endpoints(monkeypatch) -> None:
+def test_sec_module_can_only_GET_public_edgar_files(monkeypatch) -> None:
+    """Two JSON endpoints and, since 2026-10-28, the quarterly insider-transactions zips; GET only."""
     from atlas.feeds import sec
 
     text = (SRC / SEC_MODULE).read_text(encoding="utf-8")
     assert set(re.findall(r"https://[a-z.]+", text)) == {"https://www.sec.gov", "https://data.sec.gov"}
     assert 'method="GET"' in text and "POST" not in text and "DELETE" not in text and "PATCH" not in text
     get = sec.http_get("Atlas test test@example.com")
+    get_file = sec.http_get_file("Atlas test test@example.com")
+    zip_url = "https://www.sec.gov/files/structureddata/data/insider-transactions-data-sets/2016q1_form345.zip"
     for bad in ("https://api.alpaca.markets/v2/orders", "https://www.sec.gov/cgi-bin/browse-edgar",
-                "https://data.sec.gov/submissions/CIK0000320193.json", "http://data.sec.gov/api/xbrl/companyfacts/CIK1"):
+                "https://data.sec.gov/submissions/CIK0000320193.json", "http://data.sec.gov/api/xbrl/companyfacts/CIK1",
+                "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json?x=1", zip_url):
         with pytest.raises(PermissionError):
-            get(bad)
+            get(bad)  # the JSON getter never fetches a zip
+    for bad in ("https://www.sec.gov/files/company_tickers.json", zip_url + "?x", zip_url.replace("2016q1", "2016q5"),
+                "https://www.sec.gov/files/structureddata/data/insider-transactions-data-sets/../../cgi-bin/x.zip",
+                zip_url.replace("https://www.sec.gov", "https://evil.example"), zip_url.replace("https", "http")):
+        with pytest.raises(PermissionError):
+            get_file(bad)
     monkeypatch.delenv(sec.UA_ENV, raising=False)
     with pytest.raises(PermissionError):  # no contact address: refuses before any request
         sec.user_agent(env_file=None)
@@ -219,6 +229,24 @@ def test_local_ai_module_can_only_reach_ollama_on_this_pc(monkeypatch) -> None:
     assert sent["model"] == "gemma3:12b" and sent["format"]["required"] == ["notes"] and sent["stream"] is False
     assert "Company A beats" in sent["messages"][1]["content"]
     assert "Ollama is not running" in local_llm.not_ready("gemma3:12b", "http://127.0.0.1:9")  # nothing there
+
+
+def test_finra_module_can_only_GET_short_interest_files() -> None:
+    from atlas.feeds import finra
+
+    text = (SRC / FINRA_MODULE).read_text(encoding="utf-8")
+    code = text.replace(ast.get_docstring(ast.parse(text), clean=False), "")
+    assert set(re.findall(r"https://[a-z.]+", code)) == {"https://cdn.finra.org"}
+    assert 'method="GET"' in code and "POST" not in code and "DELETE" not in code and "PATCH" not in code
+    for banned in ("os.environ", "getenv", "alpaca", "order", "socket", "Authorization"):
+        assert banned not in code, banned
+    get = finra.http_get_file()
+    ok = "https://cdn.finra.org/equity/otcmarket/biweekly/shrt20240115.csv"
+    for bad in (ok + "?x=1", ok.replace("shrt20240115", "shrt2024011"), ok.replace("biweekly", "daily"),
+                ok.replace("https://cdn.finra.org", "https://api.finra.org"), ok.replace("https", "http"),
+                "https://cdn.finra.org/equity/otcmarket/biweekly/../../../x.csv", "https://api.alpaca.markets/v2/orders"):
+        with pytest.raises(PermissionError):
+            get(bad)
 
 
 def test_only_the_market_data_module_reads_the_environment() -> None:

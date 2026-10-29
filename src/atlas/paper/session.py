@@ -785,7 +785,7 @@ class PaperSession:
                     a.equity_curve.append((now, equity))
                     a.next_curve_ts = now + NS_PER_S
 
-            blocked = self.kill.engaged or bool(self.safe)
+            blocked = self.kill.engaged or bool(self.safe) or self._before_trade_start(now)
             for a in self.accounts:
                 if blocked or a.risk.halted:
                     a.strategy.features.update(market)  # keep features current; propose nothing
@@ -819,6 +819,10 @@ class PaperSession:
                 self.fatal_feed_error = str(exc)
                 return False
         return False
+
+    def _before_trade_start(self, now: int) -> bool:
+        start = self.cfg.trade_start
+        return start is not None and datetime.fromtimestamp(now / NS_PER_S, MARKET_TZ).time() < start
 
     def _decide(self, a: Account, market: MarketView, now: int) -> None:
         if not a.strategy.poll(market):

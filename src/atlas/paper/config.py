@@ -163,6 +163,9 @@ class PaperConfig(Strict):
     shadows: list[CandidateSource] = Field(default_factory=list, max_length=10)
     agent_limits: AgentLimits
     decision_interval_ms: PosF
+    # No bot (Flip and Hold included) sends an order before this New York time: spreads right after the open
+    # are several times wider. Bots still watch the data. None: trade from the first quote.
+    trade_start: time | None = None
     alerts: AlertsConfig = AlertsConfig()
     output_dir: Path = Path("artifacts/paper")
     state_flush_events: PosI = 500

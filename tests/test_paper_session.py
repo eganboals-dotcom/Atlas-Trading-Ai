@@ -33,6 +33,22 @@ def test_session_produces_accounts_audit_and_daily_report(tmp_path: Path) -> Non
     assert report["accounts"][0]["decision_latency"]["samples"] > 0
 
 
+def test_no_bot_trades_before_trade_start(tmp_path: Path) -> None:
+    from datetime import datetime, timedelta
+
+    from atlas.timeutils import MARKET_TZ, NS_PER_S
+
+    early = session(tmp_path / "a")
+    early.run()
+    first = min(d["ts"] for d in audit(early, "decision"))
+    start = (datetime.fromtimestamp(first / NS_PER_S, MARKET_TZ) + timedelta(seconds=120)).time()
+    late = session(tmp_path / "b", trade_start=start.isoformat())
+    late.run()
+    ts = [r["ts"] for r in audit(late, "decision", "order")]
+    assert ts and all(datetime.fromtimestamp(t / NS_PER_S, MARKET_TZ).time() >= start for t in ts)
+    assert {r["account"] for r in audit(late, "decision")} >= {"Hold", "Flip"}  # the yardsticks wait too
+
+
 def test_same_inputs_give_the_same_session(tmp_path: Path) -> None:
     a = session(tmp_path / "a").run()
     b = session(tmp_path / "b").run()
