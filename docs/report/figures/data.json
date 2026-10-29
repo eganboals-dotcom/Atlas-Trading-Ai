@@ -1,0 +1,719 @@
+{
+ "built": "2026-10-29T22:51:53+00:00",
+ "overfitting": {
+  "rows": [
+   {
+    "experiment": "swing_etf_v1",
+    "in_sample": 1.810316045259793,
+    "unseen": 0.5260621850720658,
+    "trials": 28710
+   },
+   {
+    "experiment": "swing_etf_v2",
+    "in_sample": 1.4916080881565021,
+    "unseen": 0.38199968443887006,
+    "trials": 27990
+   },
+   {
+    "experiment": "swing_etf_v3",
+    "in_sample": 1.7462752956806962,
+    "unseen": 0.8064669636255347,
+    "trials": 41199
+   },
+   {
+    "experiment": "swing_v10_tilt_u300",
+    "in_sample": 0.8546927511690466,
+    "unseen": 0.7510384084304195,
+    "trials": 10676
+   },
+   {
+    "experiment": "swing_v11_signals_u300",
+    "in_sample": 0.7649195216334432,
+    "unseen": 1.1464132442909774,
+    "trials": 6508
+   },
+   {
+    "experiment": "swing_v12_news_eps_u300",
+    "in_sample": 0.7689409255060979,
+    "unseen": 1.1316110798021273,
+    "trials": 6500
+   },
+   {
+    "experiment": "swing_v4_etf16",
+    "in_sample": 1.8510852644797662,
+    "unseen": 0.6640016387875507,
+    "trials": 26163
+   },
+   {
+    "experiment": "swing_v4_gem3",
+    "in_sample": 1.5512664271046483,
+    "unseen": 0.5154655257875624,
+    "trials": 26509
+   },
+   {
+    "experiment": "swing_v4_ivy10",
+    "in_sample": 1.380552321158065,
+    "unseen": 0.2812597197922468,
+    "trials": 26289
+   },
+   {
+    "experiment": "swing_v4_sectors9",
+    "in_sample": 1.600429305237658,
+    "unseen": 0.5717871944106031,
+    "trials": 26205
+   },
+   {
+    "experiment": "swing_v4_stocks30",
+    "in_sample": 1.8804952257357945,
+    "unseen": 0.5562146406981282,
+    "trials": 26357
+   },
+   {
+    "experiment": "swing_v4_stocks30b",
+    "in_sample": 1.5519606208108045,
+    "unseen": -0.08552591243509608,
+    "trials": 24377
+   },
+   {
+    "experiment": "swing_v5_news_stocks30",
+    "in_sample": 1.6062605998256607,
+    "unseen": 0.5619163524000099,
+    "trials": 30886
+   },
+   {
+    "experiment": "swing_v5_news_stocks30b",
+    "in_sample": 1.4529468652481605,
+    "unseen": 0.3872263895927954,
+    "trials": 28609
+   },
+   {
+    "experiment": "swing_v6_etf16_train126",
+    "in_sample": 3.352088351248233,
+    "unseen": 0.11203511708344867,
+    "trials": 31094
+   },
+   {
+    "experiment": "swing_v6_etf16_train252",
+    "in_sample": 2.5113897034754613,
+    "unseen": 0.7954813162447351,
+    "trials": 31120
+   },
+   {
+    "experiment": "swing_v6_etf16_train504",
+    "in_sample": 1.8515419596725402,
+    "unseen": 0.6979550609332469,
+    "trials": 30881
+   },
+   {
+    "experiment": "swing_v6_sectors9_train126",
+    "in_sample": 3.0951787092392182,
+    "unseen": 0.27245940683090064,
+    "trials": 31109
+   },
+   {
+    "experiment": "swing_v6_sectors9_train252",
+    "in_sample": 2.1980030816934506,
+    "unseen": 0.7806882430906344,
+    "trials": 31022
+   },
+   {
+    "experiment": "swing_v6_sectors9_train504",
+    "in_sample": 1.6878696881956714,
+    "unseen": 0.6410830626849272,
+    "trials": 30962
+   },
+   {
+    "experiment": "swing_v6_stocks30_train126",
+    "in_sample": 3.5138075151769783,
+    "unseen": 0.540905223802593,
+    "trials": 31184
+   },
+   {
+    "experiment": "swing_v6_stocks30_train252",
+    "in_sample": 2.555955233845129,
+    "unseen": 0.7002571997373905,
+    "trials": 31191
+   },
+   {
+    "experiment": "swing_v6_stocks30_train504",
+    "in_sample": 1.8906866588122406,
+    "unseen": 0.1261077085988321,
+    "trials": 31101
+   },
+   {
+    "experiment": "swing_v6_stocks30b_train126",
+    "in_sample": 3.260523572700734,
+    "unseen": 0.2342786206571996,
+    "trials": 28858
+   },
+   {
+    "experiment": "swing_v6_stocks30b_train252",
+    "in_sample": 2.2662724235722647,
+    "unseen": -0.2089101056526064,
+    "trials": 28785
+   },
+   {
+    "experiment": "swing_v6_stocks30b_train504",
+    "in_sample": 1.6243545057139828,
+    "unseen": -0.49799134537511935,
+    "trials": 28867
+   },
+   {
+    "experiment": "swing_v6seed_stocks30_s1",
+    "in_sample": 2.0184790790379927,
+    "unseen": 1.0022357371987813,
+    "trials": 4780
+   },
+   {
+    "experiment": "swing_v6seed_stocks30_s2",
+    "in_sample": 1.9513412212856858,
+    "unseen": 0.48895510653424434,
+    "trials": 4775
+   },
+   {
+    "experiment": "swing_v6seed_stocks30_s3",
+    "in_sample": 2.0850896208230245,
+    "unseen": 0.8890279307033948,
+    "trials": 4778
+   },
+   {
+    "experiment": "swing_v6seed_stocks30_s4",
+    "in_sample": 2.1097629572843357,
+    "unseen": 0.8830930198801015,
+    "trials": 4779
+   },
+   {
+    "experiment": "swing_v6seed_stocks30b_s1",
+    "in_sample": 1.5310498769457024,
+    "unseen": 0.2648223567794626,
+    "trials": 4437
+   },
+   {
+    "experiment": "swing_v6seed_stocks30b_s2",
+    "in_sample": 1.657238801456545,
+    "unseen": 0.39613702560116615,
+    "trials": 4440
+   },
+   {
+    "experiment": "swing_v6seed_stocks30b_s3",
+    "in_sample": 1.6591199008480166,
+    "unseen": 0.26513599354473427,
+    "trials": 4435
+   },
+   {
+    "experiment": "swing_v6seed_stocks30b_s4",
+    "in_sample": 1.5124501791866944,
+    "unseen": 0.4496993176682569,
+    "trials": 4437
+   },
+   {
+    "experiment": "swing_v7_desk_stocks30",
+    "in_sample": 1.29312182122178,
+    "unseen": 0.7994524431940758,
+    "trials": 21030
+   },
+   {
+    "experiment": "swing_v7_desk_stocks30b",
+    "in_sample": 1.1570591926297076,
+    "unseen": 0.3527994075016639,
+    "trials": 19596
+   },
+   {
+    "experiment": "swing_v8_fund_stocks30",
+    "in_sample": 1.0270011863781412,
+    "unseen": 1.1394864432229206,
+    "trials": 10096
+   },
+   {
+    "experiment": "swing_v8_fund_stocks30b",
+    "in_sample": 0.7961346515370167,
+    "unseen": 0.08451212346509986,
+    "trials": 9185
+   },
+   {
+    "experiment": "swing_v9_fund_stocks30c",
+    "in_sample": 1.0094778348899742,
+    "unseen": 0.6242690808114165,
+    "trials": 9903
+   }
+  ],
+  "worse": 36,
+  "total_trials": 809823,
+  "mean_gap": 1.2794060096010607,
+  "corr": -0.21122027250653738
+ },
+ "live_costs": {
+  "rows": [
+   {
+    "day": "2026-10-27",
+    "bot": "Regime",
+    "turnover": 0.899763902415,
+    "return_bps": -1.0579361653806352
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "MomentumEvo",
+    "turnover": 0.42986860231,
+    "return_bps": -0.7366766263339208
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "Momentum",
+    "turnover": 57.63660868917,
+    "return_bps": -94.66258834079366
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "MeanRevert",
+    "turnover": 7.566146703955,
+    "return_bps": -5.625704162235401
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "Random",
+    "turnover": 21.248835348615,
+    "return_bps": -23.300722934358475
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "Flip",
+    "turnover": 1.97372000343,
+    "return_bps": -1.9471838277218545
+   },
+   {
+    "day": "2026-10-27",
+    "bot": "Hold",
+    "turnover": 1.56487500582,
+    "return_bps": 37.83551582967171
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "MomentumEvo",
+    "turnover": 1.6198500081,
+    "return_bps": -2.655050375167667
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "Momentum",
+    "turnover": 64.4930562454,
+    "return_bps": -90.28993237942262
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "MeanRevert",
+    "turnover": 23.976642038300003,
+    "return_bps": -22.980801131683435
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "Random",
+    "turnover": 37.7979699601,
+    "return_bps": -16.17275105058935
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "TrendFollow",
+    "turnover": 0.5983000436,
+    "return_bps": -9.102188339873418
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "Pullback",
+    "turnover": 0.43436098545000007,
+    "return_bps": 2.632405892830647
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "SmartHold",
+    "turnover": 0.45281199860000004,
+    "return_bps": -0.009347612762722335
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "Flip",
+    "turnover": 6.147550986750001,
+    "return_bps": -1.2782791966747808
+   },
+   {
+    "day": "2026-10-28",
+    "bot": "Hold",
+    "turnover": 1.4957699085,
+    "return_bps": 17.343959008317977
+   }
+  ],
+  "days": [
+   "2026-10-27",
+   "2026-10-28"
+  ],
+  "corr_log_turnover_return": -0.7222830136039459
+ },
+ "costs": {
+  "bots": [
+   "Momentum",
+   "Random",
+   "MeanRevert",
+   "TrendFollow",
+   "Flip",
+   "MomentumEvo",
+   "Regime",
+   "SmartHold",
+   "Pullback",
+   "Hold"
+  ],
+  "net": [
+   -225.52220143769955,
+   -49.45949809967351,
+   -31.017521363448395,
+   -9.102188339873464,
+   -4.059970379134029,
+   -3.707445555644881,
+   -1.5113373791155027,
+   -0.00934761276221252,
+   2.6324058928312297,
+   71.39469590784938
+  ],
+  "cost": [
+   200.27715100007742,
+   80.70627250003633,
+   31.52271150001866,
+   0.6291500000004362,
+   10.214968500004602,
+   4.2369740000012825,
+   1.5076885000009952,
+   0.3614060000002155,
+   0.8171805000004042,
+   3.4409820000010995
+  ],
+  "gross": [
+   -25.245050437622126,
+   31.246774400362824,
+   0.5051901365702633,
+   -8.473038339873028,
+   6.154998120870573,
+   0.5295284443564015,
+   -0.0036488791145075083,
+   0.352058387238003,
+   3.449586392831634,
+   74.83567790785048
+  ],
+  "paid_trading_bots": 330.27350250014035,
+  "lost_trading_bots": 321.7571042745203
+ },
+ "scoreboard": {
+  "hold": {
+   "ann_return": 0.16126512014078265,
+   "ann_vol": 0.2091271365571179,
+   "sharpe": 0.6985926144184077,
+   "max_drawdown": 0.3980544223099961,
+   "days": 1764
+  },
+  "rows": [
+   {
+    "label": "Day trade: +1% target / -1% stop",
+    "ann_return": -0.07203033752938914,
+    "sharpe": -2.0968486949214373,
+    "excess": -0.2332954576701718,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Overnight only",
+    "ann_return": 0.02654428061973957,
+    "sharpe": 0.07564591576206273,
+    "excess": -0.13472083952104308,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Insider buying clusters",
+    "ann_return": 0.03921072909522372,
+    "sharpe": 0.5543893169706814,
+    "excess": -0.12205439104555893,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Post-gap drift (price only)",
+    "ann_return": 0.04313642050407407,
+    "sharpe": 0.5005171139635729,
+    "excess": -0.11812869963670858,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Turn of the month",
+    "ann_return": 0.07254834832398083,
+    "sharpe": 0.5711788379469702,
+    "excess": -0.08871677181680182,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Swing trade: +10% / -5%, above trend",
+    "ann_return": 0.07871293800243273,
+    "sharpe": 0.618994551303778,
+    "excess": -0.08255218213834992,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Volatility target 15%",
+    "ann_return": 0.08298520351505378,
+    "sharpe": 0.6497814105858875,
+    "excess": -0.07827991662572886,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "200-day trend filter",
+    "ann_return": 0.08477305748222697,
+    "sharpe": 0.6709450733613896,
+    "excess": -0.07649206265855568,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Swing trade: +5% target / -3% stop",
+    "ann_return": 0.10447237317751124,
+    "sharpe": 0.608364014579578,
+    "excess": -0.05679274696327141,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Value: top 10 by earnings yield",
+    "ann_return": 0.11230412850840898,
+    "sharpe": 0.4060695951731737,
+    "excess": -0.04896099163237366,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: low volatility",
+    "ann_return": 0.1460315955380509,
+    "sharpe": 0.6708571394993725,
+    "excess": -0.015233524602731752,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Momentum + trend + volatility cap",
+    "ann_return": 0.15003284354830337,
+    "sharpe": 0.7608520224577853,
+    "excess": -0.011232276592479273,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: quality + momentum + low volatility",
+    "ann_return": 0.15572176708360286,
+    "sharpe": 0.7070661373168963,
+    "excess": -0.0055433530571797895,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: momentum",
+    "ann_return": 0.1577843056217645,
+    "sharpe": 0.6967633782161788,
+    "excess": -0.0034808145190181605,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Quality + value (magic formula): top 10",
+    "ann_return": 0.1579303629249973,
+    "sharpe": 0.5469284345075123,
+    "excess": -0.0033347572157853556,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: insider buying",
+    "ann_return": 0.16132397846291968,
+    "sharpe": 0.6960298536458668,
+    "excess": 5.8858322137034236e-05,
+    "passes": false,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: earnings surprise (filings)",
+    "ann_return": 0.16134728340911342,
+    "sharpe": 0.704904699097818,
+    "excess": 8.216326833077048e-05,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: quality",
+    "ann_return": 0.16269838481389165,
+    "sharpe": 0.7139818175361181,
+    "excess": 0.0014332646731090026,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Trained bots (best of thousands each period)",
+    "ann_return": 0.16412977628985037,
+    "sharpe": 0.7499194185284479,
+    "excess": 0.0028646561490677236,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: earnings surprise (headlines)",
+    "ann_return": 0.1641779755411501,
+    "sharpe": 0.7058403096405245,
+    "excess": 0.0029128554003674534,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: quality + earnings + short (combined)",
+    "ann_return": 0.16673107795480346,
+    "sharpe": 0.7326335112770346,
+    "excess": 0.0054659578140208165,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Tilt: low short interest",
+    "ann_return": 0.16695098188879554,
+    "sharpe": 0.7214723181295709,
+    "excess": 0.005685861748012888,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Earnings surprise (filings): top 10",
+    "ann_return": 0.17330372901633417,
+    "sharpe": 0.7491980878654709,
+    "excess": 0.012038608875551526,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Quality: top 10 by gross profitability",
+    "ann_return": 0.1963747385390473,
+    "sharpe": 0.8265837028425975,
+    "excess": 0.03510961839826465,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Earnings surprise (headlines): top 10",
+    "ann_return": 0.22895630254947275,
+    "sharpe": 0.703943723737934,
+    "excess": 0.0676911824086901,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Value: top 10 by book-to-market",
+    "ann_return": 0.24989080326620283,
+    "sharpe": 0.7146847041018002,
+    "excess": 0.08862568312542018,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Momentum: top 3 by 12-month return (3 stocks)",
+    "ann_return": 0.37411083707077686,
+    "sharpe": 0.9090106944336266,
+    "excess": 0.2128457169299942,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   },
+   {
+    "label": "Momentum: top 3 by 6-month return (3 stocks)",
+    "ann_return": 0.40881701492606015,
+    "sharpe": 0.9562663240940814,
+    "excess": 0.2475518947852775,
+    "passes": true,
+    "experiment": "swing_v12_news_eps_u300"
+   }
+  ],
+  "beat": 11
+ },
+ "fifths": {
+  "rows": [
+   {
+    "signal": "Quality (gross profitability)",
+    "best": 1.0799999999999983,
+    "worst": -1.200000000000001
+   },
+   {
+    "signal": "Earnings surprise (filings)",
+    "best": 1.509999999999998,
+    "worst": -1.5
+   },
+   {
+    "signal": "Earnings surprise (headlines)",
+    "best": 3.91,
+    "worst": -1.8399999999999999
+   },
+   {
+    "signal": "Low short interest (from mid-2021)",
+    "best": 4.33,
+    "worst": -4.1499999999999995
+   },
+   {
+    "signal": "Momentum (12-month return)",
+    "best": 1.0500000000000007,
+    "worst": 2.099999999999998
+   },
+   {
+    "signal": "Low volatility",
+    "best": -5.720000000000001,
+    "worst": 8.669999999999998
+   },
+   {
+    "signal": "Insider buying clusters (with vs without)",
+    "best": -1.9000000000000004,
+    "worst": -0.21000000000000085
+   }
+  ],
+  "right_way": 4
+ },
+ "years_to_prove": {
+  "edges": {
+   "quality top 10, quarterly": {
+    "edge_pct": 2.94,
+    "tracking_error_pct": 10.28,
+    "years_for_2se": 49.0,
+    "years_tested": 7.0
+   },
+   "filing surprise top 10, monthly": {
+    "edge_pct": 0.77,
+    "tracking_error_pct": 10.86,
+    "years_for_2se": 799.6,
+    "years_tested": 7.0
+   },
+   "low short interest tilt, from 2021-07": {
+    "edge_pct": 0.73,
+    "tracking_error_pct": 0.72,
+    "years_for_2se": 3.9,
+    "years_tested": 4.6
+   },
+   "headline surprise top 10, weekly": {
+    "edge_pct": 9.24,
+    "tracking_error_pct": 19.37,
+    "years_for_2se": 17.6,
+    "years_tested": 7.0
+   },
+   "headline surprise tilt, weekly": {
+    "edge_pct": 0.32,
+    "tracking_error_pct": 0.72,
+    "years_for_2se": 20.5,
+    "years_tested": 7.0
+   },
+   "combined tilt, monthly": {
+    "edge_pct": 0.39,
+    "tracking_error_pct": 1.36,
+    "years_for_2se": 48.7,
+    "years_tested": 7.0
+   }
+  },
+  "years_tested": 7.0
+ }
+}

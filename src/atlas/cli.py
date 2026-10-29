@@ -683,6 +683,36 @@ def _cmd_fetch_news(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _refresh_news(symbols: list[str], news_dir: Path, now) -> None:
+    """Append headlines published since the newest one stored (one file per year, as ``fetch-news`` writes)."""
+    from datetime import UTC, datetime
+
+    import polars as pl
+
+    from atlas.feeds.alpaca import NEWS_PATHS, http_fetch, iter_news, load_credentials
+    from atlas.swing.news import news_rows, save_news
+
+    files = sorted(news_dir.glob("*.parquet"))
+    if not files:
+        raise ValueError(f"no headlines in {news_dir}; download the history first with fetch-news")
+    last_ns = int(pl.read_parquet(files[-1], columns=["created_ns"])["created_ns"].max())
+    start = datetime.fromtimestamp(last_ns / 1e9, UTC)
+    fetch = http_fetch(load_credentials(Path(".env")), timeout_s=60, allowed=NEWS_PATHS)
+    added = 0
+    for year in range(start.year, now.year + 1):
+        first = max(start, datetime(year, 1, 1, tzinfo=UTC))
+        last = min(now, datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC))
+        rows = news_rows(iter_news(fetch, symbols, first.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                   last.strftime("%Y-%m-%dT%H:%M:%SZ"), min_interval_s=1.0))
+        path = news_dir / f"{year}.parquet"
+        old = pl.read_parquet(path).to_dicts() if path.exists() else []
+        seen = {r["id"] for r in old}
+        new = [r for r in rows if r["id"] not in seen]
+        save_news(old + new, path)
+        added += len(new)
+    print(f"headlines: {added} new in {news_dir}", flush=True)
+
+
 def _cmd_swing_track(args: argparse.Namespace) -> int:
     """Refetch daily bars (read-only) and score the frozen swing rules against Hold since their start date."""
     from datetime import UTC, datetime
@@ -726,6 +756,11 @@ def _cmd_swing_track(args: argparse.Namespace) -> int:
                 _refresh_short(Path("data/raw/finra_short"), Path(cfg.short_interest_path), "2021-06")
             except (OSError, ValueError) as e:  # FINRA down: score on the figures already stored
                 print(f"short-interest refresh failed ({e}); using the figures already downloaded", flush=True)
+        if cfg.news_dir:  # headlines since the last stored one
+            try:
+                _refresh_news(cfg.stock_symbols(), Path(cfg.news_dir), now)
+            except (OSError, ValueError) as e:  # feed down (a ConnectionError): score on the headlines already stored
+                print(f"news refresh failed ({e}); using the headlines already downloaded", flush=True)
     out = track(cfg)
     print(out.read_text(encoding="utf-8"))
     print(f"report: {out}")

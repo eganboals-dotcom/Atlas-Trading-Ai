@@ -52,6 +52,7 @@ class TrackConfig(StrictModel):
     fundamentals_dir: Path | None = None
     raw_dataset_dir: Path | None = None
     short_interest_path: Path | None = None  # FINRA short interest (refreshed by swing-track), for tilt rules
+    news_dir: Path | None = None  # Alpaca headlines (refreshed by swing-track), for headline earnings surprises
     fetch_bars: bool = True  # False: another tracker downloads the same bars just before this one
 
     def symbols(self) -> list[str]:
@@ -62,7 +63,7 @@ class TrackConfig(StrictModel):
 
 
 DATA_DIRS = {"out_dir", "dataset_dir", "notes_dir", "fundamentals_dir", "raw_dataset_dir", "short_interest_path",
-             "fetch_bars"}  # where data lives and how it is fetched: not part of the frozen rules
+             "news_dir", "fetch_bars"}  # where data lives and how it is fetched: not part of the frozen rules
 
 
 def fingerprint(cfg: TrackConfig) -> str:
@@ -118,6 +119,10 @@ def _fund_features(cfg: TrackConfig, p: Panel, raw: Panel) -> dict[str, np.ndarr
         from atlas.swing import shorts
 
         feats |= shorts.short_features(p, shorts.load(cfg.short_interest_path))
+    if cfg.news_dir:
+        from atlas.swing.news import load_news, surprise_features
+
+        feats |= surprise_features(p, load_news(cfg.news_dir), rc)
     return feats
 
 

@@ -126,7 +126,7 @@ def test_fund_rank_rules_hold_the_most_profitable_from_filed_figures(tmp_path) -
 
 @pytest.mark.parametrize("path", ["configs/swing_track.yaml", "configs/swing_track_news.yaml",
                                   "configs/swing_track_fund.yaml", "configs/swing_track_u300.yaml",
-                                  "configs/swing_track_signals.yaml"])
+                                  "configs/swing_track_signals.yaml", "configs/swing_track_v12.yaml"])
 def test_the_shipped_tracker_configs_are_valid(path: str) -> None:
     from pathlib import Path
 
@@ -137,3 +137,33 @@ def test_the_shipped_tracker_configs_are_valid(path: str) -> None:
     assert cfg.start_date == date(2026, 10, 29)
     for r in cfg.rules:
         assert r.universe in cfg.universes and set(r.genome) == set(FAMILIES[r.family].space)
+
+
+def test_headline_refresh_appends_only_new_articles_from_the_last_stored_one(tmp_path, monkeypatch) -> None:
+    import polars as pl
+
+    import atlas.feeds.alpaca as alpaca
+    from atlas.cli import _refresh_news
+    from atlas.swing.news import save_news
+
+    def ns(y, m, d):
+        return int(datetime(y, m, d, 12, tzinfo=UTC).timestamp() * 1e9)
+
+    save_news([{"id": 1, "created_ns": ns(2026, 12, 30), "symbols": ["S0"], "headline": "old", "source": "x"}],
+              tmp_path / "2026.parquet")
+    calls = []
+
+    def fake_iter(fetch, symbols, start, end, min_interval_s=1.0):
+        calls.append((start, end))
+        arts = [{"id": 1, "created_at": "2026-12-30T12:00:00Z", "symbols": ["S0"], "headline": "old", "source": "x"},
+                {"id": 2, "created_at": "2026-12-31T12:00:00Z", "symbols": ["S1"], "headline": "new", "source": "x"},
+                {"id": 3, "created_at": "2027-01-02T12:00:00Z", "symbols": ["S0"], "headline": "next year", "source": "x"}]
+        return iter([a for a in arts if start <= a["created_at"] <= end])
+
+    monkeypatch.setattr(alpaca, "load_credentials", lambda path: None)
+    monkeypatch.setattr(alpaca, "http_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(alpaca, "iter_news", fake_iter)
+    _refresh_news(["S0", "S1"], tmp_path, datetime(2027, 1, 3, tzinfo=UTC))
+    assert calls[0][0] == "2026-12-30T12:00:00Z" and calls[1][0] == "2027-01-01T00:00:00Z"
+    assert sorted(pl.read_parquet(tmp_path / "2026.parquet")["id"].to_list()) == [1, 2]  # no duplicate of 1
+    assert pl.read_parquet(tmp_path / "2027.parquet")["id"].to_list() == [3]

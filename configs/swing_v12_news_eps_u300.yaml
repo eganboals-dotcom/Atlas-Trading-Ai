@@ -1,0 +1,61 @@
+# Swing v12 on u300 (the list of configs/swing_v10_tilt_u300.yaml): earnings surprises read from the headlines
+# on the day they are announced, and the three signals that passed in v8-v11 combined.
+#  * headline surprise: reported EPS minus the analysts' estimate, both in Benzinga headlines ("Q4 EPS $1.46
+#    Beats $1.37 Estimate"), divided by the unadjusted share price the day before; known from the first open
+#    after the headline (09:15 cut-off), kept 63 trading days. v11's surprise waited for the 10-Q, often weeks
+#    later, and compared with the same quarter a year earlier rather than with what analysts expected. v5 tried
+#    only "beat or not" on 30 companies (noise); this ranks the size of the surprise across 300.
+#  * combined: the mean rank of quality, earnings surprise (10-Q) and low short interest.
+#
+# Written down before any of these rules was run. Each test is a fixed rule on the unseen validation days at
+# base costs (2 bps); it passes only if (a) it passes Hold's rule (Sharpe above Hold's, annual return at least
+# Hold's) and (b) its control shows the expected order: the top fifth by headline surprise (re-picked weekly)
+# beats the bottom fifth. Headlines start in July 2018, so the first fold's six months of training have no
+# surprises, which doesn't matter for fixed rules.
+#   1. "earnings surprise (news, vs estimate): top 10, weekly"
+#   2. "tilt: earnings surprise (news, vs estimate), tilt 0.5, weekly"
+# Also reported, not tests:
+#   3. "tilt: quality + earnings surprise + low short interest, tilt 0.5, monthly". Its three parts were picked
+#      for passing on these same unseen days, so a pass here is expected and proves little; a fail would matter.
+#      The real test of it is the forward tracker.
+#   4. Speed: the filing-based surprise re-picked weekly (top 10) next to test 1, on the same days.
+#   5. Costs: tests 1-2 at 0 to 5 bps (the costs_bps scenarios).
+experiment_name: swing_v12_news_eps_u300
+dataset_dir: data/processed/alpaca_daily_u300
+symbols: [AAPL, META, AMZN, MSFT, NFLX, GOOGL, BAC, GE, XOM, JPM, C, GILD, CVX, WFC, T, PFE, JNJ, DIS, VZ, MCD,
+          INTC, V, CSCO, HD, PG, BKNG, BA, WMT, IBM, GS, CMG, SLB, TSLA, SBUX, CMCSA, BRK.B, AMGN, QCOM, AXP, ORCL,
+          KO, F, MRK, COP, ABBV, RTX, BIIB, NKE, UNP, MA, AIG, GM, MDLZ, PEP, BHC, BMY, DAL, CAT, KMI, VLO,
+          UNH, CVS, MDT, REGN, MS, LLY, PM, MMM, AAL, MCK, OXY, TXN, MO, LMT, TGT, HAL, LOW, MET, EQIX, WMB,
+          EBAY, EOG, USB, COST, MU, SCHW, PSX, CFG, UAL, HON, ABT, M, KR, CRM, TMO, SWKS, PYPL, CCL, ACN, KMB,
+          DHR, LYB, CTSH, FDX, UPS, ILMN, NEE, YUM, KHC, AMAT, LUV, HCA, VRTX, SYF, COF, FCX, NVDA, CL, TAP, ET,
+          MPC, ADBE, ELV, SPG, MAR, BNY, PRGO, CHTR, NOC, COR, PANW, RCL, EXPE, STZ, GD, ISRG, LVS, ICE, SO, WYNN,
+          SHW, WDC, DVN, PNC, AMT, EXR, GLW, DG, TJX, TRV, ORLY, PRU, TSN, DE, CCI, LRCX, CSX, EMR, SYK, APD,
+          PSA, DLTR, ITW, GIS, CAH, NWL, DHI, DUK, D, TPR, EXC, FITB, MNST, CMI, AEP, TEL, BAX, PPG, NOV, WELL,
+          AZO, LBTYK, INCY, HPQ, EPD, SYY, KSS, KEY, LULU, VFC, NOW, RF, TFC, ED, SIG, BBY, STX, STT, BDX, KMX,
+          ALL, HBAN, HUM, ADP, ZTS, ADM, BSX, HLT, HPE, ETN, BX, RRC, CME, FFIV, PAYX, INTU, HOG, IP, SRE, ADI,
+          PPL, GWW, BMRN, SWK, FSLR, MCO, ULTA, ZBH, GAP, PCG, WHR, URI, CLX, ECL, MOS, FAST, JBLU, ROST, LEN, PH,
+          EW, EL, MGM, VTR, NEM, AAP, BEN, EIX, TMUS, KDP, ADSK, MTB, AMP, PII, CAG, TDG, PLD, TRIP, HST, WDAY,
+          AFL, AKAM, MCHP, SBAC, WY, MAT, GPN, HP, MAS, TROW, TSCO, CF, XEL, HRL, EQT, PHM, HSY, CHRW, LUMN, HIG,
+          ROK, WM, DRI, PEG, FE, NSC, PCAR, O, PGR, RIG, AYI, ALK, NUE, GT, CPB, MLM, RL, SPGI, CNC, LHX]
+cash_symbol: BIL
+fundamentals_dir: data/processed/sec_fundamentals
+raw_dataset_dir: data/processed/alpaca_daily_raw
+insider_dir: data/processed/insider
+short_interest_path: data/processed/short_interest.parquet
+news_dir: data/raw/alpaca_news/u300   # fetch-news --first 2018-07-01 --out data/raw/alpaca_news/u300 --symbols <symbols>
+holdout_start: 2026-04-28
+
+warmup_days: 260
+train_days: 504
+embargo_days: 5
+validation_days: 126
+step_days: 126
+
+families: [tilt, fund_rank]
+population: 30
+generations: 12
+seed: 7
+
+costs_bps: {zero: 0.0, low: 0.5, optimistic: 1.0, base: 2.0, pessimistic: 5.0}
+min_exposure: 0.25
+min_trades_per_year: 4

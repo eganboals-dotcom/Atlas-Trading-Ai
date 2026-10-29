@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luck Simulator</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --neutral: #c3c2b7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --neutral: #4a4a46;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --neutral: #4a4a46;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 900px; margin: 0 auto; padding: 24px 16px 40px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 19px; margin: 0 0 4px; }
+p { color: var(--ink2); margin: 0 0 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px;
+  margin: 18px 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: end; margin: 10px 0 6px; }
+label { font-size: 13px; color: var(--ink2); display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+label b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--s1); }
+button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--s1); color: #fff; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0; }
+.stat { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.stat .v { font-size: 24px; font-weight: 650; }
+.stat .k { font-size: 12.5px; color: var(--ink2); }
+svg { width: 100%; height: auto; display: block; }
+svg text { fill: var(--muted); font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink2); margin-top: 6px; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.12); display: none; }
+.foot { font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>How luck fakes skill</h1>
+  <p>Two small models behind <em>Why beating the market is so hard</em>, from the Atlas trading research project.
+    Nothing here uses real prices: every bot below is pure chance, which is the point.</p>
+
+  <section class="card" aria-labelledby="h-luck">
+    <h2 id="h-luck">1. Test enough random bots and one looks like a genius</h2>
+    <p>Each bot's daily return is the market's plus random noise: none has any real skill. Pick the one with the
+      best past record, then watch its next year.</p>
+    <div class="controls">
+      <label>Random bots tested <b id="nOut"></b><input id="n" type="range" min="1" max="4" step="0.01" value="3"></label>
+      <label>Years of history <b id="yOut"></b><input id="y" type="range" min="1" max="20" step="1" value="5"></label>
+      <label>How far each bot strays from the market <b id="teOut"></b>
+        <input id="te" type="range" min="2" max="20" step="1" value="8"></label>
+      <button id="rerun" type="button">Run again</button>
+    </div>
+    <div class="stats" aria-live="polite">
+      <div class="stat"><div class="v" id="bestPast"></div><div class="k">best bot vs market, per year, in its history</div></div>
+      <div class="stat"><div class="v" id="bestNext"></div><div class="k">the same bot the following year</div></div>
+      <div class="stat"><div class="v" id="share"></div><div class="k">of bots "beat the market" in their history</div></div>
+    </div>
+    <svg id="hist" viewBox="0 0 860 300" role="img" aria-label="Histogram of the random bots' yearly excess returns"></svg>
+    <div class="legend"><span><i class="sw" style="background:var(--neutral)"></i>random bots (no skill at all)</span>
+      <span><i class="sw" style="background:var(--s1)"></i>the best one's history</span>
+      <span><i class="sw" style="background:var(--s2)"></i>its next year</span></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-years">
+    <h2 id="h-years">2. How many years it takes to tell a real edge from luck</h2>
+    <p>A strategy that beats the market by a little, while wandering away from it by a lot, needs a very long
+      record before its edge is two standard errors from zero: years = (2 &times; tracking error / edge)&sup2;.</p>
+    <div class="controls">
+      <label>Edge over the market, per year <b id="eOut"></b><input id="e" type="range" min="0.25" max="6" step="0.25" value="1"></label>
+      <label>Tracking error, per year <b id="t2Out"></b><input id="t2" type="range" min="1" max="15" step="0.5" value="4"></label>
+    </div>
+    <div class="stats" aria-live="polite">
+      <div class="stat"><div class="v" id="years"></div><div class="k">years of data to be fairly sure</div></div>
+      <div class="stat"><div class="v" id="careers"></div><div class="k">in 40-year careers</div></div>
+    </div>
+    <svg id="curve" viewBox="0 0 860 300" role="img" aria-label="Years needed against the size of the edge"></svg>
+  </section>
+
+  <p class="foot">Research and education only; not investment advice. Model 1 assumes normally distributed daily
+    noise, independent between bots; real strategies are messier, which usually makes luck harder to spot, not easier.</p>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const tip = $("tip");
+  const showTip = (ev, html) => { tip.innerHTML = html; tip.style.display = "block";
+    tip.style.left = Math.min(ev.clientX + 12, innerWidth - 220) + "px"; tip.style.top = (ev.clientY + 12) + "px"; };
+  const hideTip = () => { tip.style.display = "none"; };
+  const pct = (v, d = 1) => (v >= 0 ? "+" : "") + (v * 100).toFixed(d) + "%";
+
+  let seed = 7;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const gauss = () => { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
+  // Excess return over the market of a no-skill bot, averaged over `years`: normal with sd = te / sqrt(years)
+  const excess = (te, years) => gauss() * te / Math.sqrt(years);
+
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  function drawHist() {
+    const n = Math.round(Math.pow(10, +$("n").value)), years = +$("y").value, te = +$("te").value / 100;
+    $("nOut").textContent = n.toLocaleString(); $("yOut").textContent = years + (years === 1 ? " year" : " years");
+    $("teOut").textContent = (te * 100).toFixed(0) + "% a year";
+    const xs = Array.from({ length: n }, () => excess(te, years));
+    let best = 0; xs.forEach((v, i) => { if (v > xs[best]) best = i; });
+    const next = excess(te, 1);
+    $("bestPast").textContent = pct(xs[best]); $("bestNext").textContent = pct(next);
+    $("share").textContent = Math.round(100 * xs.filter(v => v > 0).length / n) + "%";
+    const svg = $("hist"); svg.innerHTML = "";
+    const W = 860, H = 300, L = 46, R = 16, T = 14, B = 34;
+    const lim = Math.max(0.05, Math.abs(xs[best]), Math.abs(next), ...xs.map(Math.abs)) * 1.1;
+    const bins = 40, bw = 2 * lim / bins, counts = new Array(bins).fill(0);
+    xs.forEach(v => counts[Math.min(bins - 1, Math.max(0, Math.floor((v + lim) / bw)))]++);
+    const maxC = Math.max(...counts), X = v => L + (v + lim) / (2 * lim) * (W - L - R), Y = c => H - B - c / maxC * (H - T - B);
+    for (let k = 0; k <= 4; k++) { const yy = T + k * (H - T - B) / 4;
+      el("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: css("--grid"), "stroke-width": 1 }, svg); }
+    const step = lim > 0.2 ? 0.1 : lim > 0.08 ? 0.05 : 0.02;
+    for (let v = -Math.floor(lim / step) * step; v <= lim + 1e-9; v += step) {
+      const t = el("text", { x: X(v), y: H - 12, "text-anchor": "middle" }, svg); t.textContent = pct(v, 0); }
+    counts.forEach((c, i) => { if (!c) return; const x0 = X(-lim + i * bw) + 1, x1 = X(-lim + (i + 1) * bw) - 1;
+      const r = el("rect", { x: x0, y: Y(c), width: Math.max(1, x1 - x0), height: H - B - Y(c), rx: 2, fill: css("--neutral") }, svg);
+      r.addEventListener("mousemove", ev => showTip(ev, `${c.toLocaleString()} bot${c > 1 ? "s" : ""}: ${pct(-lim + i * bw)} to ${pct(-lim + (i + 1) * bw)} a year`));
+      r.addEventListener("mouseleave", hideTip); });
+    el("line", { x1: X(0), x2: X(0), y1: T, y2: H - B, stroke: css("--axis"), "stroke-width": 1.5 }, svg);
+    const mark = (v, color, label, up) => {
+      el("line", { x1: X(v), x2: X(v), y1: T + 4, y2: H - B, stroke: color, "stroke-width": 2.5 }, svg);
+      const t = el("text", { x: X(v) + (v > lim * 0.5 ? -6 : 6), y: up ? T + 14 : T + 32,
+        "text-anchor": v > lim * 0.5 ? "end" : "start" }, svg);
+      t.textContent = label; t.style.fill = css("--ink2"); };
+    mark(xs[best], css("--s1"), "best bot's history " + pct(xs[best]), true);
+    mark(next, css("--s2"), "its next year " + pct(next), false);
+  }
+
+  function drawCurve() {
+    const e = +$("e").value / 100, te = +$("t2").value / 100;
+    $("eOut").textContent = (e * 100).toFixed(2).replace(/\.?0+$/, "") + " points";
+    $("t2Out").textContent = (te * 100).toFixed(1).replace(/\.0$/, "") + "%";
+    const yrs = Math.pow(2 * te / e, 2);
+    $("years").textContent = yrs < 10 ? yrs.toFixed(1) : Math.round(yrs).toLocaleString();
+    $("careers").textContent = (yrs / 40).toFixed(yrs / 40 < 10 ? 1 : 0);
+    const svg = $("curve"); svg.innerHTML = "";
+    const W = 860, H = 300, L = 50, R = 16, T = 14, B = 34, xmax = 0.06, ymin = 0.5, ymax = 1000;
+    const X = v => L + v / xmax * (W - L - R), Y = v => T + (Math.log10(ymax) - Math.log10(Math.max(ymin, Math.min(ymax, v)))) /
+      (Math.log10(ymax) - Math.log10(ymin)) * (H - T - B);
+    [1, 10, 100, 1000].forEach(v => { el("line", { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: css("--grid") }, svg);
+      const t = el("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, svg); t.textContent = v.toLocaleString(); });
+    [0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06].forEach(v => { const t = el("text", { x: X(v), y: H - 12, "text-anchor": "middle" }, svg);
+      t.textContent = (v * 100) + "%"; });
+    el("line", { x1: L, x2: W - R, y1: Y(40), y2: Y(40), stroke: css("--muted"), "stroke-dasharray": "5 4" }, svg);
+    const lab = el("text", { x: W - R, y: Y(40) - 6, "text-anchor": "end" }, svg); lab.textContent = "a 40-year career";
+    let d = ""; for (let v = 0.0025; v <= xmax; v += 0.0005) d += (d ? "L" : "M") + X(v) + "," + Y(Math.pow(2 * te / v, 2));
+    el("path", { d, fill: "none", stroke: css("--s1"), "stroke-width": 2 }, svg);
+    const dot = el("circle", { cx: X(e), cy: Y(yrs), r: 6, fill: css("--s2"), stroke: css("--surface"), "stroke-width": 2 }, svg);
+    dot.addEventListener("mousemove", ev => showTip(ev, `edge ${(e * 100).toFixed(2)} pts, tracking error ${(te * 100).toFixed(1)}%: ${yrs.toFixed(0)} years`));
+    dot.addEventListener("mouseleave", hideTip);
+  }
+
+  ["n", "y", "te"].forEach(id => $(id).addEventListener("input", drawHist));
+  ["e", "t2"].forEach(id => $(id).addEventListener("input", drawCurve));
+  $("rerun").addEventListener("click", () => { seed = (Date.now() >>> 0) || 1; drawHist(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawHist(); drawCurve(); });
+  drawHist(); drawCurve();
+})();
+</script>
+</body>
+</html>

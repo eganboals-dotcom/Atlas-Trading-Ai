@@ -60,3 +60,19 @@ def test_tilt_never_sees_the_future() -> None:
         assert np.array_equal(a[: t + 1], b[: t + 1], equal_nan=True)  # day t uses closes up to t-1 only
     g = {"factor": 3.0, "tilt": 0.5, "rebalance": 10}
     assert np.allclose(tilt(p, g)[: t + 1], tilt(q, g)[: t + 1])
+
+
+def test_combined_tilt_averages_the_ranks_it_has() -> None:
+    p = make_panel()
+    n = len(p.dates)
+    q = np.tile(np.linspace(0.0, 1.0, 8), (n, 1))  # quality ranks: symbol 7 best
+    e = np.tile(np.linspace(1.0, 0.0, 8), (n, 1))  # earnings ranks: symbol 0 best
+    s = np.full((n, 8), np.nan)
+    s[:, :] = np.linspace(0.0, 1.0, 8)  # short-interest ranks agree with quality
+    p = dataclasses.replace(p, features={"tilt_quality": q, "tilt_earnings": e, "tilt_short": s})
+    w = tilt(p, {"factor": 8.0, "tilt": 0.5, "rebalance": 21})[-1]
+    assert np.argmax(w) == 7  # two of three ranks favour symbol 7
+    e2 = np.tile([0.0, 0.2, 1.0, 0.1, 0.0, 0.0, 0.0, 0.0], (n, 1))
+    p2 = dataclasses.replace(p, features={"tilt_quality": q, "tilt_earnings": e2, "tilt_short": np.full((n, 8), np.nan)})
+    w2 = tilt(p2, {"factor": 8.0, "tilt": 0.5, "rebalance": 21})[-1]
+    assert np.argmax(w2) == 2  # no short interest that day: the mean of the other two

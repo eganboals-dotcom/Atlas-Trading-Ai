@@ -137,6 +137,16 @@ NEWS_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added to TEXTBOOK when a run
     "earnings surprise drift (EPS beat, enter next day, 60 days)": ("news_tone", {
         "trend_filter": 0.0, "trend_n": 200, "source": 1.0, "side": 1.0, "delay": 1.0, "hold_days": 60}),
 }
+COMBO_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # the three signals that passed in v8-v11, combined (v12)
+    "tilt: quality + earnings surprise + low short interest, tilt 0.5, monthly": ("tilt", {
+        "factor": 8.0, "tilt": 0.5, "rebalance": 21}),
+}
+NEWS_SURPRISE_TEXTBOOK: dict[str, tuple[str, Genome]] = {  # added with news: EPS vs estimate from headlines
+    "earnings surprise (news, vs estimate): top 10, weekly": ("fund_rank", {"factor": 6.0, "top_k": 10,
+                                                                           "rebalance": 5}),
+    "tilt: earnings surprise (news, vs estimate), tilt 0.5, weekly": ("tilt", {"factor": 7.0, "tilt": 0.5,
+                                                                               "rebalance": 5}),
+}
 
 
 def folds(n_days: int, cfg: SwingConfig) -> list[tuple[int, int, int, int]]:
@@ -187,11 +197,18 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
     holdout_days = len(load_panel(cfg.dataset_dir, syms).dates) - len(full.dates)
     p = full.select(cfg.symbols)
     rules = dict(TEXTBOOK)
+    raw_close = p.close
+    if cfg.raw_dataset_dir:  # unadjusted closes: market value with filed share counts, EPS per share as reported
+        raw = load_panel(cfg.raw_dataset_dir, cfg.symbols)
+        idx = {d: i for i, d in enumerate(raw.dates)}
+        raw_close = np.array([raw.close[idx[d]] if d in idx else np.full(len(cfg.symbols), np.nan) for d in p.dates])
     if cfg.news_dir:
-        from atlas.swing.news import load_news, news_features
+        from atlas.swing.news import load_news, news_features, surprise_features
 
-        p = dataclasses.replace(p, features=news_features(p, load_news(cfg.news_dir)))  # days before the holdout only
-        rules |= NEWS_TEXTBOOK
+        articles = load_news(cfg.news_dir)
+        p = dataclasses.replace(p, features={**news_features(p, articles),  # days before the holdout only
+                                             **surprise_features(p, articles, raw_close)})
+        rules |= NEWS_TEXTBOOK | NEWS_SURPRISE_TEXTBOOK
     if cfg.reader:
         from atlas.news.desk import KeywordReader, briefing_features, load_notes
         from atlas.swing.news import load_news
@@ -202,9 +219,6 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
     if cfg.fundamentals_dir:
         from atlas.swing.fundamentals import fundamental_features
 
-        raw = load_panel(cfg.raw_dataset_dir or cfg.dataset_dir, cfg.symbols)
-        idx = {d: i for i, d in enumerate(raw.dates)}
-        raw_close = np.array([raw.close[idx[d]] if d in idx else np.full(len(cfg.symbols), np.nan) for d in p.dates])
         p = dataclasses.replace(p, features={**p.features, **fundamental_features(p, cfg.fundamentals_dir, raw_close)})
         rules |= FUND_TEXTBOOK
     if cfg.insider_dir:
@@ -224,6 +238,8 @@ def walkforward(cfg: SwingConfig, out_root: Path = Path("artifacts/reports/swing
 
         p = dataclasses.replace(p, features={**p.features, **tilt_features(p)})  # ranked once, not per bot
         rules |= TILT_TEXTBOOK
+        if cfg.fundamentals_dir and cfg.short_interest_path:
+            rules |= COMBO_TEXTBOOK
     cash = np.zeros(len(p.dates))  # no interest unless a cash symbol is configured
     if cfg.cash_symbol:
         c = full.select([cfg.cash_symbol]).close[:, 0]

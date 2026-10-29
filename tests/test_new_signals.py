@@ -86,3 +86,40 @@ def test_short_interest_counts_only_after_publication_and_goes_stale() -> None:
     assert np.isnan(out[i[min(d for d in ds if d >= avail)] - 1, 0]) and out[i[nxt], 0] == 2.0
     assert np.isnan(out[:, 2]).all()  # never reported
     assert np.isnan(out[-1, 0])  # stale by mid-September
+
+
+def test_headline_eps_surprises_are_parsed_with_signs_and_only_with_both_numbers() -> None:
+    from atlas.swing.news import parse_surprise
+
+    assert parse_surprise("Wells Fargo Q4 EPS $1.21 Beats $1.19 Estimate, Sales $20.98B Miss $21.75B Estimate") == (1.21, 1.19)
+    assert parse_surprise("Ford Q2 Adj. EPS $(0.05) Misses $0.02 Estimate") == (-0.05, 0.02)
+    assert parse_surprise("Uber Q1 EPS $-0.20 Beats $-0.25 Estimate") == (-0.2, -0.25)
+    assert parse_surprise("AT&T Reports Q4 Adj. EPS $0.63, Inline, Sales $42.1B vs $42.8B Est.") == (0.63, 0.63)
+    for head in ("JPMorgan Chase Q4 GAAP EPS $1.98 May Not Compare To $2.25 Estimate",
+                 "Bank Of America Lower After Q4 EPS Beat", "Baird: Gilead Set For Q1 EPS Miss"):
+        assert parse_surprise(head) is None
+
+
+def test_headline_surprise_counts_from_the_next_open_and_only_for_one_named_company() -> None:
+    from datetime import datetime
+
+    from atlas.swing.news import SURPRISE_FRESH_DAYS, surprise_features
+    from atlas.timeutils import MARKET_TZ
+
+    ds = days(date(2023, 1, 2), 120)
+    p = panel(ds, ("AAA", "BBB"))
+    price = np.full(p.close.shape, 50.0)
+
+    def ns(d: date, h: int, m: int = 0) -> int:
+        return int(datetime(d.year, d.month, d.day, h, m, tzinfo=MARKET_TZ).timestamp() * 1e9)
+
+    arts = pl.DataFrame({"created_ns": [ns(ds[10], 7), ns(ds[20], 16, 5), ns(ds[30], 7), ns(ds[40], 11)],
+                         "symbols": [["AAA"], ["BBB"], ["AAA", "BBB"], ["BBB", "ZZZ"]],
+                         "headline": ["A Q1 EPS $1.50 Beats $1.00 Estimate", "B Q1 EPS $0.80 Misses $1.30 Estimate",
+                                      "A and B Q1 EPS $9.00 Beats $1.00 Estimate", "B Q2 EPS $1.10 Beats $1.00 Estimate"]})
+    s = surprise_features(p, arts, price)["news_surprise"]
+    assert np.isnan(s[9, 0]) and s[10, 0] == 0.5 / 50  # before the open: usable at that open
+    assert np.isnan(s[20, 1]) and s[21, 1] == -0.5 / 50  # after the close: from the next trading day's open
+    assert np.isnan(s[10 + SURPRISE_FRESH_DAYS, 0])  # stale after the window
+    assert s[30, 0] == 0.5 / 50  # a headline naming both companies is ignored
+    assert s[40, 1] == -0.5 / 50 and np.isclose(s[41, 1], 0.1 / 50)  # mid-session: from the next open; ZZZ isn't ours

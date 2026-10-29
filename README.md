@@ -10,6 +10,22 @@ with robust out-of-sample evidence.**
 
 The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPECIFICATION.docx).
 
+## What it found
+
+**[Read the write-up: Why beating the market is so hard](docs/report/README.md)**
+
+- **Backtests flatter.** Of 809,823 bots tried in 39 walk-forward experiments, the best bot did worse on
+  unseen days than in training in 36 experiments.
+- **Costs eat short-term trading.** On live prices, the trading bots lost almost exactly what they paid in
+  spreads; before costs they roughly broke even.
+- **Most textbook strategies lose to simply holding.** The biggest winners held three stocks at a time and fell
+  over 50% at worst; the cautious versions of the ideas that passed pre-registered tests beat holding by under a
+  point a year, an edge that takes decades of data to tell apart from luck.
+- **Everything is judged on days the bots never saw,** after costs, with tests written down before the results,
+  and six frozen trackers now score the survivors on real future days.
+
+[![Training scores vs unseen days](docs/report/figures/1_backtest_vs_unseen.png)](docs/report/README.md)
+
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
@@ -755,6 +771,30 @@ vs 0.70, inside the noise). The two passes are tracked forward from 2026-10-29 i
 [configs/swing_track_signals.yaml](configs/swing_track_signals.yaml). Controls:
 `artifacts/reports/swing/signal_controls_u300.json`.
 
+**Earnings surprises from headlines** ([configs/swing_v12_news_eps_u300.yaml](configs/swing_v12_news_eps_u300.yaml),
+same 300 companies). Benzinga headlines on Alpaca's news feed give reported EPS and the analysts' estimate side by
+side ("Q4 EPS $1.46 Beats $1.37 Estimate"); the surprise is their difference over the unadjusted share price, known
+from the first open after the headline (`fetch-news --first 2018-07-01 --out data/raw/alpaca_news/u300`). Pass
+tests and controls were written down first:
+
+| Test (fixed rule) | Result | Hold | Control | Verdict |
+|---|---|---|---|---|
+| headline earnings surprise: top 10, weekly | +22.9%, Sharpe 0.704 | +16.1%, 0.699 | biggest-beat fifth +19.6% vs biggest-miss +13.9% | pass |
+| tilt toward headline surprises, weekly | +16.4%, 0.706 | +16.1%, 0.699 | same | pass |
+
+Side results: the combined tilt of v8-v11's three passes (quality, filing surprise, low short interest) +16.7%,
+Sharpe 0.73 (expected, since its parts were picked on these days); the filing surprise re-picked weekly +16.3%, so
+reading the headline instead of waiting for the 10-Q is what helps. A robustness check written after the result
+([scripts/v12_robustness.py](scripts/v12_robustness.py)) found test 1 fragile: three stocks (RIG, KSS, SIG) drove
+most of it, and without RIG alone its Sharpe falls below Hold's; it won big in 2020-21 and lost in 2023, 2024 and
+2026; and the ten smallest surprises also beat Hold (+17.3%), since dividing by price favours cheap, volatile
+stocks. All three rules are tracked forward from 2026-10-29 in [configs/swing_track_v12.yaml](configs/swing_track_v12.yaml),
+frozen before the backtest was run; that tracker's run also appends new headlines for the 300 companies.
+Controls: `artifacts/reports/swing/v12_controls_u300.json`, `v12_robustness_u300.json`.
+
+**The write-up** ([docs/report/](docs/report/README.md)): `python scripts/build_report.py` rebuilds its charts from the
+result files above, and `python scripts/build_carousel.py` the LinkedIn PDF (`pip install -e .[report]`).
+
 **Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
 (from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because
 spreads there averaged ~8 bps vs ~1.4 later, and the bots' losses were their spread costs.
@@ -768,7 +808,7 @@ also less in the first half; the basket +3.9% vs +6.0%. Other averages (20, 100,
 worst by coin, a sign of luck. What trend rules did reliably was cut the worst fall: Bitcoin's from 77% to 40-60%.
 Details: `artifacts/reports/swing/crypto_trend.json`.
 
-`scripts/swing_track.cmd` runs the news desk and the five trackers after the close. `swing_track.cmd
+`scripts/swing_track.cmd` runs the news desk and the six trackers after the close. `swing_track.cmd
 auto` is the unattended form for a scheduled task. `scripts/nightly_wake.ps1` wraps it for a PC that the
 motherboard's alarm ("Power On By RTC") switches on: it waits for the internet, starts Ollama if needed,
 keeps the PC awake while the research runs, then shuts it down (`-After sleep` sleeps it; `-After none`

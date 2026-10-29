@@ -38,6 +38,67 @@ TAGS = {"up": re.compile(r"\bupgrades?\b", re.IGNORECASE),
         "miss": re.compile(r"\beps\s+[-$()]*[\d.]+\)?\s+miss(es)?\b", re.IGNORECASE)}
 TAG_MAX_SYMBOLS = 2
 FEATURES = ("news_pre", "news_day", "earn_pre", "earn_day", *(f"{t}_{part}" for t in TAGS for part in ("pre", "day")))
+# Reported EPS against the analysts' estimate, both numbers in the headline: "Q4 Adj. EPS $1.46 Beats $1.37
+# Estimate", "Q2 EPS $(0.05) Misses $0.02 Estimate"; "EPS $0.63, Inline" counts as no surprise.
+_NUM = r"(-?\$?\s?\(?-?\$?\s?[\d.]+\)?)"
+SURPRISE = re.compile(r"\bEPS\s+" + _NUM + r"\s+(Beats?|Miss(?:es)?)\s+" + _NUM + r"\s+Estimate", re.IGNORECASE)
+INLINE = re.compile(r"\bEPS\s+" + _NUM + r",?\s+(?:In-?Line|Inline)\b", re.IGNORECASE)
+SURPRISE_FRESH_DAYS = 63  # trading days, about the 92 calendar days of the filing-based surprise
+
+
+def _num(s: str) -> float:
+    neg = "(" in s or "-" in s
+    v = float(re.sub(r"[^\d.]", "", s) or "nan")
+    return -v if neg else v
+
+
+def parse_surprise(head: str) -> tuple[float, float] | None:
+    """(reported EPS, estimate) from a Benzinga-style earnings headline, or None if it has no such numbers."""
+    m = SURPRISE.search(head)
+    if m:
+        try:
+            return _num(m.group(1)), _num(m.group(3))
+        except ValueError:
+            return None
+    m = INLINE.search(head)
+    if m:
+        try:
+            v = _num(m.group(1))
+        except ValueError:
+            return None
+        return v, v
+    return None
+
+
+def surprise_features(p: Panel, articles: pl.DataFrame, price: np.ndarray,
+                      fresh_days: int = SURPRISE_FRESH_DAYS) -> dict[str, np.ndarray]:
+    """``news_surprise[t, j]``: the latest (reported - estimated EPS) / share price for symbol j known at the open
+    of t, for ``fresh_days`` trading days after it became known (NaN otherwise). A headline before 09:15 counts
+    from that day's open, later ones from the next open (see ``bucket``). Only headlines naming exactly one of the
+    panel's symbols count. ``price`` is the unadjusted close (EPS is per share as reported then), and the close
+    before the headline is used. Several headlines on one day are averaged."""
+    out = np.full(p.close.shape, np.nan)
+    col = {s: j for j, s in enumerate(p.symbols)}
+    days = np.array(p.dates, dtype="datetime64[D]")
+    events: dict[tuple[int, int], list[float]] = {}
+    for ns, syms, head in articles.select("created_ns", "symbols", "headline").iter_rows():
+        js = [col[s] for s in syms if s in col]
+        if len(js) != 1 or "EPS" not in head.upper():
+            continue
+        got = parse_surprise(head)
+        if got is None:
+            continue
+        i, part = bucket(ns, p.dates, days)
+        i += part == "day"
+        if not 1 <= i < len(p.dates):
+            continue
+        px = price[i - 1, js[0]]
+        if not np.isfinite(px) or px <= 0 or not all(np.isfinite(got)):
+            continue
+        events.setdefault((i, js[0]), []).append((got[0] - got[1]) / px)
+    for (i, j), vals in sorted(events.items()):
+        out[i:i + fresh_days, j] = float(np.mean(vals))  # later events overwrite: sorted by day
+    return {"news_surprise": out}
 
 
 def news_rows(articles: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

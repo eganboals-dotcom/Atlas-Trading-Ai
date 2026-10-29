@@ -385,31 +385,35 @@ def _xs_rank(x: np.ndarray) -> np.ndarray:
 
 
 FUND_FACTORS = {0.0: "gross profitability", 1.0: "return on assets", 2.0: "book-to-market", 3.0: "earnings yield",
-                4.0: "quality + value", 5.0: "earnings surprise"}
+                4.0: "quality + value", 5.0: "earnings surprise", 6.0: "earnings surprise (news)"}
 
 
 def fund_rank(p: Panel, g: Genome) -> np.ndarray:
     """Hold the ``top_k`` companies by a fundamental factor (see ``atlas.swing.fundamentals``), equal weight,
     re-picked every ``rebalance`` days. ``factor`` 4 averages the ranks of quality (gross profitability, else
     return on assets) and value (earnings yield), in the spirit of Greenblatt's "magic formula"; ``factor`` 5
-    picks the largest recent earnings surprises (companies without one in the last quarter are skipped)."""
+    picks the largest recent earnings surprises (companies without one in the last quarter are skipped), and
+    ``factor`` 6 the same from headlines (reported EPS vs the analysts' estimate, from the announcement day)."""
     feat = {k: _feature(p, k) if k in p.features else np.full(p.close.shape, np.nan)
-            for k in ("fund_gpa", "fund_roa", "fund_bm", "fund_ep", "fund_sue")}
+            for k in ("fund_gpa", "fund_roa", "fund_bm", "fund_ep", "fund_sue", "news_surprise")}
     f = g["factor"]
     if f == 4.0:
         quality = np.where(np.isnan(feat["fund_gpa"]), feat["fund_roa"], feat["fund_gpa"])
         score = (_xs_rank(quality) + _xs_rank(feat["fund_ep"])) / 2
     else:
-        score = feat[{0.0: "fund_gpa", 1.0: "fund_roa", 2.0: "fund_bm", 3.0: "fund_ep", 5.0: "fund_sue"}[f]]
+        score = feat[{0.0: "fund_gpa", 1.0: "fund_roa", 2.0: "fund_bm", 3.0: "fund_ep", 5.0: "fund_sue",
+                     6.0: "news_surprise"}[f]]
     pc = prev_close(p)
     score = np.where(np.isnan(pc), np.nan, score)
     return _rank_pick(score, int(g["top_k"]), int(g["rebalance"]), highest=True)
 
 
 TILT_FACTORS = {0.0: "quality", 1.0: "momentum", 2.0: "low volatility", 3.0: "quality + momentum + low volatility",
-                4.0: "earnings surprise", 5.0: "insider buying", 6.0: "low short interest"}
+                4.0: "earnings surprise", 5.0: "insider buying", 6.0: "low short interest",
+                7.0: "earnings surprise (news)", 8.0: "quality + earnings surprise + low short interest"}
 TILT_FEATURES = ("tilt_quality", "tilt_momentum", "tilt_lowvol")  # factor 3 averages exactly these three
-EXTRA_TILT = {4.0: "tilt_earnings", 5.0: "tilt_insider", 6.0: "tilt_short"}
+EXTRA_TILT = {4.0: "tilt_earnings", 5.0: "tilt_insider", 6.0: "tilt_short", 7.0: "tilt_news_earnings"}
+PASSED_TILTS = ("tilt_quality", "tilt_earnings", "tilt_short")  # factor 8: the three that passed in v8-v11
 INSIDER_MIN_BUYERS = 2  # a "cluster": at least two different insiders buying on the open market
 
 
@@ -424,6 +428,8 @@ def _extra_tilt(p: Panel, key: str) -> np.ndarray:
         return np.where(np.isnan(pc) | np.isnan(n), np.nan, np.where(n >= INSIDER_MIN_BUYERS, 1.0, 0.5))
     if key == "tilt_short":  # fewest days-to-cover best; no data before June 2021
         return _xs_rank(np.where(np.isnan(pc), np.nan, -p.features.get("short_dtc", nan)))
+    if key == "tilt_news_earnings":
+        return _xs_rank(np.where(np.isnan(pc), np.nan, p.features.get("news_surprise", nan)))
     raise KeyError(key)
 
 
@@ -441,7 +447,8 @@ def tilt_features(p: Panel) -> dict[str, np.ndarray]:
     quality = np.where(np.isnan(gpa), roa, gpa)
     out = {"tilt_quality": _xs_rank(np.where(np.isnan(pc), np.nan, quality)), "tilt_momentum": _xs_rank(mom),
            "tilt_lowvol": _xs_rank(-vol)}
-    for key, src in (("tilt_earnings", "fund_sue"), ("tilt_insider", "ins_buyers"), ("tilt_short", "short_dtc")):
+    for key, src in (("tilt_earnings", "fund_sue"), ("tilt_insider", "ins_buyers"), ("tilt_short", "short_dtc"),
+                     ("tilt_news_earnings", "news_surprise")):
         if src in p.features:
             out[key] = _extra_tilt(p, key)
     return out
@@ -451,19 +458,25 @@ def tilt(p: Panel, g: Genome) -> np.ndarray:
     """Always fully invested, like Hold, but each symbol's weight leans with a factor's rank: from 1 - ``tilt``
     to 1 + ``tilt`` times equal weight (best ranked highest). A symbol without a value keeps equal weight.
     Re-weighted every ``rebalance`` days. ``factor`` 3 uses the mean of the three ranks (see ``tilt_features``);
-    4-6 lean on earnings surprises, insider buying clusters and low short interest."""
+    4-7 lean on earnings surprises, insider buying clusters, low short interest and headline earnings surprises;
+    8 on the mean rank of the three that passed their tests (quality, earnings surprise, low short interest; a
+    rank missing on a day, like short interest before June 2021, is left out of that day's mean)."""
     f = g["factor"]
     if f in EXTRA_TILT:
         key = EXTRA_TILT[f]
         feats = {key: p.features[key] if key in p.features else _extra_tilt(p, key)}
+    elif f == 8.0:
+        have = p.features if all(k in p.features for k in PASSED_TILTS) else {**tilt_features(p), **p.features}
+        feats = {k: have[k] for k in PASSED_TILTS if k in have}
     elif all(k in p.features for k in TILT_FEATURES):
         feats = {k: p.features[k] for k in TILT_FEATURES}
     else:
         feats = tilt_features(p)
     if f in EXTRA_TILT:
         score = feats[EXTRA_TILT[f]]
-    elif f == 3.0:
-        stack = np.stack([feats[k] for k in TILT_FEATURES])
+    elif f in (3.0, 8.0):
+        keys = TILT_FEATURES if f == 3.0 else PASSED_TILTS
+        stack = np.stack([feats[k] if k in feats else np.full(p.close.shape, np.nan) for k in keys])
         with np.errstate(invalid="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN days: no rank, equal weight
             score = np.nanmean(stack, axis=0)
