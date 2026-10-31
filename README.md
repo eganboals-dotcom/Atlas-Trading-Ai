@@ -659,7 +659,7 @@ within ~2 bps per trade. Nothing beat Hold on more than one list:
   help consistently. Momentum with risk caps trained on 1 year beat Hold on both stock lists
   with one random seed and lost on both with four others.
 
-No strategy earned a holdout check, so the swing holdout is still used only once.
+No strategy here earned a holdout check. The swing holdout's second use came later, in v18.
 
 **Forward tracker.** Backtests can be overfit; days that haven't happened yet can't. Six rules
 were frozen on 2026-10-28 in [configs/swing_track.yaml](configs/swing_track.yaml): dual
@@ -810,6 +810,120 @@ run `python scripts/v13_open_fade.py`, results in `artifacts/reports/swing/v13_o
 The win rate was 53%, but losses (-76 bps) outweighed wins (+50 bps). Single names were worse (28% gave back half; fade
 -8.6% a year). Before costs the mean trade was still negative, about -5 bps. Days with long gaps, such as market-wide
 halts, are missing from these bars, and the last-half-hour and opening-range results in the JSON are rough side results.
+
+## v14: opening-range breakout on stocks in play
+
+The published five-minute breakout, limited each day to the 20 of our 300 companies with the most unusual opening
+volume, on 1-minute bars from 2016-01-25 to 2026-04-27 (the holdout stays locked). Tests written first in
+[configs/stocks_in_play_v14.yaml](configs/stocks_in_play_v14.yaml); `python scripts/v14_stocks_in_play.py fetch`, then
+`run`; results in `artifacts/reports/swing/v14_stocks_in_play.json`.
+
+| | Result | Needed | Verdict |
+|---|---|---|---|
+| Book at up to 4x, 5 bps each way | -68.7% a year, Sharpe -8.5 | beat Hold (+15.2%, Sharpe 0.85) | fail |
+| In-play vs a random 20 from the same names | -14.1 bps vs -11.5 bps a trade | in-play ahead | fail |
+| Without its best three symbols / two best years | Sharpe -8.7 / -8.6 | still above Hold | fail |
+
+It lost in every year. At 2 bps each way it still lost 48.9% a year. In 38% of the 41,641 trades, entry and stop fell in
+the same minute, and the test counted those as stopped. Counting none of them (an after-the-fact check, and the best
+case) gives +4.6 bps a trade before costs, -5.4 bps after, so the truth is between -4.1 and +4.6 bps before costs. All
+300 companies are large and still trading; the published study uses every US stock, so this doesn't test its smaller names.
+
+## v15: intraday momentum beyond the Noise Area
+
+The rule of Zarattini, Aziz and Barbon (2025): trade with a move once price leaves its normal range for that time of day,
+checked each half hour, with a trailing stop at the band or VWAP and volatility sizing up to 4x. Tests written first in
+[configs/noise_area_v15.yaml](configs/noise_area_v15.yaml) and [noise_area_breadth_v15b.yaml](configs/noise_area_breadth_v15b.yaml),
+2016-01-26 to 2026-04-27 (the holdout stays locked); `python scripts/v15_noise_area.py fetch`, then `run`. Before costs the
+code matches the paper's yearly table closely (2016 -12.9% vs its -12.8%, 2018 +61.6% vs +61.1%, 2022 +24.1% vs +24.4%).
+
+| Test | Result | Needed | Verdict |
+|---|---|---|---|
+| SPY at 1 bp each way | +3.7% a year, Sharpe 0.32 | beat Hold (+15.8%, 0.92), CI above zero | fail |
+| SPY after the paper's data | -6.4% a year | above zero, Sharpe above Hold's | fail |
+| QQQ and IWM at 1 bp | Sharpe 0.83 and -0.28 | beat Hold (0.97 and 0.61) | fail |
+| SPY without its best two years | Sharpe -0.10 | beat Hold (0.97) | fail |
+| Coin-flip control | beat all 1,000 flips | beat 95% | pass |
+| 8 other ETFs at 0.5 bps | -0.2% a year, Sharpe 0.01; 2 of 8 made money | beat Hold (1.10), 6 of 8 make money | fail |
+| 8 large stocks at 1 bp | +6.9% a year, Sharpe 0.89 | beat Hold (1.33) | fail |
+| The ETFs after publication | -1.0% a year | above zero | fail |
+
+The 1 bp was too high: sampled SIP quotes show median spreads since 2022 of 0.27 bps on SPY and 0.46 on QQQ, so about 0.2
+and 0.3 bps each way is fairer. After the tests failed (`scripts/v15_followup.py`, not pre-registered), at those costs SPY made
++14.5% (Sharpe 1.01) and QQQ +19.5% (1.29), below Hold's return but above its Sharpe. After the paper was published SPY made
++4.7% and QQQ +16.3%, both behind Hold. A one-minute delay in fills cost QQQ 3 points a year. The rule's gross edge shows up in
+technology and fast-growth names (QQQ, XLK, SMH, TSLA, AMD) and little elsewhere.
+
+Its returns are uncorrelated with Hold, and it did well in 2018 and 2022. Half-size on top of an equal split of SPY and QQQ
+(`scripts/v15_overlay.py`, also not pre-registered, peak 3x) made +28.6% a year, Sharpe 1.35, vs Hold's +18.4%, 0.96; since
+publication +28.4%, 1.38 vs +21.7%, 1.14; one minute late since publication +25.0%, 1.24. SPY and QQQ were picked after seeing
+their results, so this is a candidate for new days, not evidence.
+
+## v16: late-day flow
+
+Follow a big move into the close, because leveraged ETFs must rebalance in its direction. Failed all four tests
+([configs/late_day_flow_v16.yaml](configs/late_day_flow_v16.yaml)): -2.9 bps a trade on SPY, QQQ and IWM after costs (CI -5.0 to
+-0.8), no better than quiet days (-1.5 bps), -1.4 bps on stocks with their own leveraged ETFs since 2022 (CI -5.2 to +2.2),
+and -5.7 bps without its two best years. `python scripts/v16_late_day_flow.py`.
+
+## v17: low-turnover momentum
+
+Two refinements of momentum on the 300 companies, unseen days 2019-01-24 to 2026-01-29, 2 bps, Hold +15.7% (Sharpe 0.68)
+([configs/low_turnover_v17.yaml](configs/low_turnover_v17.yaml), `python scripts/v17_low_turnover.py`). Residual momentum's top fifth
+made +16.2% (0.69) on 19% monthly turnover, passing its first test and control (bottom fifth +10.4%), but failed the other
+two: without its two best years its Sharpe was 0.68 vs Hold's 0.84, and it trailed Hold in the first half. The edge would take
+about 1,170 years to prove. Its top 10 made +20.0% (0.80), a side result. The 52-week high failed everything: +12.0% (0.60),
+and the stocks furthest from their highs did better (+21.3%).
+
+## v18: Hold plus the Noise Area rule, on the holdout
+
+The candidate came from a look after v15 failed, so it was frozen and run once on the holdout, 2026-04-28 to 2026-10-27, 127
+days ([configs/noise_area_holdout_v18.yaml](configs/noise_area_holdout_v18.yaml), `python scripts/v18_holdout.py run`, which
+refuses a second run). It failed. Half SPY and half QQQ plus a half-size rule made +21.6% a year (Sharpe 1.21) vs Hold's +17.8%
+(1.07), and +23.9% (1.32) with fills a minute late, passing the first two tests. The third needed the rule alone to make money on
+each market: QQQ made +30.8%, SPY lost 14.5%. The rule alone beat 70% of its coin-flip copies. Six months can show little, and
+a rule with no edge beats Hold this way about half the time. The candidate is dropped. This was the holdout's second use, after
+dual momentum, a different rule; both are in `artifacts/reports/swing/holdout_ledger.jsonl`.
+
+## v19: pairs trading
+
+The Gatev, Goetzmann and Rouwenhorst distance rule, unseen days 2019-01-24 to 2026-01-29, after costs and borrow
+([configs/pairs_v19.yaml](configs/pairs_v19.yaml), `python scripts/v19_pairs.py`). All three rules failed. The top 20 pairs of the 300
+companies made +0.46% a year above cash (Sharpe 0.12, 95% interval -2.2 to +3.2), and +0.70% before costs, so costs weren't what
+killed it. Only 46% of opened pairs converged, and most of the profit came from 2020. The 20 best cointegrated pairs made -0.02%
+and the top 5 ETF pairs -0.24%. No rule improved Hold's Sharpe at half size. All 300 survived to 2026, which flatters pairs.
+
+## v20: the Fed drift, same-month seasonality, long-short trend
+
+Rules written first in [configs/others_v20.yaml](configs/others_v20.yaml) (`python scripts/v20_others.py`). Seasonality's top fifth made
++16.3% (0.66) vs Hold +15.7% (0.68) and failed three of four tests. Trend following on the 16 ETFs had a 0.64 correlation with Hold,
+lost 42% in 2020, and at half size lowered Hold's Sharpe from 0.81 to 0.65: failed.
+
+The pre-FOMC drift passed all four tests, the first full pass in this research. Holding SPY from 14:00 the day before each scheduled Fed
+decision to 14:00 on the day, 2016 to March 2026, made +21.1 bps an event after costs over 81 events (95% interval 7.5 to 35.5) vs
++5.4 on other days, in both halves and without the three best events. It's small: Hold +14.9% (0.88) became +16.8% (0.96). The
+follow-up tries to break it, and it isn't pre-registered (`python scripts/v20_followup.py`). The numbers recompute from the raw bars, QQQ,
+IWM and DIA agree (+31.8, +24.5, +17.5), and selling up to 30 minutes early changes little (+18.1). But it beat 91% of
+random day sets, short of 95%; the median event is +9.8 bps; without the 10 best events it's +3.2; and one placebo, a day earlier,
+made +14.5. Six rules ran here, with about a 1 in 4 chance of a false pass. At eight events a year it would take about 5 to 8 years to
+show on new days. Events from 2026-04-28 on weren't read.
+
+**Forward tracker (v21).** Frozen on 2026-10-31 in [configs/fomc_track_v21.yaml](configs/fomc_track_v21.yaml), and run last each night by
+`scripts/swing_track.cmd` (`python scripts/v21_fomc_track.py`, report in `artifacts/reports/fomc_track/tracker.md`). Only new decisions
+count, starting with 2026-12-09, and every other 14:00-to-14:00 window from 2026-11-02 is the yardstick. A changed rule or a removed
+scored event is refused. The verdict comes after 40 events, about five years, and its test is written in the config now. Decision dates
+are listed through 2027, so later years must be added as the Fed publishes them. It tracks prices only and places no orders.
+
+## v22: bottlenecks in growing sectors
+
+A slow investing rule on the 300 companies, unseen days 2019-01-24 to 2026-01-29, 2 bps, rebalanced every 63 days from what had been
+filed by then ([configs/bottleneck_v22.yaml](configs/bottleneck_v22.yaml), `python scripts/v22_bottleneck.py`). Sectors come from how a
+stock moved against 10 sector ETFs, because SEC industry codes sit on an address the safety test refuses. Rule G buys stocks in the
+fastest-growing third of sectors with rising gross margins and revenue growth above their sector's, about 15 stocks. It made +18.8% a
+year vs Hold's +15.7%, Sharpe 0.70 vs 0.68, and the rest of the same sectors made +12.7%, but it failed the other three tests. The whole
+gain came from 2023 to 2025: without its two best years, and in the first half, its Sharpe trailed Hold's. Without tech sectors it made
++10.9% (0.44) vs +14.6% (0.64). Rule H, which also wanted assets growing slower than revenue, failed four of five: +16.8% (0.63).
+At about 13% monthly turnover, costs were no problem. An edge of G's size would take about 66 years to prove.
 
 **Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
 (from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because

@@ -1,0 +1,37 @@
+# v17: two momentum refinements with low turnover, on the 300 companies, tested by scripts/v17_low_turnover.py.
+#
+# Why these: strategies turning over less than about 50% a month keep their edge after costs far more often (Novy-Marx
+# and Velikov, 2016), and a "buy/hold spread" is the best way to cut trading. Plain momentum was tested in v4 and failed
+# to repeat between lists, so these are its two best-documented refinements.
+#   residual momentum (Blitz, Huij and Martens, 2011): rank on returns with the market's part removed
+#   52-week high (George and Hwang, 2004): rank on how close a stock is to its 52-week high
+#
+# PRE-REGISTERED 2026-10-30, written before either rule was run. A failed test stays failed.
+#
+# Signals use closes up to the day before, every month (21 trading days):
+#   residual: on the last 30 monthly returns, fit stock = a + b x market, market being the 300's equal-weight mean; the
+#             paper uses 36 months and three factors, but we have about 30 months before the first unseen day.
+#             Score = sum of residuals over months 2 to 12 back / their standard deviation
+#   high:     yesterday's close / the highest close of the last 252 days
+# Portfolio: equal weights in the top fifth; a holding stays until it falls out of the top 30%, then the top fifth's
+#   best names not yet held fill the book back to a fifth of the eligible names.
+# Window and costs are those of every swing test: the unseen days from the first validation fold of
+# swing_v12_news_eps_u300, stopping before the holdout, 2 bps each way, cash earning BIL.
+#
+# TEST 1: residual momentum beats Hold on both Sharpe and annual return.
+# TEST 2: the 52-week high beats Hold on both Sharpe and annual return.
+# CONTROL: for each, the top fifth makes more than the bottom fifth (held by the same rule, reversed).
+# TEST 3 (not luck): each rule that passed still has a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): each rule that passed has a higher Sharpe than Hold in both halves of the window.
+#
+# Side results, which pass or fail nothing: top 10 monthly, costs of 5 bps, turnover, drawdown, each year, years to prove
+# any edge. All 300 still trade, which flatters rules that hold beaten-down stocks (the bottom fifth most of all).
+swing_config: configs/swing_v12_news_eps_u300.yaml
+dataset_dir: data/processed/alpaca_daily_u300
+every: 21
+fit_months: 30
+top_share: 0.20
+keep_share: 0.30
+high_days: 252
+cost_bps: 2.0
+side_cost_bps: 5.0

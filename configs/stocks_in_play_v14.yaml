@@ -1,0 +1,55 @@
+# v14: opening-range breakout on stocks in play, tested by scripts/v14_stocks_in_play.py.
+#
+# The published rule is Zarattini, Barbon and Aziz (2024), "A Profitable Day Trading Strategy for the U.S. Equity
+# Market". Rules here follow summaries of the paper, not its text, and the sizing is simpler (see below).
+#
+# PRE-REGISTERED 2026-10-30, written before any of this data was downloaded. A failed test stays failed.
+#
+# Each day, from the 300 companies of configs/swing_v12_news_eps_u300.yaml:
+#   eligible = previous raw close above $5, 14-day average volume of at least 1,000,000 shares, 14-day ATR above $0.50
+#   rvol     = volume of the 09:30-09:34 bar / mean of the same bar over the previous 14 days
+#   in play  = the top_n eligible names by rvol, with rvol of at least 1
+#   side     = long if that first bar closed above its open, short if below, none if flat
+#   entry    = from 09:35, at the first bar's high (long) or low (short); worse if a bar opens through it
+#   stop     = 10% of ATR away from the entry; worse if a bar opens through it. If entry and stop land in the same
+#              minute, the stop counts as hit (the cautious reading)
+#   exit     = the stop, otherwise the close of the last bar. Nothing is held overnight
+#   size     = 20% of capital per trade (4x if all 20 trigger, the usual intraday limit); 5% per trade is the 1x book
+#   costs    = cost_bps each way. Stocks trading unusually hard at the open cost more than the usual 2 bps
+#
+# TEST 1 (the money): after costs, the 4x book beats Hold on both Sharpe and annual return, and the 95% confidence
+#   interval on its mean daily return is above zero.
+# TEST 2 (control): in-play picks beat a random 20 from the same eligible names, traded by the same rule, on mean
+#   trade. If they don't, volume isn't what's doing the work.
+# TEST 3 (not luck): TEST 1's Sharpe is still above Hold's without the three best symbols, and separately without
+#   the two best years. Added after the headline test of v12 passed on three stocks and two years.
+#
+# Side results, which pass or fail nothing: costs of 2 and 10 bps, the 1x book, longs vs shorts, each year, and the
+# 1%-a-day target.
+#
+# Known limits: all 300 still trade today, so failed companies are missing, which flatters any rule that buys
+# them; the paper uses every US stock, so its most extreme names (small, news-driven) are not in this list.
+universe_config: configs/swing_v12_news_eps_u300.yaml
+daily_dir: data/processed/swing_track_u300
+raw_daily_dir: data/processed/swing_track_u300_raw
+first: "2016-01-04"
+holdout_start: "2026-04-28"  # the locked six months: never downloaded here
+feed: sip
+adjustment: split
+top_n: 20
+min_rvol: 1.0
+min_price: 5.0
+min_avg_volume: 1000000
+min_atr: 0.5
+atr_days: 14
+rvol_days: 14
+stop_atr: 0.10
+weight_4x: 0.20
+weight_1x: 0.05
+cost_bps: 5.0
+side_cost_bps: [2.0, 10.0]
+target_daily: 0.01
+bootstrap_samples: 5000
+seed: 2026
+workers: 3
+min_interval_s: 0.9  # with 3 workers, stays under the 200 requests a minute

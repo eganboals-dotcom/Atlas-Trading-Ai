@@ -1,0 +1,57 @@
+# v19: pairs trading, tested by scripts/v19_pairs.py on daily bars.
+#
+# The rule is Gatev, Goetzmann and Rouwenhorst (2006), "Pairs Trading: Performance of a Relative-Value Arbitrage Rule":
+# up to 11% a year on US stocks, 1962 to 2002. Later work found it fading: Do and Faff (2010, 2012) show more pairs never
+# converging, and little left after costs. Rad, Low and Faff (2016) add the cointegration version tested here as rule B.
+#
+# PRE-REGISTERED 2026-10-31, written before any pairs code was run. A failed test stays failed. Nothing is tuned.
+#
+# Every book: formation_days of closes, then trading_days of trading, a new book every book_every days, so six books run at once.
+#   Each stock's closes are divided by its first formation close, so every price starts at 1.
+#   Distance = sum of squared gaps between two such prices. sd = the standard deviation of the gap in formation.
+#   Rule A (stocks): the pairs_top pairs with the smallest distance among the 300 companies.
+#   Rule B (cointegrated stocks): going down the same list, the first pairs_top pairs whose Engle-Granger t-statistic
+#     (price a on price b, then a one-lag Dickey-Fuller regression on the residual, no extra lags) is below eg_t.
+#   Rule C (ETFs): the etf_pairs_top pairs with the smallest distance among the 16 swing ETFs.
+# Trading: gap = price a - price b, on the same scale, measured from zero. After the close: if there's no position and the gap is
+#   above open_sd x sd, short a and buy b the next open, and the reverse below -open_sd x sd. When the gap crosses zero, close at
+#   the next open. A pair can reopen. Anything open is closed at the last trading close. A closed pair sits in cash.
+# Capital: each book has equal capital, split into equal slots. An open pair is $1 long and $1 short per $1 of slot, and the two
+#   legs drift until closed. Capital earns the cash rate (BIL) either way, which real short proceeds don't always match.
+# Costs: cost_bps each way on each leg, and borrow_pct a year on the short leg.
+# Window: the unseen days of every swing test, 2019-01-24 to 2026-01-29. Days after that aren't used here.
+#
+# Pairs are market neutral, so beating Hold's return alone isn't the fair question. Each rule must pass all of these:
+# TEST 1 (makes money): return above cash, with the 95% block-bootstrap interval on its mean daily excess return above zero.
+# TEST 2 (adds to Hold): Hold + half_size x the book's pair profit beats Hold on Sharpe and annual return. Half size keeps total
+#   exposure near 2x, the overnight margin limit.
+# TEST 3 (not luck): above cash without its two best calendar years.
+# TEST 4 (both halves): above cash in each half of the window.
+# CONTROL: rule A and rule B's Sharpe beats 95% of random_books copies of the same engine trading random stock pairs. Rule C
+#   has the same control on random ETF pairs.
+#
+# Side results, which pass or fail nothing: costs of side_cost_bps, a one-day wait before filling, each year, correlation with Hold,
+# share of opened pairs that converged, trades. Every one of the 300 survived to 2026, and pairs that break because a company
+# fails are missing, which flatters this rule. Six rules run across v19 and v20, so one false pass has about a 1 in 4 chance.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+etf_config: configs/swing.yaml
+cash_dir: data/processed/alpaca_daily_u300
+cash_symbol: BIL
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+formation_days: 252
+trading_days: 126
+book_every: 21
+pairs_top: 20
+etf_pairs_top: 5
+eg_t: -3.37
+eg_candidates: 2000
+open_sd: 2.0
+cost_bps: 2.0
+side_cost_bps: 5.0
+borrow_pct: 0.5
+half_size: 0.5
+random_books: 200
+bootstrap_samples: 5000
+bootstrap_block: 21
+seed: 2026

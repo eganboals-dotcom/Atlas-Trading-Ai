@@ -1,0 +1,26 @@
+# v15b: does the Noise Area rule work beyond SPY and QQQ? Tested by scripts/v15b_noise_area_breadth.py.
+#
+# v15 failed at 1 bp each way, then a follow-up (scripts/v15_followup.py) showed real SPY and QQQ spreads are far smaller
+# and QQQ looked good at those costs. Picking QQQ after seeing that would be selection, so this asks the question on
+# markets not yet looked at. The paper's FAQ says the rule works on other liquid ETFs and stocks.
+#
+# PRE-REGISTERED 2026-10-30, written before any of these symbols was downloaded. A failed test stays failed.
+# The rule, sizing and fills are exactly those of configs/noise_area_v15.yaml, with no changes. Capital is split equally
+# between a group's symbols, and Hold is an equal split of the same symbols, dividends included.
+# Same window: 2016 to the day before the holdout.
+#
+# TEST 1 (ETFs): the ETF book beats the ETFs' Hold on Sharpe, at etf_cost_bps each way.
+# TEST 2 (breadth): at least 6 of the 8 ETFs make money after costs.
+# TEST 3 (stocks): the stock book beats the stocks' Hold on Sharpe, at stock_cost_bps each way. These eight were
+#   picked with hindsight, as the most-traded large stocks today, which helps Hold more than the rule.
+# TEST 4 (after publication): from published on, the ETF book makes money after costs.
+#
+# Side results, which pass or fail nothing: each symbol, gross returns, filling one and five minutes late on QQQ and
+# SPY, QQQ's years and best days, Hold plus the rule.
+etfs: [DIA, XLK, XLF, XLE, XLV, SMH, GLD, TLT]
+stocks: [AAPL, MSFT, AMZN, GOOGL, META, NVDA, TSLA, AMD]
+etf_cost_bps: 0.5
+stock_cost_bps: 1.0
+published: "2024-05-10"
+measured_cost_bps: {SPY: 0.2, QQQ: 0.3}  # half of the median SIP spread since 2022 (0.27 and 0.46 bps), plus a little
+daily_dirs: [data/processed/swing_track, data/processed/swing_track_u300, data/processed/alpaca_daily, data/processed/alpaca_daily_v4]

@@ -1,0 +1,51 @@
+# v15: intraday momentum beyond the Noise Area, tested by scripts/v15_noise_area.py on real 1-minute OHLCV bars.
+#
+# The published rule is Zarattini, Aziz and Barbon, "Beat the Market: An Effective Intraday Momentum Strategy for
+# S&P500 ETF (SPY)" (working paper, 2025): +19.6% a year after costs, Sharpe 1.33, 2007 to early 2024. Rules below are
+# from the paper's own text. Nothing is tuned.
+#
+# PRE-REGISTERED 2026-10-30, written before any of this data was downloaded. A failed test stays failed.
+#
+# Each day, for each minute of the session:
+#   sigma(m) = mean over the previous 14 days of |close(m) / that day's open - 1|
+#   upper(m) = max(open, previous close) x (1 + sigma(m))
+#   lower(m) = min(open, previous close) x (1 - sigma(m))
+#   vwap(m)  = the day's volume-weighted price so far, from each bar's (high + low + close) / 3
+# At each half hour from 10:00 to 15:30, using the bar that just closed:
+#   flat:  long if price is above upper, short if below lower, else stay flat
+#   long:  keep while price is at or above max(upper, vwap); otherwise exit, and go short if below lower
+#   short: keep while price is at or below min(lower, vwap); otherwise exit, and go long if above upper
+#   fills are at the open of the next minute; everything is sold at the last bar's close. Nothing is held overnight
+# Size: shares = capital x min(4, 2% / the last 14 daily returns' standard deviation) / open
+# Costs: cost_bps each way. The paper charges about $0.0045 a share, about 0.1 bps on SPY. 1 bp is about ten times
+#   that and covers half of the 0.75-1.4 bps quoted spreads our live desk measured on IEX, plus slippage.
+#
+# TEST 1 (the money): on SPY, after costs, beats SPY Hold (dividends included) on both Sharpe and annual return, and
+#   the 95% confidence interval on its mean daily return is above zero.
+# TEST 2 (after publication): on SPY, from paper_end on, days the paper never saw: annual return above zero and
+#   Sharpe above Hold's.
+# TEST 3 (other markets): the same rule, unchanged, beats its own Hold on Sharpe on both QQQ and IWM.
+# TEST 4 (not luck): on SPY, without its two best calendar years, Sharpe still beats Hold's on those same days.
+# CONTROL: on SPY, the same trades and times with a coin-flip direction, 1,000 times: the rule must beat at least 95%.
+#
+# Side results, which pass or fail nothing: 1x with no volatility sizing (the plainest version), the paper's own
+# cost and 2 bps, long-only, equal parts of all three, each year, correlation with Hold, the 1%-a-day target.
+#
+# Known limit: Sharpe here is on plain returns for both sides, and idle cash earns nothing.
+symbols: [SPY, QQQ, IWM]
+daily_dir: data/processed/swing_track
+first: "2016-01-04"
+holdout_start: "2026-04-28"  # the locked six months: never downloaded here
+paper_end: "2024-05-01"  # its main data ran from May 2007 to April 2024
+feed: sip
+lookback_days: 14
+sigma_target: 0.02
+max_leverage: 4.0
+cost_bps: 1.0
+paper_cost_per_share: 0.0045
+side_cost_bps: [2.0]
+control_flips: 1000
+bootstrap_samples: 5000
+target_daily: 0.01
+seed: 2026
+min_interval_s: 0.35
