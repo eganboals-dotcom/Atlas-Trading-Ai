@@ -925,6 +925,35 @@ gain came from 2023 to 2025: without its two best years, and in the first half, 
 +10.9% (0.44) vs +14.6% (0.64). Rule H, which also wanted assets growing slower than revenue, failed four of five: +16.8% (0.63).
 At about 13% monthly turnover, costs were no problem. An edge of G's size would take about 66 years to prove.
 
+## v23: four rules from company filings
+
+Each holds the best fifth of the 300 companies, rebalanced every 63 days, unseen days 2019-01-24 to 2026-01-29, 2 bps, Hold +15.7%
+(Sharpe 0.68) ([configs/filings_v23.yaml](configs/filings_v23.yaml), `python scripts/v23_filings.py fetch`, then `run`):
+
+| Rule | Return/yr | Sharpe | Bottom fifth | Verdict |
+|---|---|---|---|---|
+| Buybacks | +16.5% | 0.66 | +15.7% | failed 3 of 5 |
+| Slowest asset growth | +19.7% | 0.79 | +14.1% | failed 2 of 5: not-luck and within-sector |
+| Earnings quality (profit backed by cash) | +23.1% | 0.88 | +14.0% | passed all 5 |
+| Quality at a fair price | +15.9% | 0.60 | +21.1% | failed all 5 |
+
+Earnings quality was the rule the literature said had decayed, so a follow-up tries to break it, and it isn't pre-registered
+(`python scripts/v23_followup.py`). It held up better than the Fed drift: it beat all 1,000 random picks from the same companies, its gap
+to Hold has a 95% interval of +1.2 to +12.3 points, it still made +19.6% without its five biggest winners, its holdings spread across
+sectors, and on 2017-2018, which no test had touched, it made +15.7% vs +9.3%. But the 300 are survivors, and a third of its holdings
+were loss-makers at purchase, the group where missing failures matter most. Among profitable companies only it made +18.0% (0.75),
+against +16.4% (0.72) for all eligible companies, so the real edge may be nearer 2 points than 7. Top cash profit alone made +20.0%
+(0.84), so part of this is plain cash profitability. Non-cash costs such as depreciation and stock pay also count here, so the rule
+holds names like ServiceNow and Amazon, which isn't quite Sloan's idea. Four rules ran, on a heavily used window, and the holdout is spent.
+
+**Forward tracker (v24).** Frozen on 2026-10-31 in [configs/quality_track_v24.yaml](configs/quality_track_v24.yaml), and run last each
+night by `scripts/swing_track.cmd` (`python scripts/v24_quality_track.py`, report in `artifacts/reports/quality_track/tracker.md`). The
+first book starts on 2026-11-02, the next comes every 63 sessions, and each stays as recorded. Replaying the tracker's code over v23's
+window gave the same +23.1% (0.88) and +15.7% (0.68). A company that fails now stays in the record, which v23 couldn't test. The verdict
+is written in the config and comes after 1,260 sessions, about 5 years: it needs a higher Sharpe than Hold, at least Hold's annual return,
+more than the bottom fifth, and a 95% interval of the gap above zero. That's sized for the backtest's 6.9 points, so an edge near 2 points
+would read as a fail. Bankruptcies need a human check, because a company that stops trading stays at its last close until the next book.
+
 **Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
 (from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because
 spreads there averaged ~8 bps vs ~1.4 later, and the bots' losses were their spread costs.

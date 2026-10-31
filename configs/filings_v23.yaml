@@ -1,0 +1,52 @@
+# v23: four slow investing rules from company filings, on the 300 companies, tested by scripts/v23_filings.py.
+#
+# Why these: filings have given the steadiest results here, and turnover stays low.
+#   I buybacks: companies issuing shares have earned less, and those shrinking their count more (Pontiff and Woodgate, 2008; Fama
+#     and French, 2008).
+#   J asset growth: the fastest asset growers have earned less (Cooper, Gulen and Schill, 2008). It's the direct test of "supply
+#     catches up", which sank part of v22.
+#   K earnings quality: profit made of accruals, not cash, has earned less (Sloan, 1996), though Green, Hand and Soliman (2011)
+#     found the effect had decayed by then, so a failure here wouldn't be a surprise.
+#   L quality at a fair price: gross profitability is "the other side of value" (Novy-Marx, 2013), and it pairs well with cheapness.
+#
+# PRE-REGISTERED 2026-10-31, written before any of this was run. A failed test stays failed. Nothing is tuned.
+#
+# On every rebalance, every 63 trading days, using filings filed before that day and closes up to the day before, each eligible
+# company gets a score. Annual figures are the latest fiscal year and the year before, as last filed by then:
+#   I: -(diluted average shares / last year's - 1). Both come from the latest report, which restates last year for splits.
+#   J: -(assets / last year's - 1).
+#   K: -(net income - operating cash flow) / the average of this and last year's assets. As is usual for this rule, companies with no
+#      gross profit (banks, insurers) aren't eligible.
+#   L: the mean of the percentile ranks of gross profit / assets and book equity / market value, both as already built in
+#      src/atlas/swing/fundamentals.py.
+# Portfolio: equal weights in the top fifth of eligible companies, held until the next rebalance. Fewer than min_eligible eligible
+# companies: all 300 equally. Window and costs are those of every swing test: 2019-01-24 to 2026-01-29, 2 bps each way, cash earning
+# BIL. Days from 2026-04-28 on are never read.
+#
+# Each rule must pass all of these:
+# TEST 1 (the money): beats Hold on Sharpe and annual return.
+# TEST 2 (control): the top fifth makes more than the bottom fifth.
+# TEST 3 (not luck): a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): a higher Sharpe than Hold in each half of the window.
+# TEST 5 (not a sector bet): the top fifth of each sector, sectors built as in configs/bottleneck_v22.yaml, also beats Hold on Sharpe
+#   and annual return. Sectors with fewer than min_group eligible companies are left out.
+#
+# Four rules run here, and this window has been tested many times, so a false pass is quite possible. A pass is a candidate for a
+# frozen forward tracker, tested only on days after 2026-10-27, and it wouldn't be proof. All 300 survived to 2026: this flatters
+# rules that hold troubled companies, and it hides what issuers and fast growers that failed would have cost the bottom fifth.
+#
+# Side results, which pass or fail nothing: an equal mix of the four, correlation with the frozen quality rule's score, how many
+# stocks are eligible, turnover, each year, 5 bps, years to prove.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+fundamentals_dir: data/processed/sec_fundamentals
+extra_dir: data/processed/sec_v23  # operating cash flow and diluted shares, from the same SEC company files
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+every: 63
+top_share: 0.20
+min_eligible: 50
+min_group: 5
+max_age_days: 550
+prior_year_days: [345, 385]
+cost_bps: 2.0
+side_cost_bps: 5.0
