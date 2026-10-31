@@ -1,0 +1,48 @@
+# v13: the opening fade (the user's grandfather's rule), tested on real 1-minute bars by scripts/v13_open_fade.py.
+#
+# The idea, as he traded it: when the market is volatile in the first 30 minutes, take the other side, because
+# about 70% of the time it comes back to around its opening level by the end of the day.
+#
+# PRE-REGISTERED 2026-10-30, written before any result was looked at. A failed test stays failed.
+#
+# The rule, for each symbol and day:
+#   open    = close of the 09:30 bar (the bars hold closes only, so this is the price one minute in)
+#   move    = close of the 09:59 bar / open - 1
+#   volatile = |move| above the 80th percentile of the previous 60 days' |move| (earlier days only)
+#   trade   = at the close of the 10:00 bar, against the move: short after a rise, long after a fall
+#   exit    = at the open price if a later bar reaches it, otherwise at the last bar of the day. No stop.
+#   size    = capital is split equally between the symbols; a symbol with no trade that day sits in cash
+#   costs   = cost_bps each way, as in every Atlas test
+#
+# TEST 1 (his claim): on volatile days, over the market symbols, at least 70% of days give back at least half of
+#   the morning's move by the close, and more often than on quiet days.
+# TEST 2 (the money): the fade on the market symbols, after costs, beats Hold on both Sharpe and annual return,
+#   the same pass rule as every Atlas test, and the 95% confidence interval on the mean trade is above zero.
+# CONTROL: the fade on volatile days must beat the same trade on quiet days, and must beat the opposite trade
+#   (following the move instead of fading it). If the opposite trade does better, the idea is backwards.
+#
+# Side results, which pass or fail nothing: the same rule on the seven single names; closes nearer the open, or
+# touching it, as looser readings of "corrected"; the 1%-a-day target; two published rules on the same data, the
+# first half-hour's direction held through the last half-hour (Gao, Han, Li and Zhou, 2018) and a five-minute
+# opening-range breakout (a rough version of Zarattini, Barbon and Aziz, 2024: no stocks-in-play filter here).
+market_symbols: [SPY, QQQ, IWM]
+single_names: [AAPL, AMD, META, NVDA, TSLA, SMH, XLE]
+datasets:
+  alpaca_bars_1min: [SPY, QQQ]
+  alpaca_bars_1min_iwm: [IWM]
+  alpaca_bars_1min_aapl: [AAPL]
+  alpaca_bars_1min_amd: [AMD]
+  alpaca_bars_1min_meta: [META]
+  alpaca_bars_1min_nvda: [NVDA]
+  alpaca_bars_1min_tsla: [TSLA]
+  alpaca_bars_1min_smh: [SMH]
+  alpaca_bars_1min_xle: [XLE]
+lookback_days: 60
+volatile_pct: 80
+corrected_fraction: 0.5
+claim: 0.70
+cost_bps: 2.0
+holdout_start: "2026-04-28"  # the locked six months: never read here
+target_daily: 0.01
+bootstrap_samples: 5000
+seed: 2026

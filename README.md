@@ -793,7 +793,23 @@ frozen before the backtest was run; that tracker's run also appends new headline
 Controls: `artifacts/reports/swing/v12_controls_u300.json`, `v12_robustness_u300.json`.
 
 **The write-up** ([docs/report/](docs/report/README.md)): `python scripts/build_report.py` rebuilds its charts from the
-result files above, and `python scripts/build_carousel.py` the LinkedIn PDF (`pip install -e .[report]`).
+result files above (`pip install -e .[report]`).
+
+## v13: the opening fade
+
+Fade a volatile first 30 minutes back toward the open, tested on 1-minute bars for SPY, QQQ and IWM, 2016-03-31 to
+2026-04-27 (the holdout stays locked). Tests written first in [configs/open_fade_v13.yaml](configs/open_fade_v13.yaml);
+run `python scripts/v13_open_fade.py`, results in `artifacts/reports/swing/v13_open_fade.json`.
+
+| | Result | Needed | Verdict |
+|---|---|---|---|
+| Volatile days giving back at least half the move | 33% (quiet days 43%) | 70%, and more than quiet days | fail |
+| Fade after 2 bps each way | -4.8% a year, Sharpe -0.97; mean trade -8.9 bps (CI -13.1 to -4.9) | beat Hold (+14.4%, Sharpe 0.81) | fail |
+| Controls | Following the move lost less (-1.7% a year); fading quiet days had a similar mean trade (-8.7 bps) | fade beats both | fail |
+
+The win rate was 53%, but losses (-76 bps) outweighed wins (+50 bps). Single names were worse (28% gave back half; fade
+-8.6% a year). Before costs the mean trade was still negative, about -5 bps. Days with long gaps, such as market-wide
+halts, are missing from these bars, and the last-half-hour and opening-range results in the JSON are rough side results.
 
 **Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
 (from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because
