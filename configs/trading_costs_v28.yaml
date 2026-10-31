@@ -1,0 +1,17 @@
+# v28: what a trade really costs in the names the rotation holds, measured by scripts/v28_trading_costs.py. A measurement, not a test.
+#
+# v27's result swings about 7 points a year between 2 and 10 bps each way, so this samples the National Best Bid and Offer (SIP quotes)
+# in the names v27 traded, on Mondays, the day the rotation trades, across its window. The cost of a market order each way is taken as half
+# the quoted spread. That leaves out market impact, which is small for $100,000 in these names, and fees.
+# Each window is 30 seconds. open is just after the opening print, 0935 follows the paper sessions' trade_start, and close is before the
+# closing auction. The backtest's open price is the official open, which an order in the opening auction gets without crossing a spread.
+quotes_per_sample: 1000
+window_seconds: 30
+windows: {open: "09:30:05", "0935": "09:35:00", close: "15:55:00"}
+sample_months: [1, 5, 9]
+first_day_of_month: 15
+first_year: 2019
+last_day: 2026-01-29
+min_interval_s: 0.35
+out: artifacts/reports/swing/v28_spreads.jsonl
+report: artifacts/reports/swing/v28_trading_costs.json

@@ -1,0 +1,125 @@
+# v27: a copy of FinRL-Trading's Adaptive Rotation, run by scripts/v27_finrl_rotation.py.
+#
+# PRE-REGISTERED: written before any bar was fetched for this test and before any of its returns was computed. FinRL's own code was
+# read, as text, and none of it was installed or run. This is our own version of the rule.
+#
+# Why test it: FinRL-X publishes 22.32% a year, Sharpe 1.10, against SPY's 14.14%, 0.72, from January 2018 to October 2025. Reading the
+# public code showed four things those figures depend on:
+#   - the stocks are hand-picked with hindsight: NVDA, TSLA and META in a test that starts in 2018
+#   - its report charges no costs, though the paper says 10 bps a side
+#   - weights earn from the same Friday close that produced them, a trade nobody could make
+#   - cash earns nothing, and Sharpe is annual return over annual volatility, with no risk-free rate
+# Its stops and the daily fast track only log events, because the report uses weekly weights alone, so they aren't copied here.
+#
+# The rule, as the public code behaves (v1.2.1, the file deploy.sh runs), on the last session of each week, on weekly closes:
+#   1. Group strength: over the last 12 weekly closes, a group's weekly return is the mean of its members'. Excess = group - QQQ.
+#      IR = mean(excess) / MAD(excess), or / std(excess) if MAD is 0. Rank by IR and keep up to 2 groups whose cumulative return beat
+#      QQQ's over those weeks.
+#   2. Within a kept group: group return = the mean over members. Residual = asset - group, on the last 3 weeks (the engine passes
+#      top_n_per_group as the lookback, so it's 3, not 12). z = (last - median) / MAD of those 3; if MAD < 1e-6, 0 when last = median
+#      and otherwise 10 * sign; clipped to +-20. Take the top 3 by z.
+#   3. Risk score: 1 point each for SPX's last weekly close below its 26-week mean, a drawdown of 10% or more from its 13-week peak, and
+#      a VIX robust z of 3 or more over 156 weeks (needs 52 weeks). Budget: 0 points 1.0, 1 point 0.85, 2 or more 0.7.
+#      Budget is also 0.7 if, on that session only, SPX's or QQQ's 3-day return is -3% or worse, or VIX's z is 3 or more and its
+#      daily change's z is 3.5 or more, over 756 sessions (needs 252).
+#   4. Weights: budget / groups / assets. Weight x 1.5 for a strong exception: z of 3.5 or more, and a return from 12 weekly closes back
+#      that's positive and above 1.5 x QQQ's. If weights sum above 1 they scale down to 1.
+#   5. No group kept: fallback equally at the budget.
+#
+# Deviations, which Alpaca's data forces: there's no ^GSPC or ^VIX, so SPY stands in for SPX, and SPY's 21-day realized volatility,
+# annualized, for VIX. Our history starts in January 2016, so the 156-week and 756-session windows use what exists, as FinRL's min() does.
+#
+# Fidelity check, NOT a test: FinRL's accounting (Friday close to Friday close, no costs, no cash, ann_return / ann_vol on weekly returns)
+# from the first Friday of 2018 through 2025-10-24 should land near fidelity_target. A large gap means the copy is wrong or the published
+# figure rests on something the public code doesn't show. It's reported either way and changes no test.
+#
+# Honest accounting: the signal is taken at the last session's close and traded at the next open. cost_bps each way, the capital out of
+# the market earns the cash ETF, and the window, pass rule and cash are the standard swing ones.
+#
+# Hindsight-free list (the point of this test): keep FinRL's three groups and swap the hand-picked stocks for a rule anyone could have
+# run at the time. Each January, from data through the prior year's last session, map each of the 300 to the sector ETF its return above
+# SPY's moved with most over 252 sessions (v22's price-based sectors), and rank by mean dollar volume over those 252 sessions.
+#   growth: top 7 mapped to XLK or SMH
+#   real assets: top 5 mapped to XLE or XLB, plus GLD and SLV
+#   defensive: FinRL's seven ETFs unchanged
+# Two kinds of hindsight remain: the 300 are survivors chosen around today's market, which is why T3 also compares with Hold on the same
+# 300, and FinRL's choice of ETFs was made recently.
+#
+# Tests (6). Beats means Sharpe above AND annual return at least, net of costs. T1 and T2 ask if the published list survives honest
+# accounting. T3 to T6 ask if the rule works with no hindsight, and T3 is the decisive one. A failed test stays failed.
+#   T1 FinRL's list beats SPY
+#   T2 FinRL's list beats QQQ
+#   T3 the hindsight-free list beats SPY and beats Hold on the 300
+#   T4 not luck: the hindsight-free list's Sharpe beats SPY's without its two best years against SPY
+#   T5 the hindsight-free list's Sharpe beats SPY's in both halves
+#   T6 the ranking matters: the hindsight-free list's annual return beats the 95th percentile of random_draws runs that keep the same
+#      groups, budget and weights each week and pick the assets at random from the same members
+#
+# Side results, which pass or fail nothing: 2 bps; v1.2.2's four groups; FinRL's list through T4 to T6; the hindsight-free list against
+# QQQ; each year; what each correction to FinRL's accounting costs; weekly turnover; 95% gap intervals; how often each group and the
+# fallback was used.
+#
+# The Rolling Strategy, FinRL's other published result, isn't copied: it needs FMP fundamentals, past NASDAQ-100 members and a trained
+# PPO agent, and it's a machine-learning search, where our Deflated Sharpe check would mark it down hardest.
+bars_dir: data/processed/v27_rotation
+etf_dir: data/processed/alpaca_daily
+swing_config: configs/swing_v12_news_eps_u300.yaml
+history_start: 2016-01-04
+last_fetch: 2026-01-30
+first_scored: 2019-01-24
+last_scored: 2026-01-29
+fidelity_first: 2018-01-05
+fidelity_last: 2025-10-24
+fidelity_target: {final_multiple: 4.80, ann_return: 22.32, sharpe: 1.10, max_drawdown: -21.46}
+benchmark: QQQ
+market: SPY
+cash_dir: data/processed/swing_track_u300
+cash_symbol: BIL
+cost_bps: 10
+side_cost_bps: 2
+min_interval_s: 0.35
+random_draws: 1000
+seed: 7
+block: 21
+bootstrap_samples: 10000
+list_share: {growth: 7, real: 5}
+list_etfs: {growth: [XLK, SMH], real: [XLE, XLB]}
+list_days: 252
+rule:
+  group_weeks: 12
+  max_groups: 2
+  rank_weeks: 3
+  top_assets: 3
+  max_z: 20.0
+  min_mad: 1.0e-6
+  trend_weeks: 26
+  drawdown_weeks: 13
+  drawdown: 0.10
+  vol_days: 21
+  vol_weeks: 156
+  vol_min_weeks: 52
+  vol_z: 3.0
+  budgets: [1.0, 0.85, 0.7]
+  shock_days: 3
+  shock_return: -0.03
+  shock_vol_sessions: 756
+  shock_vol_min_sessions: 252
+  shock_delta_z: 3.5
+  exception_z: 3.5
+  exception_weeks: 12
+  exception_return_multiple: 1.5
+  exception_weight: 1.5
+fallback: [SPY, QQQ, IAU, XLU, XLV]
+groups_v121:
+  growth: [AAPL, MSFT, NVDA, META, AMZN, GOOGL, TSLA]
+  real: [XOM, CVX, COP, FCX, BHP, GLD, SLV]
+  defensive: [TLT, IEF, XLU, XLV, IAU, SHY, UUP]
+free_fixed:
+  growth: []
+  real: [GLD, SLV]
+  defensive: [TLT, IEF, XLU, XLV, IAU, SHY, UUP]
+groups_v122:
+  growth: [AAPL, MSFT, NVDA, META, AMZN, GOOGL, TSLA]
+  real: [XOM, CVX, COP, FCX, BHP, GLD, SLV]
+  cyclical: [JPM, GS, HD, CAT, UNP, DE, AXP]
+  defensive: [JNJ, PG, KO, UNH, NEE, DUK, PEP]

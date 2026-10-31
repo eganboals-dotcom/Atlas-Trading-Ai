@@ -954,6 +954,119 @@ is written in the config and comes after 1,260 sessions, about 5 years: it needs
 more than the bottom fifth, and a 95% interval of the gap above zero. That's sized for the backtest's 6.9 points, so an edge near 2 points
 would read as a fail. Bankruptcies need a human check, because a company that stops trading stays at its last close until the next book.
 
+**How much survives the number of rules tried (v26).** The Deflated Sharpe Ratio asks whether a result beats what the best of N useless
+rules would reach. The usual bar is 0.95. This isn't pre-registered, it was added after v23's result, and it passes or fails nothing
+([configs/deflated_sharpe_v26.yaml](configs/deflated_sharpe_v26.yaml), `python scripts/v26_deflated_sharpe.py`). The spread of trial
+Sharpes comes from the rules run on this same window.
+
+| Rules tried | Against Hold | Against cash |
+|---|---|---|
+| 4 (v23 alone) | 0.93 | 0.97 |
+| 10 | 0.86 | 0.95 |
+| 25 (the rules run by hand, the fairest single figure) | 0.77 | 0.93 |
+| 100 | 0.62 | 0.90 |
+| 1,000 (stands in for the walk-forward searches) | 0.39 | 0.83 |
+
+Earnings quality clears the bar only against cash, with few tries counted. Its gap to Hold doesn't clear it at any count, though correlated
+rules count for less than N says. So it stays a lead, and the forward tracker is what can settle it.
+
+## v27: a copy of FinRL's Adaptive Rotation
+
+FinRL-X publishes 22.32% a year, Sharpe 1.10, against SPY's 14.14%, 0.72, from January 2018 to October 2025. Each week the rule keeps up to
+two of three groups (growth, real assets, defensive) that beat QQQ over 12 weeks, takes the top three assets in each by a 3-week
+z-score, and invests 70-100% depending on market stress ([configs/finrl_rotation_v27.yaml](configs/finrl_rotation_v27.yaml) holds
+the rule, written before any bar was fetched; `python scripts/v27_finrl_rotation.py fetch`, `fidelity`, then `run`). Reading the public code
+turned up four problems with those figures: the stocks are hand-picked with hindsight (NVDA, TSLA, META in a test from 2018), the report
+charges no costs, weights earn from the same close that produced them, and cash earns nothing. Its stops only log, so they aren't copied.
+SPY stands in for the S&P 500 and SPY's 21-day volatility for VIX, because Alpaca has neither.
+
+The copy is faithful: under FinRL's own accounting it made 5.36x, 24.0% a year, Sharpe 1.11, drawdown 23.6%, against their 4.80x, 22.32%,
+1.10 and 21.46%. The tests use 2019-01-24 to 2026-01-29, the next open, 10 bps each way and cash earning BIL. The hindsight-free list keeps the
+three groups but picks each January's stocks by dollar volume from the 300. Sectors there come from prices, so GM and Disney landed in
+real assets, and that list is still survivors.
+
+| | Return/yr | Sharpe | Worst drop | 2022 |
+|---|---|---|---|---|
+| FinRL's list | +24.6% | 0.96 | 24.1% | -2.6% |
+| Hindsight-free list | +22.9% | 0.89 | 34.0% | -27.6% |
+| SPY | +16.6% | 0.76 | 33.8% | -18.2% |
+| QQQ | +22.2% | 0.85 | 35.0% | -32.5% |
+| Hold on the 300 | +15.7% | 0.68 | 39.8% | -7.0% |
+
+Tests: **failed 3 of 6.** Passed: FinRL's list beats SPY, beats QQQ, and the hindsight-free list beats SPY and Hold. Failed: not luck (Sharpe 0.55 vs
+SPY's 0.68 without 2023 and 2025), both halves (first half 0.66 vs 0.69), and the ranking (below the 95th percentile of random picks from
+the same members with the same weights, +29.5%; the median was +21.1%). So picking within groups adds little that random picks don't.
+The list's 95% gap to SPY runs from -8.9 to +20.8 points.
+
+Costs decide this rule. It replaces 63% of the book each week. On FinRL's list, FinRL's accounting gives +33.6%, the next open +32.9%, and
+10 bps each way +24.4%. At 2 bps the hindsight-free list makes +29.6% (1.12), and its not-luck and both-halves checks pass, but that was
+seen after the failure and isn't pre-registered, so the tests stay failed. Also after the fact: just holding the list equally, reset
+each January, made +19.1% with a higher Sharpe of 0.96 at 10 bps, against rotation's 0.89. Weekly trading would also be taxed as
+short-term gains, which none of this counts. FinRL's other published result, the Rolling Strategy, isn't copied: it needs FMP data, past
+NASDAQ-100 members and a trained PPO agent. The repo's `sp500_historical_constituents.csv` could help a survivor-bias test but wasn't fetched.
+
+**Monthly rotation (v29).** The same rule and hindsight-free list, changing the book only on the last week-end of each month
+([configs/monthly_rotation_v29.yaml](configs/monthly_rotation_v29.yaml), `python scripts/v29_monthly_rotation.py`). The idea came from v27's result on
+the same window, so it's pre-registered with limits, and it's the only variant run. It made +30.7% a year (Sharpe 1.20, worst drop 22.5%) against SPY's
++16.6% (0.76), and **passed 5 of 6**: it beat SPY, Hold and holding the list, without its best two years and in both halves. It failed the ranking test
+worse than weekly did: +30.7% against a median of +33.3% for random picks with the same groups and weights. So choosing the group does the
+work, and the stock ranking loses money compared with chance. The 95% gap to SPY runs from +0.5 to +23.3 points, and on 2018, a side result, it lost 1.6%
+against SPY's 5.7%. Its Deflated Sharpe against SPY is only 0.55 at 25 rules tried.
+
+That looked too good, so a follow-up tried to break it (`python scripts/v29_followup.py`, not pre-registered), all at 10 bps:
+
+| Change | Return/yr | Sharpe | Worst drop |
+|---|---|---|---|
+| As tested, last week-end of the month | +30.7% | 1.20 | 22.5% |
+| One week-end earlier | +29.5% | 1.04 | 44.9% |
+| Two week-ends earlier | +32.9% | 1.15 | 29.4% |
+| Three week-ends earlier | +17.5% | 0.69 | 43.9% |
+| One session later | +34.1% | 1.31 | 18.6% |
+| Without NVDA and TSLA | +18.1% | 0.87 | 20.0% |
+| Broader lists (30 growth, 20 real assets) | +17.2% | 0.74 | 21.9% |
+
+The headline is mostly timing and two stocks. The same rule ranged from +17.5% to +32.9% on the week it happened to trade, and with a broader list it's
+about SPY. What may be left is a smaller drawdown from sitting out weak groups, and the 300 are survivors. It stays a lead at most.
+**Forward tracker (v30).** Frozen 2026-10-31 at the user's request ([configs/rotation_track_v30.yaml](configs/rotation_track_v30.yaml), `python scripts/v30_rotation_track.py`, nightly from
+[scripts/swing_track.cmd](scripts/swing_track.cmd)). The same rule and list, split into four sleeves that change one per week, so no single week's timing decides the result. This form has never been run on
+history. Before freezing, its code rebuilt the 2024 to 2026 lists and all 52 weekly books of 2025 exactly as the backtest made them. It scores from 2026-11-02 at 10 bps each way, with 5 bps beside it as a side row. The verdict comes
+after 1,260 sessions, about 5 years: it must beat SPY, beat the list held equally, and have a 95% interval of its daily gap to SPY above zero. Nothing before then is a verdict, and it's a lead being checked, not
+a proven rule. The report is `artifacts/reports/rotation_track/tracker.md`.
+
+**What a trade really costs (v28).** A measurement, not a test ([configs/trading_costs_v28.yaml](configs/trading_costs_v28.yaml),
+`python scripts/v28_trading_costs.py fetch`, then `report`). Half the quoted SIP spread on 22 Mondays from 2019 to January 2026, across the 30 names held each year:
+
+| When | Stocks, median | Stocks, mean | Stocks, 90th percentile | ETFs, mean |
+|---|---|---|---|---|
+| Just after the open | 3.7 bps | 5.0 | 9.9 | 1.0 |
+| 09:35 ET | 2.3 | 2.9 | 5.3 | 0.9 |
+| 15:55 ET | 0.9 | 1.2 | 2.5 | 0.9 |
+
+So v27's 10 bps was too harsh for market orders in these names: about 5 bps at the open is fair for stocks, and 1 bp near the close. These figures leave out market impact and
+fees. At 5 bps, weekly rotation on the hindsight-free list makes +27.1% (1.04) and clears the not-luck
+and both-halves checks narrowly (0.69 vs SPY's 0.68), but this was run after the failures, so v27's tests stay failed, and the timing and two-stock problems above don't go away.
+
+**Earnings quality on new companies (v25).** Rule K of v23, unchanged, on companies outside the 300 with a median of at least $10M a day traded
+([configs/new_companies_v25.yaml](configs/new_companies_v25.yaml), `python scripts/v25_new_companies.py fetch`, then `check`, then `run`), pre-registered before any of their data was downloaded.
+From 2019-01-24 to 2026-01-29, 3,631 companies, 509 to 992 eligible at each rebalance. Fourteen were excluded for plainly wrong bars before the run, each with its reason in the config.
+
+| | Annual return | Sharpe | Max drawdown |
+|---|---:|---:|---:|
+| Top fifth | +15.5% | 0.53 | 45.0% |
+| Bottom fifth | +14.3% | 0.54 | 40.2% |
+| Every eligible company (yardstick) | +14.1% | 0.54 | 42.2% |
+| Top fifth, profitable companies only | +13.3% | 0.51 | 44.8% |
+| SPY | +16.6% | 0.76 | 33.8% |
+
+**It failed 5 of 7 tests**: beating the yardstick (a higher return, but a Sharpe 0.005 lower), not luck, both halves, profitable-only and beating SPY. Only the control and the by-sector version passed. Its lead came from
+2020 (+74.9% vs the yardstick's +38.4%) and 2023. Without those two years its Sharpe falls short, and 2022 was worse (-33.3% vs -23.9%). 67% of the book was loss-makers. At $50M a day it failed 6 of 7. The 95% interval of the
+gap to the yardstick runs from -4.2 to +10.8 points a year.
+
+As the config said beforehand, this means v23's pass was probably tied to those 300 companies. The 300 are survivors over used years, so a rule on them can pass without working elsewhere. Against SPY, the 300's
+rule made +23.1% (0.88) to SPY's +16.6% (0.76) with a 95% gap of -1.8 to +14.0, and +15.6% to SPY's +9.8% in 2017-2018, a gap of -4.6 to +17.1. Neither interval clears zero. Hold made +15.7% (0.68), so
+it doesn't beat SPY. Two limits apply: this list holds companies alive today, and bars come by ticker while filings come by company, so a ticker that changed hands below the check's limits could still pair the wrong two. The tracker
+v24 doesn't change.
+
 **Live session: no trades before 09:35 ET.** `trade_start` in [configs/paper_live.yaml](configs/paper_live.yaml)
 (from 2026-10-29): every bot, Flip and Hold included, watches the first five minutes without trading, because
 spreads there averaged ~8 bps vs ~1.4 later, and the bots' losses were their spread costs.

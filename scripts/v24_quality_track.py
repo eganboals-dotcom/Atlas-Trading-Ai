@@ -42,6 +42,7 @@ class Market:
     p: Panel  # row 0 is the session before first_day, and a gone company keeps its last close
     cash: np.ndarray
     traded: np.ndarray  # False where a company had no bar that day
+    spy: np.ndarray  # SPY's daily return, dividends included: a yardstick in the report, and no part of the verdict
 
 
 def universe(rule: dict) -> list[str]:
@@ -82,7 +83,8 @@ def market(cfg: dict, symbols: list[str]) -> Market:
         opens[:, j] = row["open"].fill_null(row["close"].forward_fill()).to_numpy()
         traded[:, j] = row["close"].is_not_null().to_numpy()
     none = np.zeros_like(closes)
-    return Market(Panel(tuple(dates), tuple(symbols), opens, closes, closes, closes, none), cash, traded)
+    spy = calendar.join(pl.read_parquet(Path(cfg["spy_dir"]) / "SPY.parquet").select("date", "close"), on="date", how="left")["close"].forward_fill().to_numpy()
+    return Market(Panel(tuple(dates), tuple(symbols), opens, closes, closes, closes, none), cash, traded, np.r_[0.0, spy[1:] / spy[:-1] - 1])
 
 
 def due(books: list[dict], sessions: tuple[date, ...], every: int) -> list[date]:
@@ -146,7 +148,7 @@ def score(cfg: dict, m: Market, books: list[dict]) -> dict[str, np.ndarray]:
         return {}
     go = lambda x: run_book(p, x, x, 1, end, rule["cost_bps"], None, m.cash).returns
     x = exposures(p, *HOLD)
-    out = dict(Hold=go(x[0]))
+    out = dict(Hold=go(x[0]), SPY=m.spy[1:end])
     return out | {k: go(book_exposure(p, books, k, rule["every"])) for k in BOOKS}
 
 
@@ -183,8 +185,8 @@ def report(cfg: dict, state: dict, m: Market, r: dict[str, np.ndarray], waiting:
         last = p.dates[days]
         lines += [f"Days {p.dates[1]} to {last}. Annual figures and Sharpe are shown after {LONG} days.", "", "| Book | Return | vs Hold | Return/yr | Sharpe | Max DD |", "|---|---|---|---|---|---|"]
         total = {k: float(np.prod(1 + v) - 1) for k, v in r.items()}
-        label = dict(Hold="Hold", top="Earnings quality", bottom="Bottom fifth (control)", profitable="Profitable only (side)")
-        for k in ("top", "Hold", "bottom", "profitable"):
+        label = dict(Hold="Hold", SPY="SPY (side)", top="Earnings quality", bottom="Bottom fifth (control)", profitable="Profitable only (side)")
+        for k in ("top", "Hold", "SPY", "bottom", "profitable"):
             s = summary(r[k], rf)
             lines.append(f"| {label[k]} | {total[k]:+.2%} | {'' if k == 'Hold' else f'{total[k] - total['Hold']:+.2%}'} | {f'{s['ann_return']:+.1%}' if days >= LONG else '-'} | {f'{s['sharpe']:.2f}' if days >= LONG else '-'} | {s['max_drawdown']:.1%} |")
         lines.append("")

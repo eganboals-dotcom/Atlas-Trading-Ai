@@ -1,0 +1,82 @@
+# v25: earnings quality on companies it has never seen, and the rule against SPY, tested by scripts/v25_new_companies.py.
+#
+# Why: v23's pass came from 300 survivors over heavily used years, and v24 needs about 5 years to answer. New companies over the same
+# years are the nearest thing to fresh evidence available now. Hold, the yardstick so far, is an equal-weight mix of the same survivors,
+# so it isn't the market either.
+#
+# PRE-REGISTERED 2026-10-31, written before any bar or filing of these companies was downloaded. A failed test stays failed. Nothing is
+# tuned, and the frozen tracker v24 doesn't change whatever this shows.
+#
+# Companies: everyone on the SEC's ticker list with a CIK outside the 300, one ticker per CIK, the first listed. Rule K of v23 exactly:
+# the top fifth by -(net income - operating cash flow) / average assets, from filings filed before each rebalance, equal weights, held
+# 63 sessions. Banks and insurers aren't eligible, as in v23. Same window and costs: 2019-01-24 to 2026-01-29, 2 bps each way, cash
+# earning BIL. No bar after 2026-01-30 is downloaded here.
+#
+# One addition, which the 300 didn't need: a company is eligible only if its median daily dollar volume over the 63 sessions before a
+# rebalance is at least min_dollar_volume. Sessions with no bar count as zero. This keeps out shares nobody could really trade. It uses
+# closes and volumes adjusted for splits and dividends, so a figure can sit a little below its true value.
+#
+# Yardstick: equal weights in every eligible company at each rebalance, the same way Hold is the yardstick for the 300.
+#
+# It must pass all of these:
+# TEST 1 (the money): the top fifth beats the yardstick on Sharpe and annual return.
+# TEST 2 (control): the top fifth makes more than the bottom fifth.
+# TEST 3 (not luck): a higher Sharpe than the yardstick without its two best years against the yardstick.
+# TEST 4 (both halves): a higher Sharpe than the yardstick in each half of the window.
+# TEST 5 (not a sector bet): the top fifth of each sector, built as in configs/bottleneck_v22.yaml, also beats the yardstick on Sharpe
+#   and annual return. Companies without group_days of bars, and sectors with fewer than min_group eligible companies, are left out.
+# TEST 6 (not just loss-makers): the same rule among companies with positive net income also beats the yardstick on Sharpe and annual
+#   return. It's the doubt the v23 follow-up raised.
+# TEST 7 (the market): the top fifth beats SPY, dividends included, on Sharpe and annual return.
+#
+# This is one rule on one new list, so a false pass is less likely than in v23, but it isn't proof. The years are the same used years,
+# and the SEC's list holds companies alive today, so failures are still missing, and small survivors flatter a rule more than large
+# ones. A pass raises confidence in v24. A fail means v23's pass was probably tied to those 300 companies.
+#
+# Before the run, a check prints eligible counts and the largest daily moves, and no rule's return. A company whose bars are plainly
+# wrong, for example a reused ticker or a missed split, can go under exclude then, with the reason, and never after.
+#
+# Side results, which pass or fail nothing: the same tests' figures at min_dollar_volume_large, which is closer to the 300, 10 bps,
+# each year, turnover, how many are eligible, loss-makers held, and, on the 300 over the same window and 2017-2018, the rule and Hold
+# against SPY with the 95% interval of the gap.
+sec_dir: data/processed/v25_new/sec
+bars_dir: data/processed/v25_new/bars
+spy_dir: data/processed/alpaca_daily
+spy: SPY
+cash_dir: data/processed/swing_track_u300
+cash_symbol: BIL
+history_start: "2018-01-02"
+last_fetch: "2026-01-30"
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+every: 63
+top_share: 0.20
+min_eligible: 50
+min_group: 5
+volume_days: 63
+min_dollar_volume: 10000000
+min_dollar_volume_large: 50000000
+cost_bps: 2.0
+side_cost_bps: 10.0
+min_interval_s: 0.35
+block: 21
+bootstrap_samples: 5000
+seed: 2026
+# Filled before the run, from the 73 daily moves beyond +200% or -75% in companies ever eligible, seeing no rule's return. A real meme spike or
+# failed trial stays in, and so does QXO's -80% on 2024-07-30, which wasn't plainly wrong. Removing a company also removes its true
+# fall into bankruptcy, a small flatter to every book that held one, and the check can't see a wrong bar inside those limits.
+exclude:
+  GPOR: "2021-05-18 bankruptcy exit, cancelled old shares joined to the new ones, 0.14 to 72.95"
+  WW: "2025-07-07 bankruptcy exit, the same, 0.25 to 40.00"
+  DBD: "2023-08-14 bankruptcy exit, the same, 0.25 to 20.57"
+  VAL: "2021-05-03 bankruptcy exit, the same, 0.33 to 23.70"
+  CORZ: "2024-01-24 bankruptcy exit, the same, 0.08 to 3.44"
+  CRC: "2020-10-28 bankruptcy exit, the same, 1.04 to 13.19"
+  WOLF: "2025-09-29 bankruptcy exit, the same, 1.21 to 22.10"
+  VRM: "2025-02-20 bankruptcy exit, the same, a stale 5.01 to 31.00"
+  LINE: "2024-07-25 reused ticker, an old company's stale 0.16 joined to the 72.54 listing"
+  SES: "2019-07-22 reused ticker, the bars are another company's until the listing's merger, and a missed reverse split"
+  UHAL: "2022-11-10 missed share split, 513 to 52 on ordinary dollar volume"
+  COSM: "2025-10-20 wrong split adjustment, 20.70 to 1.04, a clean 1/20 on ordinary dollar volume"
+  FABC: "2020-05-29 missed reverse split, 99.58 to 390.40 as share volume fell 37 times"
+  PDYN: "2023-07-06 missed reverse split, 0.32 to 1.60 on ordinary dollar volume"

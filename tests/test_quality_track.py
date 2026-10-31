@@ -33,7 +33,7 @@ def weekdays(n: int) -> list[date]:
 def write_bars(cfg: dict, days: list[date], gone: dict[str, date] | None = None) -> None:
     bars = Path(cfg["bars_dir"])
     bars.mkdir(parents=True, exist_ok=True)
-    for j, s in enumerate(["BIL", *SYMBOLS]):
+    for j, s in enumerate(["BIL", "SPY", *SYMBOLS]):
         kept = [d for d in days if d < (gone or {}).get(s, date.max)]
         px = [100.0 * (1 + 0.001 * j) ** i for i in range(len(kept))]
         pl.DataFrame(dict(date=kept, open=px, close=px), schema={"date": pl.Date, "open": pl.Float64, "close": pl.Float64}).write_parquet(bars / f"{s}.parquet")
@@ -54,6 +54,7 @@ def filing(sym: str, cfg: dict, income: float, cash: float, filed: date = date(2
 def cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     c = yaml.safe_load((ROOT / "configs" / "quality_track_v24.yaml").read_text(encoding="utf-8"))
     c["bars_dir"], c["filings_dir"], c["out_dir"] = (str(tmp_path / x) for x in ("bars", "sec", "out"))
+    c["spy_dir"] = c["bars_dir"]
     c["rule"]["min_eligible"] = 2
     c["rule"]["every"] = 3
     monkeypatch.setattr(track, "universe", lambda rule: list(SYMBOLS))

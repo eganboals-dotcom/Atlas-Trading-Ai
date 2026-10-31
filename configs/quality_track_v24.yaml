@@ -37,5 +37,6 @@ rule:
   block: 21
   seed: 2026
 bars_dir: data/processed/swing_track_u300  # refreshed each night by the 300-company tracker, which runs first
+spy_dir: data/processed/swing_track  # a yardstick in the report only, added 2026-10-31 before any scored day
 filings_dir: data/processed/quality_track
 out_dir: artifacts/reports/quality_track

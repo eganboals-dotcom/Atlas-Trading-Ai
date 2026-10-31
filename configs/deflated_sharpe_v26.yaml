@@ -1,0 +1,23 @@
+# v26: how much of earnings quality's result survives the number of rules tried, run by scripts/v26_deflated_sharpe.py.
+#
+# NOT pre-registered as a test: it was added after v23's result was known, it passes or fails nothing, and v23's verdict stands.
+# Written before the figure was computed.
+#
+# Deflated Sharpe Ratio (Bailey and Lopez de Prado, 2014). The best of N rules has a high Sharpe by luck alone, so instead of asking
+# whether a Sharpe beats zero, it asks whether it beats the Sharpe the best of N useless rules would be expected to reach:
+#   expected best = sqrt(V) * ((1 - g) * Z(1 - 1/N) + g * Z(1 - 1/(N * e)))
+#   DSR = P(true Sharpe > expected best), allowing for the sample's length, skew and kurtosis
+# where V is the variance of the Sharpes of the rules tried, g is the Euler-Mascheroni constant and Z is the inverse normal.
+# The usual bar is 0.95.
+#
+# It's applied to the daily gap to Hold, because Hold itself has a Sharpe far above zero, and to the return above cash for comparison.
+# V comes from the stored results of the rules run on this same window. N isn't known exactly: v23 ran 4 rules, the swing tests from
+# v1 on ran dozens, and the walk-forward searches tried far more. So the answer is shown for each N in trials. 25 is the rules run by
+# hand on this window, the fairest single figure, and 1,000 stands in for the searches. Correlated rules count for less than N says,
+# so N is an upper bound on independent tries.
+#
+# PBO, the related check, isn't run: it needs daily returns from many rules on the same window, and only a handful are stored.
+reports_dir: artifacts/reports/swing
+trials: [4, 10, 25, 100, 1000]
+main_trials: 25
+bar: 0.95
