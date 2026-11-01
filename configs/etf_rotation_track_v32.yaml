@@ -1,0 +1,41 @@
+# v32: forward tracker for an ETF-only rotation. Run by scripts/v32_etf_rotation_track.py.
+#
+# FROZEN 2026-10-31, before any scored day, at the user's request. The first run records a fingerprint of everything under rule:, v27's
+# settings and the code that builds a book. Later runs refuse to continue if any of it changes. A book stays as chosen once recorded. Research
+# only: nothing here places an order, and the holdings are not advice.
+#
+# Why: v29's random-pick test showed the choice of group did the work and its stock ranking did worse than chance, and its break attempts
+# showed the headline rested on NVDA and TSLA. So this keeps the part that may work and drops the rest: no stocks and no ranking.
+#
+# This rule has NEVER been run on history, on purpose, and it must not be. Days before first_day can't prove it, and a backtest would only
+# invite tuning. It counts as one more rule tried, so it would have to clear a higher bar than v30 alone, and a small edge won't show in 5 years.
+#
+# Rule: on the last session of each week, from weekly closes, v27's group strength, risk budget and fallback, every setting unchanged, on
+# these groups: growth XLK, SMH; real assets XLE, XLB, GLD, SLV; defensive TLT, IEF, XLU, XLV, IAU, SHY, UUP. Those are the ETFs v27's
+# hindsight-free list used or mapped its stocks to. Keep up to 2 groups, as in v27. The budget is split equally across kept groups and equally
+# across each group's members. If no group is kept, the fallback equally at the budget. Four sleeves work as in v30: all start from the book of
+# first_signal, then week-end k replaces only the sleeve numbered k mod 4. A book trades at the next open. Costs are 2 bps each way, since v28
+# measured these ETFs at about 1 bp, before market impact and fees. Cash earns BIL.
+#
+# THE VERDICT, written now, reached only once review_sessions sessions have been scored (about 5 years):
+#   pass: all three of beating SPY (a higher Sharpe and an annual return at least SPY's), beating all its ETFs held equally (the same), and a 95%
+#     block bootstrap interval of the daily gap to SPY that lies above zero.
+#   fail: anything else. It is dropped, and the rule isn't changed or restarted.
+# Nothing before then is a verdict.
+rule:
+  groups:
+    growth: [XLK, SMH]
+    real: [XLE, XLB, GLD, SLV]
+    defensive: [TLT, IEF, XLU, XLV, IAU, SHY, UUP]
+  first_signal: "2026-10-30"
+  first_day: "2026-11-02"
+  sleeves: 4
+  cost_bps: 2.0
+  cash_symbol: BIL
+  review_sessions: 1260
+  bootstrap_samples: 5000
+  block: 21
+  seed: 2026
+etf_dir: data/processed/rotation_track  # refreshed each night by the rotation tracker, which runs first
+cash_dir: data/processed/swing_track_u300  # refreshed each night by the 300-company tracker
+out_dir: artifacts/reports/etf_rotation_track

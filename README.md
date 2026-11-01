@@ -1033,6 +1033,45 @@ history. Before freezing, its code rebuilt the 2024 to 2026 lists and all 52 wee
 after 1,260 sessions, about 5 years: it must beat SPY, beat the list held equally, and have a 95% interval of its daily gap to SPY above zero. Nothing before then is a verdict, and it's a lead being checked, not
 a proven rule. The report is `artifacts/reports/rotation_track/tracker.md`.
 
+**ETF-only rotation (v32).** Frozen 2026-10-31 at the user's request ([configs/etf_rotation_track_v32.yaml](configs/etf_rotation_track_v32.yaml), `python scripts/v32_etf_rotation_track.py`, nightly). v29 showed that the
+choice of group did the work and that stock ranking did worse than chance, so this keeps v27's group choice and risk budget and drops stocks and ranking: a kept group holds all its ETFs equally. It has never been run
+on history, on purpose, because days already seen can't prove it. It scores from 2026-11-02 at 2 bps each way, in four sleeves as in v30, with the same kind of verdict after 1,260 sessions against SPY and its ETFs held equally.
+It counts as one more rule tried.
+
+**All the trackers on one page.** `python scripts/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
+status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
+is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market.
+
+**The list with the failed companies in it (v31).** A pre-registered check of two rules already run ([configs/point_in_time_v31.yaml](configs/point_in_time_v31.yaml), `python scripts/v31_point_in_time.py`), with
+results in `artifacts/reports/swing/v31_point_in_time.json`. SEC Forms 3, 4 and 5 name each filing's company and ticker, so they show who really traded each quarter. That gave 10,690 companies, and each quarter's pool is the
+300 with the most dollar volume at the time. From 2019-01-24 to 2026-01-29, 389 of the 1,849 companies that reached a pool stopped trading, and 58 count as failed, a total loss the session after their last bar.
+
+| Over 2019-01-24 to 2026-01-29 | Per year | Sharpe | Worst fall |
+| --- | --- | --- | --- |
+| Earnings quality, top fifth | +24.3% | 0.75 | 52.2% |
+| Hold on this pool | +15.6% | 0.65 | 36.8% |
+| Hold on the usual 300 | +15.7% | 0.68 | 39.8% |
+| The monthly rotation | +31.8% | 1.13 | 22.2% |
+| Holding the rotation's list | +19.3% | 0.93 | 29.2% |
+| SPY | +16.6% | 0.76 | 33.8% |
+
+Survivor bias turned out to be a small part of the story. Hold made almost the same on both lists, though the two lists differ a lot from year to year (+15.9% against +32.2% in 2020, -7.0% against -21.0% in 2022), so they aren't the
+same bet. Failures themselves cost Hold 0.05 points a year, because a dying company usually drops out of the top 300 before it stops. Only SVB did real damage. Neither rule held a failed company when it stopped.
+
+Earnings quality passed 4 of 6, so it's **not confirmed**. It beat Hold (test 1), its bottom fifth (test 2), both halves (test 4) and among profitable companies (test 5). It failed without its two best years (test 3), and it failed
+SPY on Sharpe (test 6): 0.75 against 0.76, despite the higher return. 61% of its picks were loss-makers, up from 33% on the 300, so on this list it's a volatile bet on speculative growth, which fell 42.4% in 2022. The gap to Hold has a 95%
+interval of -0.6 to +21.9 points a year. On the larger pool of 1,000 it passed only 2 of 6 (+15.3%, 0.54), which agrees with v25. Profitable companies alone made +21.4% at 0.81, above SPY, but test 5 compares them with Hold only, so
+that's a thing noticed, not a result. v24 keeps running unchanged.
+
+The rotation passed tests 7 and 8, beating SPY and its own list. This is the fairest test it has had, and it held up, but it proves less than it sounds. Its list is the largest companies plus fixed ETFs, so it never held a company
+that failed, and the test could hardly hurt it. Its gap to SPY still has a 95% interval of -2.5 to +26.6 points, and v29's finding that its stock ranking lost to random picks stands. January 2026 alone made +27.5%, mostly silver. It stays
+a lead, and only the frozen trackers' days after 2026-10-30 can prove it.
+
+The check changed the method before the run, before any rule's return was seen, and all of it is written in the config. The draft ended a company's bars 130 days after its last insider filing, which stopped healthy companies
+whose insiders went quiet and marked some failed. Bars now run until they break or another company takes the ticker. 48 companies are excluded, nearly all for holding another company's bars or a spin-off shown as a crash, and 15 bankrupt companies end on their last
+day before the exit, so they still count as failed. Dropping their new shares understates both a rule and Hold a little. Banks that report only to regulators, such as Signature, and foreign companies are missing, and spin-offs under the
+30% the review looked for may still show as losses.
+
 **What a trade really costs (v28).** A measurement, not a test ([configs/trading_costs_v28.yaml](configs/trading_costs_v28.yaml),
 `python scripts/v28_trading_costs.py fetch`, then `report`). Half the quoted SIP spread on 22 Mondays from 2019 to January 2026, across the 30 names held each year:
 
