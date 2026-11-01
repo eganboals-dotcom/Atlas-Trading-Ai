@@ -400,14 +400,24 @@ def lists_at(m: Market) -> dict[int, dict[str, list[int]]]:
     return out
 
 
-def rotation(m: Market) -> dict:
-    """Tests 7 and 8."""
+def live_groups(lists: dict[int, dict[str, list[int]]], live: np.ndarray, t: int, year: int) -> dict[str, list[int]]:
+    """The year's groups without companies that have no bar on session t."""
+    return {g: [j for j in js if live[t, j]] for g, js in lists[year].items()}
+
+
+def rotation_books(m: Market) -> tuple[v.Rotation, dict[int, dict[str, list[int]]], np.ndarray, list[v.Book]]:
     p = m.p
     rot = v.rotation(p)
     lists = lists_at(m)
     live = np.hstack([m.traded, np.ones((len(p.dates), p.close.shape[1] - m.n), dtype=bool)])
-    weekly = [v.choose(rot, k, {g: [j for j in js if live[t, j]] for g, js in lists[p.dates[t].year].items()}) for k, t in enumerate(rot.ends) if p.dates[t].year >= FIRST.year]
-    books = slow.monthly(weekly, p.dates)
+    weekly = [v.choose(rot, k, live_groups(lists, live, t, p.dates[t].year)) for k, t in enumerate(rot.ends) if p.dates[t].year >= FIRST.year]
+    return rot, lists, live, slow.monthly(weekly, p.dates)
+
+
+def rotation(m: Market) -> dict:
+    """Tests 7 and 8."""
+    p = m.p
+    rot, lists, _, books = rotation_books(m)
     cost = cfg["rotation_cost_bps"]
     r = v.net(rot, books, m.v0, m.end, cost, m.cash)
     plain = slow.hold_list(p, lists, m.v0, m.end, cost, m.cash)

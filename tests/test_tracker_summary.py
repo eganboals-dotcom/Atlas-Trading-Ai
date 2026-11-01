@@ -52,6 +52,23 @@ def test_a_rule_behind_the_market_data_is_flagged() -> None:
     assert s.stale(rows, date(2026, 11, 3)) == []
 
 
+def bars(closes: list[float], volumes: list[float]) -> pl.DataFrame:
+    return pl.DataFrame(dict(date=[date(2026, 11, 2 + i) for i in range(len(closes))], close=closes, volume=volumes))
+
+
+def test_a_spin_off_shown_as_a_crash_is_flagged() -> None:
+    assert "RTX moved -71% on 2026-11-03" in s.suspect_moves(bars([148.0, 43.0], [1e6, 3.2e6]), "RTX", date(2026, 10, 27))[0]
+
+
+def test_a_real_crash_trades_heavily_and_isnt_flagged() -> None:
+    assert s.suspect_moves(bars([100.0, 40.0], [1e6, 2e7]), "X", date(2026, 10, 27)) == []
+
+
+def test_a_small_move_or_one_before_the_trackers_isnt_flagged() -> None:
+    assert s.suspect_moves(bars([100.0, 70.0], [1e6, 1e6]), "X", date(2026, 10, 27)) == []
+    assert s.suspect_moves(bars([148.0, 43.0], [1e6, 3.2e6]), "X", date(2026, 11, 3)) == []
+
+
 def test_a_rule_can_beat_hold_and_lose_to_spy() -> None:
     rows = [dict(tracker="x", rule="r", days=2, first=date(2026, 11, 3), last=date(2026, 11, 3), ret=0.05, hold=0.01)]
     text = s.build(rows, SPY, [], [], [], date(2026, 11, 5))

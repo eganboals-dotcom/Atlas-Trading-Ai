@@ -1040,7 +1040,8 @@ It counts as one more rule tried.
 
 **All the trackers on one page.** `python scripts/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
-is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market.
+is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market. It also flags any one-day move of 45% or more in the trackers' bars since
+2026-10-27 that came with no volume surge, because v31 found spin-offs shown as crashes, such as RTX at -71% on 2020-04-03. That's for a person to check, and it changes no score.
 
 **The list with the failed companies in it (v31).** A pre-registered check of two rules already run ([configs/point_in_time_v31.yaml](configs/point_in_time_v31.yaml), `python scripts/v31_point_in_time.py`), with
 results in `artifacts/reports/swing/v31_point_in_time.json`. SEC Forms 3, 4 and 5 name each filing's company and ticker, so they show who really traded each quarter. That gave 10,690 companies, and each quarter's pool is the
@@ -1071,6 +1072,20 @@ The check changed the method before the run, before any rule's return was seen, 
 whose insiders went quiet and marked some failed. Bars now run until they break or another company takes the ticker. 48 companies are excluded, nearly all for holding another company's bars or a spin-off shown as a crash, and 15 bankrupt companies end on their last
 day before the exit, so they still count as failed. Dropping their new shares understates both a rule and Hold a little. Banks that report only to regulators, such as Signature, and foreign companies are missing, and spin-offs under the
 30% the review looked for may still show as losses.
+
+**The rotation against chance (v33).** A pre-registered check on v31's list, on used years, so it can't prove anything about the future ([configs/random_picks_v33.yaml](configs/random_picks_v33.yaml),
+`python scripts/v33_random_picks.py`, results in `artifacts/reports/swing/v33_random_picks.json`). It ran 1,000 random versions of each kind below, keeping each month's budget and weights.
+
+| Over 2019-01-24 to 2026-01-29 | Median per year | 5th to 95th percentile | Beat SPY's +16.6% |
+| --- | --- | --- | --- |
+| The rotation as it is | +31.8% | | |
+| Its groups, random stocks | +37.3% | +27.4% to +47.5% | all 1,000 |
+| Random groups, random stocks | +15.4% | +4.9% to +28.8% | 44% |
+
+Test 1, the ranking, failed: the rule beat only 19% of runs that kept its groups and picked stocks at random, so its stock ranking cost money here, as in v29. Test 2 passed: the median of those runs beat SPY, so the return doesn't need
+the ranking. Test 3, choosing groups, passed: the rule beat 98.3% of runs that drew the groups at random too. This is the outcome the config named in advance: the gain is in choosing groups, which is what v32 bets on. It's support for the
+idea and no test of v32 itself, which holds different assets and has never been run on history. Group choice here is one path through seven years, picked from the same giants that led those years, after more than 25 rules
+tried, and random groups that held the same list still reached +28.8% at the 95th percentile. No frozen tracker changes, so v30 keeps its ranking.
 
 **What a trade really costs (v28).** A measurement, not a test ([configs/trading_costs_v28.yaml](configs/trading_costs_v28.yaml),
 `python scripts/v28_trading_costs.py fetch`, then `report`). Half the quoted SIP spread on 22 Mondays from 2019 to January 2026, across the 30 names held each year:

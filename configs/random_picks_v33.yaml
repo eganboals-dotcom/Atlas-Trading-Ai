@@ -1,0 +1,27 @@
+# v33: does the rotation's choosing beat chance on the list with the failed companies in it? Run by scripts/v33_random_picks.py.
+#
+# PRE-REGISTERED 2026-10-31, written before any random run on this list. It's a check of a rule already run, on used years, so even a full pass
+# proves nothing about the future. Only days after 2026-10-27 can do that. A failed test stays failed, nothing is tuned, and no frozen tracker
+# changes either way. It repeats v29's random-picks test, the one test v31 left out, and adds one aimed at what the ETF-only tracker (v32) bets on.
+#
+# The rule: v29's monthly rotation exactly as v31 ran it, 10 bps each way, with its books, list and days. The run refuses to go on unless it
+# reproduces v31's annual return. Random runs keep each month's budget and weights, and a fallback book stays as it is. A company with no bar
+# on a book's last close can't be drawn, and a drawn company that fails is a total loss, as in v31.
+#
+# Tests (3). None of them is a test against the market except test 2.
+#   TEST 1 (the ranking): annual return beats the 95th percentile of draws runs that keep the groups chosen and draw the assets at random from the
+#          same members. This is v29's T6, which failed.
+#   TEST 2 (the shape): the median of those same runs beats SPY on Sharpe and annual return, so the rotation's return doesn't need its ranking.
+#   TEST 3 (the groups): annual return beats the 95th percentile of draws runs that also draw the groups at random, as many as the book kept, with
+#          the assets drawn inside them. It's the direct test of choosing groups.
+#
+# What it would mean, written down first. Test 1 failing with test 3 passing says the gain is in choosing groups, which is v32's bet. Test 3 failing
+# says choosing groups can't be told from chance here either, and what's left is the list and the budget. Test 3 keeps the budget, so it says
+# nothing about the budget.
+#
+# Measured, which passes or fails nothing: where the rule sits among both sets of runs, the medians and 5th and 95th percentiles, and the share of runs
+# that beat SPY on annual return.
+report: artifacts/reports/swing/v33_random_picks.json
+v31_report: artifacts/reports/swing/v31_point_in_time.json
+draws: 1000
+seed: 2026

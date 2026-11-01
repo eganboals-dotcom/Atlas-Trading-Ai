@@ -21,6 +21,10 @@ SWING = ("swing_track", "swing_track_news", "swing_track_fund", "swing_track_u30
 TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation"}
 LONG = 60  # the trackers themselves show annual figures only after this many days
 OUT = REPORTS / "summary" / "latest.md"
+BARS = (Path("data/processed/swing_track_u300"), Path("data/processed/rotation_track"))
+WATCHED_FROM = date(2026, 10, 27)  # the frozen trackers' bars; older moves can't touch a score
+BIG_MOVE = 0.45
+VOLUME_SURGE = 2.5  # a real crash this size trades far more than the day before; a spin-off or missed split doesn't
 
 
 def spy_return(spy: pl.DataFrame, first: date, last: date) -> float | None:
@@ -80,6 +84,18 @@ def report_notes() -> list[str]:
     return out
 
 
+def suspect_moves(bars: pl.DataFrame, symbol: str, since: date) -> list[str]:
+    """Large one-day moves on no surge in dollar volume, which look like a spin-off or missed split in the bars rather than a real move."""
+    t = bars.sort("date").filter(pl.col("volume") > 0).with_columns(dollars=pl.col("close") * pl.col("volume"))
+    t = t.with_columns(move=pl.col("close") / pl.col("close").shift(1) - 1, surge=pl.col("dollars") / pl.col("dollars").shift(1))
+    found = t.filter((pl.col("date") > since) & (pl.col("move").abs() >= BIG_MOVE) & (pl.col("surge") < VOLUME_SURGE))
+    return [f"{symbol} moved {r['move']:+.0%} on {r['date']} with no volume surge: check for a spin-off or a bad bar before trusting any score that holds it" for r in found.iter_rows(named=True)]
+
+
+def bar_warnings() -> list[str]:
+    return [line for folder in BARS for path in sorted(folder.glob("*.parquet")) for line in suspect_moves(pl.read_parquet(path), path.stem, WATCHED_FROM)]
+
+
 def verdicts() -> list[str]:
     out = []
     for folder in (*TABLES, "fomc_track"):
@@ -118,7 +134,7 @@ def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[
 def main() -> None:
     spy = pl.read_parquet(SPY).sort("date")
     rows = [r for f in SWING for r in swing_rows(REPORTS / f)] + table_rows()
-    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], report_notes(), verdicts(), date.today())
+    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today())
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text, encoding="utf-8")
     print(text)
