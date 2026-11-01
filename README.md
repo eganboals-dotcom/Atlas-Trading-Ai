@@ -1041,7 +1041,8 @@ It counts as one more rule tried.
 **All the trackers on one page.** `python scripts/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
 is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market. It also flags any one-day move of 45% or more in the trackers' bars since
-2026-10-27 that came with no volume surge, because v31 found spin-offs shown as crashes, such as RTX at -71% on 2020-04-03. That's for a person to check, and it changes no score.
+2026-10-27 that came with no volume surge, because v31 found spin-offs shown as crashes, such as RTX at -71% on 2020-04-03. That's for a person to check, and it changes no score. The page shows the investing rules as bots too: each has $100,000 of pretend money, its holdings, and the same money in SPY over its days. They aren't on the paper leaderboard, whose
+bots share one fund and sell everything at the close, which these rules don't do.
 
 **The list with the failed companies in it (v31).** A pre-registered check of two rules already run ([configs/point_in_time_v31.yaml](configs/point_in_time_v31.yaml), `python scripts/v31_point_in_time.py`), with
 results in `artifacts/reports/swing/v31_point_in_time.json`. SEC Forms 3, 4 and 5 name each filing's company and ticker, so they show who really traded each quarter. That gave 10,690 companies, and each quarter's pool is the

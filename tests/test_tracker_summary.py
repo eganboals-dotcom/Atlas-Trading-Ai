@@ -52,6 +52,25 @@ def test_a_rule_behind_the_market_data_is_flagged() -> None:
     assert s.stale(rows, date(2026, 11, 3)) == []
 
 
+def test_a_bot_grows_with_its_tracker_and_is_set_against_spy() -> None:
+    b = s.bot("Earnings quality", TABLE, SPY)
+    assert b["value"] == pytest.approx(101_500) and b["spy"] == pytest.approx(99_000) and b["invested"] == "100%" and b["since"] == date(2026, 11, 3)
+    assert "| Earnings quality | $101,500 | $99,000 | +2,500 | 100% | 2026-11-03 |" in s.bot_lines([b])
+
+
+def test_a_bot_with_no_days_still_has_its_money() -> None:
+    text = "# Rotation\n\nBook 1, from the close of 2026-10-30: groups real, invested 70%. Replaces sleeve 1 of 4.\n\nCombined weights: F 35.0%, GLD 35.0%\n"
+    b = s.bot("Rotation", text, SPY)
+    assert (b["value"], b["spy"], b["invested"], b["since"]) == (100_000.0, 100_000.0, "70%", None)
+    assert b["holds"] == "F 35.0%, GLD 35.0%"
+    assert "not yet" in s.bot_lines([b])[6]
+
+
+def test_a_quality_bot_lists_its_companies() -> None:
+    assert s.holdings("Book 1, from filings through 2026-10-30, 187 eligible, 37 held:\n\nABBV, ADBE\n") == "equal weights: ABBV, ADBE"
+    assert s.holdings("# nothing yet") == "nothing yet"
+
+
 def bars(closes: list[float], volumes: list[float]) -> pl.DataFrame:
     return pl.DataFrame(dict(date=[date(2026, 11, 2 + i) for i in range(len(closes))], close=closes, volume=volumes))
 

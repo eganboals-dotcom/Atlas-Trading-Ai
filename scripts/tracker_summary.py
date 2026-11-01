@@ -25,6 +25,7 @@ BARS = (Path("data/processed/swing_track_u300"), Path("data/processed/rotation_t
 WATCHED_FROM = date(2026, 10, 27)  # the frozen trackers' bars; older moves can't touch a score
 BIG_MOVE = 0.45
 VOLUME_SURGE = 2.5  # a real crash this size trades far more than the day before; a spin-off or missed split doesn't
+START = 100_000.0  # each investing bot's pretend money
 
 
 def spy_return(spy: pl.DataFrame, first: date, last: date) -> float | None:
@@ -65,6 +66,38 @@ def table_rows() -> list[dict]:
         if row:
             rows.append(dict(tracker=folder.removesuffix("_track"), rule=label, days=None, **row))
     return rows
+
+
+def holdings(text: str) -> str:
+    """What a tracker.md says the rule holds now."""
+    mix = re.search(r"^Combined weights: (.+)$", text, re.M)
+    names = re.search(r"^Book \d+, .*held:\n\n(.+)$", text, re.M)
+    if mix:
+        return mix[1]
+    return f"equal weights: {names[1]}" if names else "nothing yet"
+
+
+def bot(label: str, text: str, spy: pl.DataFrame) -> dict:
+    """A rule as an account of START dollars of pretend money, net of the tracker's costs."""
+    row = table_row(text, label)
+    invested = re.search(r"invested (\d+%)", text)
+    moved = spy_return(spy, row["first"], row["last"]) if row else None
+    return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START, invested=invested[1] if invested else "100%",
+                holds=holdings(text), since=row["first"] if row else None)
+
+
+def bots(spy: pl.DataFrame) -> list[dict]:
+    return [bot(label, (REPORTS / folder / "tracker.md").read_text(encoding="utf-8"), spy) for folder, label in TABLES.items() if (REPORTS / folder / "tracker.md").exists()]
+
+
+def bot_lines(accounts: list[dict]) -> list[str]:
+    if not accounts:
+        return []
+    lines = ["## Investing bots", "", f"Each rule runs as a bot with ${START:,.0f} of pretend money, held across days, after the tracker's costs. SPY is the same money in SPY over the bot's own days. Nothing here is a real account or advice.", "",
+             "| Bot | Account | Same money in SPY | Ahead of SPY | Invested | Scored from |", "|---|---|---|---|---|---|"]
+    for b in sorted(accounts, key=lambda b: -b["value"]):
+        lines.append(f"| {b['name']} | ${b['value']:,.0f} | ${b['spy']:,.0f} | {b['value'] - b['spy']:+,.0f} | {b['invested']} | {b['since'] or 'not yet'} |")
+    return [*lines, "", *[f"- {b['name']} holds {b['holds']}" for b in accounts], ""]
 
 
 def run_problems(text: str) -> list[str]:
@@ -114,12 +147,13 @@ def percent(x: float | None) -> str:
     return "" if x is None else f"{x:+.2%}"
 
 
-def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[str], status: list[str], today: date) -> str:
+def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[str], status: list[str], today: date, accounts: list[dict] | None = None) -> str:
     newest = spy["date"].max()
     lines = ["# Atlas trackers on one page", "", f"Written {today}, prices through {newest}. Research only: no order is placed anywhere, and nothing here is advice.", ""]
     flags = [*problems, *stale(rows, newest), *notes]
     lines += ["## Needs a look", ""] + ([f"- {x}" for x in flags] or ["Nothing."]) + [""]
     short = min((r["days"] for r in rows if r["days"] is not None), default=0)
+    lines += bot_lines(accounts or [])
     lines += ["## Verdicts", ""] + [f"- {x}" for x in status] + ["", "## Each rule", ""]
     if short < LONG:
         lines += [f"Only {short} days so far. Days this few say almost nothing about any rule.", ""]
@@ -134,7 +168,7 @@ def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[
 def main() -> None:
     spy = pl.read_parquet(SPY).sort("date")
     rows = [r for f in SWING for r in swing_rows(REPORTS / f)] + table_rows()
-    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today())
+    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), bots(spy))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text, encoding="utf-8")
     print(text)
