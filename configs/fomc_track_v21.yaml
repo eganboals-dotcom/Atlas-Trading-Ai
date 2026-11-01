@@ -1,4 +1,4 @@
-# v21: forward tracker for the pre-FOMC drift, the one rule to pass all its tests in v20. Run by scripts/v21_fomc_track.py.
+# v21: forward tracker for the pre-FOMC drift, the one rule to pass all its tests in v20. Run by scripts/trackers/v21_fomc_track.py.
 #
 # FROZEN 2026-10-31, before any scored day. The first run records a fingerprint of everything under rule:, and later runs refuse to
 # continue if it changes. An event stays scored once scored: removing one is refused. Research only: nothing here places an order.

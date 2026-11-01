@@ -4,7 +4,7 @@ Reads the 300 companies' daily bars, which the 300-company tracker downloads fir
 records each week's book and each year's list, then scores them against SPY and the list held equally, and writes
 artifacts/reports/rotation_track/tracker.md. Research only: no order is placed anywhere.
 
-    .venv/Scripts/python.exe scripts/v30_rotation_track.py
+    .venv/Scripts/python.exe scripts/trackers/v30_rotation_track.py
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research" / "investing"))
 import v22_bottleneck as bottleneck
 import v27_finrl_rotation as v
 from atlas.config import load_config

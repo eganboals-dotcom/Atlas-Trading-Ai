@@ -1,7 +1,7 @@
 """Pairs trading on the 300 companies and the 16 swing ETFs (see configs/pairs_v19.yaml, which holds the pre-registered
 tests), on the unseen days. Writes artifacts/reports/swing/v19_pairs.json.
 
-    .venv/Scripts/python.exe scripts/v19_pairs.py
+    .venv/Scripts/python.exe scripts/research/trading/v19_pairs.py
 """
 
 from __future__ import annotations

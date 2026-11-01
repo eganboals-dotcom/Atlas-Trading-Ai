@@ -1,4 +1,4 @@
-# v19: pairs trading, tested by scripts/v19_pairs.py on daily bars.
+# v19: pairs trading, tested by scripts/research/trading/v19_pairs.py on daily bars.
 #
 # The rule is Gatev, Goetzmann and Rouwenhorst (2006), "Pairs Trading: Performance of a Relative-Value Arbitrage Rule":
 # up to 11% a year on US stocks, 1962 to 2002. Later work found it fading: Do and Faff (2010, 2012) show more pairs never

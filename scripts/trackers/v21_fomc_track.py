@@ -3,8 +3,8 @@
 Downloads SPY's 14:00 bars for finished sessions (read-only Alpaca market data), scores new Fed decisions and writes
 artifacts/reports/fomc_track/tracker.md. Research only: no order is placed anywhere.
 
-    .venv/Scripts/python.exe scripts/v21_fomc_track.py
-    .venv/Scripts/python.exe scripts/v21_fomc_track.py check   # compares a fetch with the stored bars, and saves nothing
+    .venv/Scripts/python.exe scripts/trackers/v21_fomc_track.py
+    .venv/Scripts/python.exe scripts/trackers/v21_fomc_track.py check   # compares a fetch with the stored bars, and saves nothing
 """
 
 from __future__ import annotations

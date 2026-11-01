@@ -1,7 +1,7 @@
 """The rotation against chance on v31's list (see configs/random_picks_v33.yaml, which holds the pre-registered tests). Writes
 artifacts/reports/swing/v33_random_picks.json.
 
-    .venv/Scripts/python.exe scripts/v33_random_picks.py
+    .venv/Scripts/python.exe scripts/research/investing/v33_random_picks.py
 """
 
 from __future__ import annotations

@@ -2,13 +2,14 @@
 Replays the v24 tracker's code over v23's window, which gives the same figures as v23, and writes
 artifacts/reports/swing/v26_deflated_sharpe.json.
 
-    .venv/Scripts/python.exe scripts/v26_deflated_sharpe.py
+    .venv/Scripts/python.exe scripts/research/investing/v26_deflated_sharpe.py
 """
 
 from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -18,6 +19,7 @@ import numpy as np
 import polars as pl
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "trackers"))
 import v23_filings as f
 import v24_quality_track as tracker
 

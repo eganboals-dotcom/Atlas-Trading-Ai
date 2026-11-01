@@ -1,4 +1,4 @@
-# v16: late-day flow, tested by scripts/v16_late_day_flow.py on real 1-minute bars.
+# v16: late-day flow, tested by scripts/research/trading/v16_late_day_flow.py on real 1-minute bars.
 #
 # Leveraged ETFs must trade in the direction of the day's move near the close, in proportion to it (Barbon, Beckmeyer,
 # Buraschi and Moerke, 2022). So a big move by mid-afternoon should run on into the close. This is a simple price-only

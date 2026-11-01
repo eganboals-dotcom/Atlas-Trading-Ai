@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "trackers"))
 import v24_quality_track as track  # noqa: E402
 
 SYMBOLS = ["AAA", "BBB", "CCC", "DDD", "EEE"]

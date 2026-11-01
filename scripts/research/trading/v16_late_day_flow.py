@@ -3,7 +3,7 @@
 Writes artifacts/reports/swing/v16_late_day_flow.json. Reads local bars only; stops before the holdout. Unadjusted bars
 span stock splits, so a day whose previous close is more than 40% from its first price is skipped.
 
-    .venv/Scripts/python.exe scripts/v16_late_day_flow.py
+    .venv/Scripts/python.exe scripts/research/trading/v16_late_day_flow.py
 """
 
 from __future__ import annotations

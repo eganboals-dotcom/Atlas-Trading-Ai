@@ -1,4 +1,4 @@
-# v14: opening-range breakout on stocks in play, tested by scripts/v14_stocks_in_play.py.
+# v14: opening-range breakout on stocks in play, tested by scripts/research/trading/v14_stocks_in_play.py.
 #
 # The published rule is Zarattini, Barbon and Aziz (2024), "A Profitable Day Trading Strategy for the U.S. Equity
 # Market". Rules here follow summaries of the paper, not its text, and the sizing is simpler (see below).

@@ -1,4 +1,4 @@
-# v31: earnings quality and the rotation on a list with no survivor bias, tested by scripts/v31_point_in_time.py.
+# v31: earnings quality and the rotation on a list with no survivor bias, tested by scripts/research/investing/v31_point_in_time.py.
 #
 # Why: nearly every result so far rests on 300 companies picked around today's market, and v25's list holds only companies alive today.
 # Companies that failed or were bought are missing, so a rule can look better than it was. This list holds who was really there.

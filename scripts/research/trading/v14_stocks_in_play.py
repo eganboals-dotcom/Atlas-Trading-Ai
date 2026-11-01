@@ -4,8 +4,8 @@ fetch downloads, day by day and resumably, each company's first 5-minute bar and
 picks and random controls only (read-only Alpaca market data, stopping before the holdout). run scores them and
 writes artifacts/reports/swing/v14_stocks_in_play.json.
 
-    .venv/Scripts/python.exe scripts/v14_stocks_in_play.py fetch
-    .venv/Scripts/python.exe scripts/v14_stocks_in_play.py run
+    .venv/Scripts/python.exe scripts/research/trading/v14_stocks_in_play.py fetch
+    .venv/Scripts/python.exe scripts/research/trading/v14_stocks_in_play.py run
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# v23: four slow investing rules from company filings, on the 300 companies, tested by scripts/v23_filings.py.
+# v23: four slow investing rules from company filings, on the 300 companies, tested by scripts/research/investing/v23_filings.py.
 #
 # Why these: filings have given the steadiest results here, and turnover stays low.
 #   I buybacks: companies issuing shares have earned less, and those shrinking their count more (Pontiff and Woodgate, 2008; Fama

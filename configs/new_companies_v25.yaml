@@ -1,4 +1,4 @@
-# v25: earnings quality on companies it has never seen, and the rule against SPY, tested by scripts/v25_new_companies.py.
+# v25: earnings quality on companies it has never seen, and the rule against SPY, tested by scripts/research/investing/v25_new_companies.py.
 #
 # Why: v23's pass came from 300 survivors over heavily used years, and v24 needs about 5 years to answer. New companies over the same
 # years are the nearest thing to fresh evidence available now. Hold, the yardstick so far, is an equal-weight mix of the same survivors,

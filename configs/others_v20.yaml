@@ -1,4 +1,4 @@
-# v20: three strategies not yet tried here, tested by scripts/v20_others.py.
+# v20: three strategies not yet tried here, tested by scripts/research/trading/v20_others.py.
 #
 # PRE-REGISTERED 2026-10-31, written before any of these was run. A failed test stays failed. Nothing is tuned.
 # Days from 2026-04-28 on are never read. Six rules run across v19 and v20, so one false pass has about a 1 in 4 chance.

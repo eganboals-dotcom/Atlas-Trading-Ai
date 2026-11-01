@@ -3,7 +3,7 @@
 Reads the ETF bars the rotation tracker downloads first, records each week's book, scores them against SPY and its ETFs held equally, and
 writes artifacts/reports/etf_rotation_track/tracker.md. Research only: no order is placed anywhere.
 
-    .venv/Scripts/python.exe scripts/v32_etf_rotation_track.py
+    .venv/Scripts/python.exe scripts/trackers/v32_etf_rotation_track.py
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import numpy as np
 import polars as pl
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research" / "investing"))
 import v27_finrl_rotation as v
 import v30_rotation_track as base
 from atlas.swing.backtest import run as run_book, summary

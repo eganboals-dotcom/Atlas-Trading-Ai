@@ -1,7 +1,7 @@
 """Trying to break v29's monthly rotation. NOT pre-registered, and it passes or fails nothing: v29's tests stand as they ran. Run after seeing its
 result, because that result looked too good. Writes artifacts/reports/swing/v29_followup.json.
 
-    .venv/Scripts/python.exe scripts/v29_followup.py
+    .venv/Scripts/python.exe scripts/research/investing/v29_followup.py
 """
 
 from __future__ import annotations

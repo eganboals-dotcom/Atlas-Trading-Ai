@@ -1,4 +1,4 @@
-# v32: forward tracker for an ETF-only rotation. Run by scripts/v32_etf_rotation_track.py.
+# v32: forward tracker for an ETF-only rotation. Run by scripts/trackers/v32_etf_rotation_track.py.
 #
 # FROZEN 2026-10-31, before any scored day, at the user's request. The first run records a fingerprint of everything under rule:, v27's
 # settings and the code that builds a book. Later runs refuse to continue if any of it changes. A book stays as chosen once recorded. Research

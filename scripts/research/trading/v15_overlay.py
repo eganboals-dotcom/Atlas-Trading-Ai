@@ -3,7 +3,7 @@
 SPY and QQQ were picked after seeing their results, and the rule failed on the other 17 markets tried, so read this as
 a candidate to freeze and test on new days, not as evidence. Writes artifacts/reports/swing/v15_overlay.json.
 
-    .venv/Scripts/python.exe scripts/v15_overlay.py
+    .venv/Scripts/python.exe scripts/research/trading/v15_overlay.py
 """
 
 from __future__ import annotations

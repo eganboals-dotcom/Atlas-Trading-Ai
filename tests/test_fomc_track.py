@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("v21_fomc_track", ROOT / "scripts" / "v21_fomc_track.py")
+spec = importlib.util.spec_from_file_location("v21_fomc_track", ROOT / "scripts" / "trackers" / "v21_fomc_track.py")
 track = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(track)
 

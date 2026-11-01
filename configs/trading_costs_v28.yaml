@@ -1,4 +1,4 @@
-# v28: what a trade really costs in the names the rotation holds, measured by scripts/v28_trading_costs.py. A measurement, not a test.
+# v28: what a trade really costs in the names the rotation holds, measured by scripts/research/investing/v28_trading_costs.py. A measurement, not a test.
 #
 # v27's result swings about 7 points a year between 2 and 10 bps each way, so this samples the National Best Bid and Offer (SIP quotes)
 # in the names v27 traded, on Mondays, the day the rotation trades, across its window. The cost of a market order each way is taken as half

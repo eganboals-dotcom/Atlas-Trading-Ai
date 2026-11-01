@@ -1,7 +1,7 @@
 """v27's rotation traded monthly (see configs/monthly_rotation_v29.yaml, which holds the pre-registered tests). Writes
 artifacts/reports/swing/v29_monthly_rotation.json.
 
-    .venv/Scripts/python.exe scripts/v29_monthly_rotation.py
+    .venv/Scripts/python.exe scripts/research/investing/v29_monthly_rotation.py
 """
 
 from __future__ import annotations

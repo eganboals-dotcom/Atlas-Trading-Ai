@@ -3,7 +3,7 @@
 Recomputes the windows from the raw bars, then tries placebo dates, random dates, other markets, earlier exits and each
 event's weight in the mean. Days from 2026-04-28 on are never read. Writes artifacts/reports/swing/v20_followup.json.
 
-    .venv/Scripts/python.exe scripts/v20_followup.py
+    .venv/Scripts/python.exe scripts/research/trading/v20_followup.py
 """
 
 from __future__ import annotations

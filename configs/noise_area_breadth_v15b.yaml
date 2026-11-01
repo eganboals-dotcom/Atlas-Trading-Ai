@@ -1,6 +1,6 @@
-# v15b: does the Noise Area rule work beyond SPY and QQQ? Tested by scripts/v15b_noise_area_breadth.py.
+# v15b: does the Noise Area rule work beyond SPY and QQQ? Tested by scripts/research/trading/v15b_noise_area_breadth.py.
 #
-# v15 failed at 1 bp each way, then a follow-up (scripts/v15_followup.py) showed real SPY and QQQ spreads are far smaller
+# v15 failed at 1 bp each way, then a follow-up (scripts/research/trading/v15_followup.py) showed real SPY and QQQ spreads are far smaller
 # and QQQ looked good at those costs. Picking QQQ after seeing that would be selection, so this asks the question on
 # markets not yet looked at. The paper's FAQ says the rule works on other liquid ETFs and stocks.
 #

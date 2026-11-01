@@ -41,6 +41,9 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 ## Environment
 
 Windows, Python 3.12 venv at `.venv`. Always run from the repo root with `.venv/Scripts/python.exe`.
+`scripts/README.md` maps the scripts: launchers at the top (the Windows scheduled task points at them, so don't move them),
+frozen rules in `scripts/trackers/`, one-off tests in `scripts/research/`. Don't edit `scripts/research/trading/v15_noise_area.py`,
+`v18_holdout.py` or their two configs: their hashes are in the holdout ledger.
 
 ```bash
 .venv/Scripts/python.exe -m pytest            # full suite, about 25 s

@@ -1,4 +1,4 @@
-# v17: two momentum refinements with low turnover, on the 300 companies, tested by scripts/v17_low_turnover.py.
+# v17: two momentum refinements with low turnover, on the 300 companies, tested by scripts/research/trading/v17_low_turnover.py.
 #
 # Why these: strategies turning over less than about 50% a month keep their edge after costs far more often (Novy-Marx
 # and Velikov, 2016), and a "buy/hold spread" is the best way to cut trading. Plain momentum was tested in v4 and failed

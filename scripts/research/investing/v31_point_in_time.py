@@ -2,10 +2,10 @@
 the stored insider zips for who existed, then downloads daily bars (read-only, resumable). build joins them by company and downloads the
 filings of companies that ever reach the pool. check prints counts and the largest daily moves, and no rule's return. run writes the report.
 
-    .venv/Scripts/python.exe scripts/v31_point_in_time.py fetch
-    .venv/Scripts/python.exe scripts/v31_point_in_time.py build
-    .venv/Scripts/python.exe scripts/v31_point_in_time.py check
-    .venv/Scripts/python.exe scripts/v31_point_in_time.py run
+    .venv/Scripts/python.exe scripts/research/investing/v31_point_in_time.py fetch
+    .venv/Scripts/python.exe scripts/research/investing/v31_point_in_time.py build
+    .venv/Scripts/python.exe scripts/research/investing/v31_point_in_time.py check
+    .venv/Scripts/python.exe scripts/research/investing/v31_point_in_time.py run
 """
 
 from __future__ import annotations

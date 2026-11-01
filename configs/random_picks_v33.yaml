@@ -1,4 +1,4 @@
-# v33: does the rotation's choosing beat chance on the list with the failed companies in it? Run by scripts/v33_random_picks.py.
+# v33: does the rotation's choosing beat chance on the list with the failed companies in it? Run by scripts/research/investing/v33_random_picks.py.
 #
 # PRE-REGISTERED 2026-10-31, written before any random run on this list. It's a check of a rule already run, on used years, so even a full pass
 # proves nothing about the future. Only days after 2026-10-27 can do that. A failed test stays failed, nothing is tuned, and no frozen tracker

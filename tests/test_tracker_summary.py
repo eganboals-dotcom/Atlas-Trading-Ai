@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "trackers"))
 import tracker_summary as s  # noqa: E402
 
 SPY = pl.DataFrame(dict(date=[date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4)], close=[100.0, 110.0, 99.0]))

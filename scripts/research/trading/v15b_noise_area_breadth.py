@@ -1,8 +1,8 @@
 """The Noise Area rule on markets not yet looked at (see configs/noise_area_breadth_v15b.yaml, which holds the
-pre-registered tests). Reuses scripts/v15_noise_area.py unchanged. Writes artifacts/reports/swing/v15b_breadth.json.
+pre-registered tests). Reuses scripts/research/trading/v15_noise_area.py unchanged. Writes artifacts/reports/swing/v15b_breadth.json.
 
-    .venv/Scripts/python.exe scripts/v15b_noise_area_breadth.py fetch
-    .venv/Scripts/python.exe scripts/v15b_noise_area_breadth.py run
+    .venv/Scripts/python.exe scripts/research/trading/v15b_noise_area_breadth.py fetch
+    .venv/Scripts/python.exe scripts/research/trading/v15b_noise_area_breadth.py run
 """
 
 from __future__ import annotations

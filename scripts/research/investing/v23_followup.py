@@ -4,12 +4,13 @@ Asks who the rule holds, whether a few names or rebounds from write-offs drive i
 companies, and how it did on 2017-2018, before the window it was tested on. Days from 2026-04-28 on are never read.
 Writes artifacts/reports/swing/v23_followup.json.
 
-    .venv/Scripts/python.exe scripts/v23_followup.py
+    .venv/Scripts/python.exe scripts/research/investing/v23_followup.py
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -17,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "research" / "trading"))
 import v19_pairs as pairs
 import v22_bottleneck as bottleneck
 import v23_filings as f

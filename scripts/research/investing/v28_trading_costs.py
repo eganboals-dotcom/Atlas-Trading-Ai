@@ -1,8 +1,8 @@
 """Half the quoted spread in the names v27 traded (see configs/trading_costs_v28.yaml). A measurement, not a test. fetch samples SIP quotes
 (read-only, resumable). report writes artifacts/reports/swing/v28_trading_costs.json.
 
-    .venv/Scripts/python.exe scripts/v28_trading_costs.py fetch
-    .venv/Scripts/python.exe scripts/v28_trading_costs.py report
+    .venv/Scripts/python.exe scripts/research/investing/v28_trading_costs.py fetch
+    .venv/Scripts/python.exe scripts/research/investing/v28_trading_costs.py report
 """
 
 from __future__ import annotations

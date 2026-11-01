@@ -2,9 +2,9 @@
 tests). fetch reads the companies' SEC filings, then daily bars for those with the figures the rule needs (read-only, resumable).
 check prints eligible counts and the largest daily moves, and no rule's return. run writes artifacts/reports/swing/v25_new_companies.json.
 
-    .venv/Scripts/python.exe scripts/v25_new_companies.py fetch
-    .venv/Scripts/python.exe scripts/v25_new_companies.py check
-    .venv/Scripts/python.exe scripts/v25_new_companies.py run
+    .venv/Scripts/python.exe scripts/research/investing/v25_new_companies.py fetch
+    .venv/Scripts/python.exe scripts/research/investing/v25_new_companies.py check
+    .venv/Scripts/python.exe scripts/research/investing/v25_new_companies.py run
 """
 
 from __future__ import annotations

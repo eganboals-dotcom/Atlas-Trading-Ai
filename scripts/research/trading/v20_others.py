@@ -1,7 +1,7 @@
 """The pre-FOMC drift, same-month seasonality and long-short trend following (see configs/others_v20.yaml, which holds
 the pre-registered tests). Writes artifacts/reports/swing/v20_others.json.
 
-    .venv/Scripts/python.exe scripts/v20_others.py
+    .venv/Scripts/python.exe scripts/research/trading/v20_others.py
 """
 
 from __future__ import annotations

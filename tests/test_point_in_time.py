@@ -11,7 +11,7 @@ import polars as pl
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "research" / "investing"))
 import v31_point_in_time as pit  # noqa: E402
 
 

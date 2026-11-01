@@ -1,4 +1,4 @@
-# v22: buying bottlenecks in growing sectors, a slow investing rule on the 300 companies, tested by scripts/v22_bottleneck.py.
+# v22: buying bottlenecks in growing sectors, a slow investing rule on the 300 companies, tested by scripts/research/investing/v22_bottleneck.py.
 #
 # The idea is the user's: when a sector grows faster than supply, the companies at the choke point should raise prices. No study
 # tests this exact rule, so it's a plain translation. The case against it: high profits attract new capacity (the "capital cycle"),

@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "trackers"))
 import v27_finrl_rotation as rot  # noqa: E402
 import v32_etf_rotation_track as track  # noqa: E402
 

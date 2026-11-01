@@ -1,4 +1,4 @@
-# v30: forward tracker for the rotation. Run by scripts/v30_rotation_track.py.
+# v30: forward tracker for the rotation. Run by scripts/trackers/v30_rotation_track.py.
 #
 # FROZEN 2026-10-31, before any scored day, at the user's request. The first run records a fingerprint of everything under rule:, the 300
 # companies, v27's rule settings, the code that builds a book and the code that splits it across sleeves. Later runs refuse to continue if

@@ -2,7 +2,7 @@
 
 Writes artifacts/reports/swing/v13_open_fade.json. Reads local bars only; stops before the holdout.
 
-    .venv/Scripts/python.exe scripts/v13_open_fade.py
+    .venv/Scripts/python.exe scripts/research/trading/v13_open_fade.py
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ Reads the 300 companies' daily bars, which the 300-company tracker downloads fir
 filings (read-only) and records the next book, then scores each book against Hold and writes
 artifacts/reports/quality_track/tracker.md. Research only: no order is placed anywhere.
 
-    .venv/Scripts/python.exe scripts/v24_quality_track.py
+    .venv/Scripts/python.exe scripts/trackers/v24_quality_track.py
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import numpy as np
 import polars as pl
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research" / "investing"))
 import v23_filings as f
 from atlas.config import load_config
 from atlas.feeds import sec

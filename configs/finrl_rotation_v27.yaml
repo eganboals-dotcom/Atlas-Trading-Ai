@@ -1,4 +1,4 @@
-# v27: a copy of FinRL-Trading's Adaptive Rotation, run by scripts/v27_finrl_rotation.py.
+# v27: a copy of FinRL-Trading's Adaptive Rotation, run by scripts/research/investing/v27_finrl_rotation.py.
 #
 # PRE-REGISTERED: written before any bar was fetched for this test and before any of its returns was computed. FinRL's own code was
 # read, as text, and none of it was installed or run. This is our own version of the rule.

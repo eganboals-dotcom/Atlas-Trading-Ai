@@ -1,12 +1,13 @@
 """Bottlenecks in growing sectors (see configs/bottleneck_v22.yaml, which holds the pre-registered tests), on the unseen
 days. Writes artifacts/reports/swing/v22_bottleneck.json.
 
-    .venv/Scripts/python.exe scripts/v22_bottleneck.py
+    .venv/Scripts/python.exe scripts/research/investing/v22_bottleneck.py
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import numpy as np
 import polars as pl
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "research" / "trading"))
 import v19_pairs as pairs
 from atlas.swing.backtest import run, simulate, summary
 from atlas.swing.data import load_panel

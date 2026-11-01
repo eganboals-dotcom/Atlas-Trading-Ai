@@ -1,7 +1,7 @@
 """Residual momentum and the 52-week high with a buy/hold band (see configs/low_turnover_v17.yaml, which holds the
 pre-registered tests), on the unseen days. Writes artifacts/reports/swing/v17_low_turnover.json.
 
-    .venv/Scripts/python.exe scripts/v17_low_turnover.py
+    .venv/Scripts/python.exe scripts/research/trading/v17_low_turnover.py
 """
 
 from __future__ import annotations

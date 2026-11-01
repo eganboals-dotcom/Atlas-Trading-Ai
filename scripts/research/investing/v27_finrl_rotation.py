@@ -2,9 +2,9 @@
 fetch stores daily bars (read-only). fidelity compares the copy with FinRL's published figures under FinRL's own accounting, which is not a
 test. run writes artifacts/reports/swing/v27_finrl_rotation.json.
 
-    .venv/Scripts/python.exe scripts/v27_finrl_rotation.py fetch
-    .venv/Scripts/python.exe scripts/v27_finrl_rotation.py fidelity
-    .venv/Scripts/python.exe scripts/v27_finrl_rotation.py run
+    .venv/Scripts/python.exe scripts/research/investing/v27_finrl_rotation.py fetch
+    .venv/Scripts/python.exe scripts/research/investing/v27_finrl_rotation.py fidelity
+    .venv/Scripts/python.exe scripts/research/investing/v27_finrl_rotation.py run
 """
 
 from __future__ import annotations

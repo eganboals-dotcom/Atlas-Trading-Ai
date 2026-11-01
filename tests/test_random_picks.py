@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "research" / "investing"))
 import v27_finrl_rotation as v  # noqa: E402
 import v33_random_picks as r  # noqa: E402
 

@@ -1,4 +1,4 @@
-# v24: forward tracker for earnings quality, the one rule to pass all five tests in v23. Run by scripts/v24_quality_track.py.
+# v24: forward tracker for earnings quality, the one rule to pass all five tests in v23. Run by scripts/trackers/v24_quality_track.py.
 #
 # FROZEN 2026-10-31, before any scored day. The first run records a fingerprint of everything under rule:, the 300 companies, the
 # filing settings of configs/filings_v23.yaml and the code that scores a company. Later runs refuse to continue if any of it changes.

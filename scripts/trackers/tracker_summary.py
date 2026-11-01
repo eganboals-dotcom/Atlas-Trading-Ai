@@ -2,7 +2,7 @@
 and changes nothing, so no frozen rule is touched. SPY's column is a yardstick here and no part of any verdict. Writes
 artifacts/reports/summary/latest.md. Research only: no order is placed anywhere.
 
-    .venv/Scripts/python.exe scripts/tracker_summary.py
+    .venv/Scripts/python.exe scripts/trackers/tracker_summary.py
 """
 
 from __future__ import annotations

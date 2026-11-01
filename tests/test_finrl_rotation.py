@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "research" / "investing"))
 import v27_finrl_rotation as rot  # noqa: E402
 import v29_monthly_rotation as slow  # noqa: E402
 from atlas.swing.data import Panel  # noqa: E402

@@ -4,7 +4,7 @@ v15's 1 bp was far above the paper's cost and the result hangs on it, so this me
 sampled SIP quotes (data/processed/alpaca_sip_hist) and shows the rule at several costs, by year next to the paper's own
 table, after publication, and added on top of Hold. Writes artifacts/reports/swing/v15_followup.json.
 
-    .venv/Scripts/python.exe scripts/v15_followup.py
+    .venv/Scripts/python.exe scripts/research/trading/v15_followup.py
 """
 
 from __future__ import annotations

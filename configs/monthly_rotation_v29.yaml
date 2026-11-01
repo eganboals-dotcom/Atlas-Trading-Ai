@@ -1,4 +1,4 @@
-# v29: v27's rotation traded monthly instead of weekly, run by scripts/v29_monthly_rotation.py.
+# v29: v27's rotation traded monthly instead of weekly, run by scripts/research/investing/v29_monthly_rotation.py.
 #
 # PRE-REGISTERED, with limits. Written before any monthly return was computed, but after v27's results on the same window, including that
 # costs took about 8 points a year and that holding the list made a higher Sharpe than rotating it. So the idea came from this window,

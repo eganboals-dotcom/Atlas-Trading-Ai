@@ -34,11 +34,11 @@ if /i "%~1"=="auto" (
   "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_u300.yaml >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_signals.yaml >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_v12.yaml >> artifacts\reports\swing_track\runs.log 2>&1
-  "%PY%" scripts\v21_fomc_track.py >> artifacts\reports\swing_track\runs.log 2>&1
-  "%PY%" scripts\v24_quality_track.py >> artifacts\reports\swing_track\runs.log 2>&1
-  "%PY%" scripts\v30_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
-  "%PY%" scripts\v32_etf_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
-  "%PY%" scripts\tracker_summary.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\v21_fomc_track.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\v24_quality_track.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\v30_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\v32_etf_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\tracker_summary.py >> artifacts\reports\swing_track\runs.log 2>&1
   exit /b %ERRORLEVEL%
 )
 "%PY%" -m atlas.cli --log-level WARNING news-desk --config configs\news_desk.yaml
@@ -48,11 +48,11 @@ if /i "%~1"=="auto" (
 "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_u300.yaml
 "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_signals.yaml
 "%PY%" -m atlas.cli --log-level WARNING swing-track --config configs\swing_track_v12.yaml
-"%PY%" scripts\v21_fomc_track.py
-"%PY%" scripts\v24_quality_track.py
-"%PY%" scripts\v30_rotation_track.py
-"%PY%" scripts\v32_etf_rotation_track.py
-"%PY%" scripts\tracker_summary.py
+"%PY%" scripts\trackers\v21_fomc_track.py
+"%PY%" scripts\trackers\v24_quality_track.py
+"%PY%" scripts\trackers\v30_rotation_track.py
+"%PY%" scripts\trackers\v32_etf_rotation_track.py
+"%PY%" scripts\trackers\tracker_summary.py
 echo.
 echo Reports: artifacts\reports\swing_track\tracker.md, artifacts\reports\swing_track_news\tracker.md
 echo          artifacts\reports\swing_track_fund\tracker.md, artifacts\reports\swing_track_u300\tracker.md
