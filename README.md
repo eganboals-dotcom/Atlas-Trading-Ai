@@ -1140,7 +1140,9 @@ auto` is the unattended form for a scheduled task. `scripts/nightly_wake.ps1` wr
 motherboard's alarm ("Power On By RTC") switches on: it waits for the internet, starts Ollama if needed,
 keeps the PC awake while the research runs, then shuts it down (`-After sleep` sleeps it; `-After none`
 leaves it on). It stays on if someone is signed in or used the PC in the last 10 minutes, or a live paper
-session is running. Each step is logged to `artifacts/reports/swing_track/runs.log`.
+session is running. With `-Trade` it also starts the day's paper session on weekdays with no window, and waits
+for it to end; the "Atlas daily research" task runs it this way at 5:35 am Pacific. `scripts/open_leaderboard.ps1`
+shows that session at sign-in and at 5:40 am. Each step is logged to `artifacts/reports/swing_track/runs.log`.
 
 **Baselines.** These are scored every run, but they are never bred or selected:
 * cash (never trades)

@@ -60,7 +60,9 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
    tool timeout:
    `.venv/Scripts/python.exe -m atlas.cli --log-level WARNING paper --config configs/paper_live.yaml --auto-resume`
    It waits for the open by itself and opens the live leaderboard window (a native, read-only app window).
-   Reopen it any time with `paper-window --config configs/paper_live.yaml`.
+   Reopen it any time with `paper-window --config configs/paper_live.yaml`. On weekdays the "Atlas daily
+   research" task starts the session itself at 5:35 am Pacific with no window (`nightly_wake.ps1 -Trade`), so
+   check for a running session before starting one.
 3. **Monitor.** This is read-only. Use `paper-status` for a one-shot leaderboard; `paper-watch` is the live,
    refreshing view, and is what the leaderboard window runs:
    `.venv/Scripts/python.exe -m atlas.cli paper-status --config configs/paper_live.yaml`

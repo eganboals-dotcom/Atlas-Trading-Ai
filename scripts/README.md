@@ -10,7 +10,9 @@ These stay here because the Windows scheduled task and the desktop shortcut poin
 | --- | --- |
 | `start_live_paper.cmd`, `start_live_paper.ps1` | Start the paper trading session |
 | `swing_track.cmd` | The daily research run, every tracker in order |
-| `nightly_wake.ps1` | The scheduled task's job: wakes the PC, runs `swing_track.cmd auto`, shuts down |
+| `nightly_wake.ps1` | The scheduled task's job: runs `swing_track.cmd auto`, with `-Trade` also the day's paper session, then shuts down |
+| `open_leaderboard.ps1` | Opens the leaderboard for that session, at sign-in and at 5:40 am |
+| `set_morning_task.ps1` | Moves the scheduled task to 5:35 am with `-Trade`; run once as administrator |
 
 ## trackers/
 
