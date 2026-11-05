@@ -13,7 +13,7 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
   (the default AI news reader: Ollama on this PC's loopback address only, no proxies or redirects, `urllib`),
   `src/atlas/feeds/anthropic_api.py` (the optional Claude reader's `messages.create` calls, `anthropic`; it uses
   paid credits, and the user chose the free local model instead), `src/atlas/feeds/sec.py` (SEC EDGAR
-  filings and the quarterly insider-transactions zips, `urllib` GET), and `src/atlas/feeds/finra.py` (FINRA's
+  filings, the quarterly insider-transactions zips and, since 2026-11-05, 10-K pages, `urllib` GET), and `src/atlas/feeds/finra.py` (FINRA's
   public short-interest files, `urllib` GET). Never add another. The tests in `tests/test_paper_cannot_trade_live.py` enforce
   this; never weaken them to make something pass.
 - **Keys stay in `.env`.** Alpaca market-data keys, `ANTHROPIC_API_KEY` (AI news reader) and `SEC_USER_AGENT`

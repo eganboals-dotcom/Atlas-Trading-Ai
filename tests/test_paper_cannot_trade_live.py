@@ -164,6 +164,41 @@ def test_sec_module_can_only_GET_public_edgar_files(monkeypatch) -> None:
         sec.user_agent(env_file=None)
 
 
+def test_sec_page_getter_reads_only_one_filings_pages() -> None:
+    """Since 2026-11-05: a filing's index page and its .htm documents, for v35; nothing else on EDGAR or anywhere."""
+    from atlas.feeds import sec
+
+    get_page = sec.http_get_page("Atlas test test@example.com")
+    doc = "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm"
+    index = "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/0000320193-20-000096-index.htm"
+    assert sec._allowed(doc, "page") and sec._allowed(index, "page")
+    for bad in ("https://api.alpaca.markets/v2/orders", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany",
+                "https://data.sec.gov/submissions/CIK0000320193.json", "https://www.sec.gov/files/company_tickers.json",
+                "https://www.sec.gov/Archives/edgar/full-index/2020/QTR1/form.idx", doc + "?x=1", doc.replace("https", "http"),
+                doc.replace(".htm", ".txt"), doc.replace("https://www.sec.gov", "https://evil.example"),
+                "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/../../../../cgi-bin/x.htm",
+                "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/sub/x.htm"):
+        with pytest.raises(PermissionError):
+            get_page(bad)
+    for url in (doc, index):  # and the other getters still refuse these pages
+        with pytest.raises(PermissionError):
+            sec.http_get("Atlas test test@example.com")(url)
+        with pytest.raises(PermissionError):
+            sec.http_get_file("Atlas test test@example.com")(url)
+
+
+def test_the_10k_document_is_read_from_the_filing_index() -> None:
+    from atlas.feeds import sec
+
+    page = b"""<table><tr><th>Seq</th><th>Description</th><th>Document</th><th>Type</th><th>Size</th></tr>
+    <tr><td scope="row">1</td><td scope="row">10-K</td><td scope="row"><a href="/ix?doc=/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm">aapl-20200926.htm</a></td><td scope="row">10-K</td><td>1</td></tr>
+    <tr><td scope="row">2</td><td scope="row">EX-21.1</td><td scope="row"><a href="/Archives/edgar/data/320193/000032019320000096/a10-kexhibit2112020.htm">x</a></td><td scope="row">EX-21.1</td><td>1</td></tr></table>"""
+    asked = []
+    assert sec.ten_k_document(lambda u: asked.append(u) or page, 320193, "0000320193-20-000096") == "aapl-20200926.htm"
+    assert asked == ["https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/0000320193-20-000096-index.htm"]
+    assert sec.ten_k_document(lambda u: page.replace(b">10-K</td><td>1", b">10-Q</td><td>1"), 320193, "0000320193-20-000096") is None
+
+
 def test_local_ai_module_can_only_reach_ollama_on_this_pc(monkeypatch) -> None:
     """Loopback only, two Ollama paths only, no proxies (an HTTP_PROXY would carry headlines off the PC)."""
     import json

@@ -1086,6 +1086,23 @@ January 2026, +17.7% against +1.8%, when gold and silver ran; from 2019 to 2024 
 equally made +15.9% with a Sharpe of 1.12, so on these years the rule would fail its own verdict against that yardstick. These are also the
 years its idea came from. v32 doesn't change, and only its days after 2026-11-02 count.
 
+**Annual reports that barely changed (v35).** "Lazy Prices" (Cohen, Malloy and Nguyen, 2020) found that companies whose 10-K text changes a lot
+from the year before earn less afterwards. Pre-registered on 2026-11-05 before any 10-K was downloaded ([configs/lazy_prices_v35.yaml](configs/lazy_prices_v35.yaml),
+`python scripts/research/investing/v35_lazy_prices.py fetch`, then `check` and `run`). For this, the SEC module was allowed to read a filing's index
+page and its documents, nothing else. Every 63 sessions, the 300 companies are scored by the cosine similarity of the word counts of their latest
+10-K and the year before's, 2,705 reports in all, and the least changed fifth is held equally, 2 bps each way. It failed 3 of 6:
+
+| | Return/yr | Sharpe | Worst fall |
+|---|---|---|---|
+| Least changed fifth | +16.4% | 0.69 | 42.8% |
+| Most changed fifth | +13.8% | 0.59 | 41.6% |
+| Hold (the 300) | +15.7% | 0.68 | 39.8% |
+| SPY | +16.6% | 0.76 | 33.8% |
+
+The direction is the paper's: the least changed beat the most changed by 2.6 points a year, and picking within each sector did too. But the
+lead over Hold was 0.8 points a year, it vanished without 2021 and 2025, it didn't beat Hold in both halves of the window, and it lost to SPY. At that
+size it would take about 119 years of days to tell it from luck. It isn't tracked. Results in `artifacts/reports/swing/v35_lazy_prices.json`.
+
 **All the trackers on one page.** `python scripts/trackers/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
 is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market. It also flags any one-day move of 45% or more in the trackers' bars since

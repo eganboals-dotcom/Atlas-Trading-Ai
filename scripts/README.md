@@ -58,6 +58,7 @@ One-off tests of slower ideas.
 | `v31_point_in_time.py` | The list with the failed companies in it | Earnings quality 4 of 6; rotation 2 of 2 |
 | `v33_random_picks.py` | The rotation against chance | Ranking failed; choosing groups passed |
 | `v34_etf_rotation_history.py` | The ETF-only rotation on history, after it was frozen | An estimate: +17.1% a year vs SPY's +16.4%, mostly 2025 |
+| `v35_lazy_prices.py` | Annual reports that barely changed ("Lazy Prices") | Failed 3 of 6: right direction, too small, lost to SPY |
 
 `research/build_report.py` draws the charts for the write-up in `docs/report/`.
 

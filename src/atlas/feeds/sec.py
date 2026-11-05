@@ -7,6 +7,9 @@ HTTP GET only, on public, free SEC files (SEC "EDGAR APIs" and "Insider Transact
     GET https://www.sec.gov/files/<structureddata|datastandardsinnovation>/data/insider-transactions-data-sets/
         YYYYqN_form345.zip                                                Forms 3, 4 and 5 for one quarter
         (added with the user's approval on 2026-10-28, for the insider-buying research)
+    GET https://www.sec.gov/Archives/edgar/data/<CIK>/<accession>/<accession>-index.htm    one filing's list of documents
+    GET https://www.sec.gov/Archives/edgar/data/<CIK>/<accession>/<document>.htm           one document of that filing
+        (added with the user's approval on 2026-11-05, to read annual reports' text for the v35 research)
 
 The SEC requires a User-Agent naming who is asking, with a contact email ("Sample Company AdminContact@
 sample.com"). It is read from ``SEC_USER_AGENT`` (environment or the git-ignored .env, via
@@ -34,14 +37,19 @@ INSIDER_FOLDERS = ("structureddata", "datastandardsinnovation")  # the SEC moved
 _INSIDER_RE = re.compile(re.escape("https://www.sec.gov/files/") + r"(structureddata|datastandardsinnovation)/data/"
                          r"insider-transactions-data-sets/\d{4}q[1-4]_form345\.zip")
 _FACTS_RE = re.compile(re.escape(FACTS_URL.split("CIK")[0]) + r"CIK\d{10}\.json")
+ARCHIVE = "https://www.sec.gov/Archives/edgar/data/"
+# A filing's index page, or one .htm document in it; no other folder, no query and no path above the filing's folder.
+_PAGE_RE = re.compile(re.escape(ARCHIVE) + r"\d{1,10}/\d{18}/(\d{10}-\d{2}-\d{6}-index|[A-Za-z0-9_-][A-Za-z0-9_.-]*)\.htm")
 
 Get = Callable[[str], dict[str, Any]]
 GetFile = Callable[[str], bytes]
 
 
-def _allowed(url: str, files: bool) -> bool:
-    if files:
+def _allowed(url: str, kind: str) -> bool:
+    if kind == "zip":
         return _INSIDER_RE.fullmatch(url) is not None
+    if kind == "page":
+        return _PAGE_RE.fullmatch(url) is not None
     return url == TICKERS_URL or _FACTS_RE.fullmatch(url) is not None
 
 
@@ -53,17 +61,19 @@ def user_agent(env_file: Path | None = Path(".env")) -> str:
     return ua
 
 
-def _downloader(ua: str, timeout_s: float, min_interval_s: float, files: bool) -> Callable[[str], bytes]:
+ACCEPT = {"json": "application/json", "zip": "application/zip", "page": "text/html"}
+
+
+def _downloader(ua: str, timeout_s: float, min_interval_s: float, kind: str) -> Callable[[str], bytes]:
     last = [0.0]
 
     def fetch(url: str) -> bytes:
-        if not _allowed(url, files):
+        if not _allowed(url, kind):
             raise PermissionError(f"refusing non-EDGAR url {url!r}")
         wait = last[0] + min_interval_s - time.monotonic()
         if wait > 0:
             time.sleep(wait)
-        req = urllib.request.Request(url, method="GET", headers={
-            "User-Agent": ua, "Accept": "application/zip" if files else "application/json"})
+        req = urllib.request.Request(url, method="GET", headers={"User-Agent": ua, "Accept": ACCEPT[kind]})
         for attempt in range(5):
             try:
                 with urllib.request.urlopen(req, timeout=timeout_s) as resp:
@@ -83,13 +93,30 @@ def _downloader(ua: str, timeout_s: float, min_interval_s: float, files: bool) -
 
 def http_get(ua: str, timeout_s: float = 60.0, min_interval_s: float = 0.25) -> Get:
     """JSON from the ticker file or a company's facts; nothing else."""
-    fetch = _downloader(ua, timeout_s, min_interval_s, files=False)
+    fetch = _downloader(ua, timeout_s, min_interval_s, "json")
     return lambda url: json.loads(fetch(url).decode("utf-8"))
 
 
 def http_get_file(ua: str, timeout_s: float = 300.0, min_interval_s: float = 1.0) -> GetFile:
     """The bytes of one quarter's insider-transactions zip; nothing else."""
-    return _downloader(ua, timeout_s, min_interval_s, files=True)
+    return _downloader(ua, timeout_s, min_interval_s, "zip")
+
+
+def http_get_page(ua: str, timeout_s: float = 120.0, min_interval_s: float = 0.25) -> GetFile:
+    """The bytes of one filing's index page or one .htm document of a filing; nothing else."""
+    return _downloader(ua, timeout_s, min_interval_s, "page")
+
+
+def ten_k_document(get_page: GetFile, cik: int, accession: str) -> str | None:
+    """The file name of a filing's 10-K document, read from its index page; None if it lists none."""
+    folder = f"{ARCHIVE}{cik}/{accession.replace('-', '')}/"
+    html = get_page(f"{folder}{accession}-index.htm").decode("utf-8", "replace")
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S | re.I):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S | re.I)
+        link = re.search(r'href="[^"]*/([A-Za-z0-9_.-]+\.htm)"', row)
+        if link and len(cells) >= 4 and re.sub(r"<[^>]+>", "", cells[3]).strip() in ("10-K", "10-K405"):
+            return link.group(1)
+    return None
 
 
 def insider_zip(get_file: GetFile, year: int, quarter: int) -> bytes | None:
