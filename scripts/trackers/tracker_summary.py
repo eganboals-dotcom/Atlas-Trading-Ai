@@ -35,7 +35,9 @@ BACKTEST = {
                                                   "+15.5% on newer companies (v25), where it failed"),
     "Rotation": dict(per_year=0.307, note="v29, the monthly form; +17.5% to +34.1% depending on the trading week and +17.2% with broader "
                                           "lists; the tracked four-sleeve form never ran on history"),
-    "ETF rotation": dict(per_year=None, note="never run on history, on purpose: days already seen can't prove it"),
+    "ETF rotation": dict(per_year=0.171, note="v34, run after the rule was frozen, so an estimate and not a test: +16.4% for SPY on the same days, "
+                                              "but about +10% a year to SPY's +16% before 2025's metals rally, and its ETFs held equally made +15.9% "
+                                              "with steadier returns"),
 }
 
 
@@ -101,10 +103,10 @@ def weights(text: str) -> dict[str, float]:
 def bot(label: str, text: str, spy: pl.DataFrame) -> dict:
     """A rule as an account of START dollars of pretend money, net of the tracker's costs."""
     row = table_row(text, label)
-    invested = re.search(r"invested (\d+%)", text)
+    held = weights(text)  # every sleeve together; the text's "invested N%" is only the newest sleeve's budget
     moved = spy_return(spy, row["first"], row["last"]) if row else None
-    return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START, invested=invested[1] if invested else "100%",
-                holds=holdings(text), since=row["first"] if row else None, weights=weights(text))
+    return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START,
+                invested=f"{min(sum(held.values()), 1.0):.0%}" if held else "100%", holds=holdings(text), since=row["first"] if row else None, weights=held)
 
 
 def closes(symbols: list[str], day: date) -> dict[str, float]:

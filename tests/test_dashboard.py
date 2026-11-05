@@ -22,6 +22,24 @@ def test_dashboard_imports_nothing_that_can_trade() -> None:
                 assert not m.startswith(FORBIDDEN), f"{path.name} imports {m}"
 
 
+def test_investing_tab_keeps_todays_path_for_the_trend(tmp_path, monkeypatch) -> None:
+    from atlas.dashboard import window
+
+    summary = tmp_path / "artifacts" / "reports" / "summary"
+    summary.mkdir(parents=True)
+    (summary / "bots.json").write_text(json.dumps(dict(prices_through="2026-11-04", closes={"SPY": 100.0},
+        bots=[dict(name="SPY", value=100_000.0, weights={"SPY": 1.0})])), encoding="utf-8")
+    prices = iter([99.0, 99.0, 98.0])
+    trade = lambda p, t: {"trades": {"SPY": {"p": p, "t": t}}}  # noqa: E731
+    times = iter(["2026-11-05T15:00:00Z", "2026-11-05T15:00:00Z", "2026-11-05T15:01:00Z"])
+    api = window.Api(tmp_path / "artifacts" / "paper" / "live_2026-11-05", fetch=lambda path, q: trade(next(prices), next(times)))
+    clock = iter([0.0, 30.0, 60.0])
+    monkeypatch.setattr(window.time, "monotonic", lambda: next(clock))
+    for _ in range(3):
+        d = api.investing()
+    assert [round(v["SPY"]) for _, v in d["intraday"]] == [99_000, 98_000]  # a repeated trade adds no point
+
+
 def test_investing_tab_marks_each_account_to_the_latest_trades(tmp_path: Path) -> None:
     from atlas.dashboard.window import Api, mark
 
@@ -37,6 +55,8 @@ def test_investing_tab_marks_each_account_to_the_latest_trades(tmp_path: Path) -
 
     asked = []
     fake = lambda path, params: asked.append((path, params)) or {"trades": {"SPY": {"p": 99.0, "t": "2026-11-05T15:00:00Z"}}}
+    from atlas.dashboard import window
+
     summary = tmp_path / "artifacts" / "reports" / "summary"
     summary.mkdir(parents=True)
     (summary / "bots.json").write_text(json.dumps(d), encoding="utf-8")

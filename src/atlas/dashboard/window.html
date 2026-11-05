@@ -433,7 +433,9 @@ function renderInvest(d) {
   document.getElementById("iRows").innerHTML = bots.map(b => {
     const bench = b.role === "benchmark", r = bench ? '<span class="rank">B</span>' : `<span class="rank ${++rank <= 3 ? "r" + rank : ""}">${rank}</span>`;
     const today = b.now - b.value, tot = b.now - d.start, vs = spy ? b.now - spy.now : null, bt = b.backtest.per_year;
-    const pts = daysOf(d, b);
+    // While the market is open the trend is today's path from the last close, as on the paper board; otherwise every day so far.
+    const path = (d.intraday || []).filter(([, v]) => v[b.name] != null).map(([, v], i) => [i, v[b.name]]);
+    const trend = path.length > 1 ? spark([[-1, b.value], ...path], b.value) : spark(daysOf(d, b).map((p, i) => [i, p[1]]), d.start);
     return `<tr class="${bench ? "bench" : "bot"}">
       <td>${r}</td>
       <td><div class="name"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${iColorOf(b)};margin-right:8px"></span>${esc(b.name)}</div>
@@ -443,7 +445,7 @@ function renderInvest(d) {
       <td class="num"><div class="pnl ${sign(tot)}">${money(tot)}</div><div class="ret flat">${pct(tot / d.start)}</div></td>
       <td class="num"><span class="pnl ${bench ? "flat" : sign(vs)}">${bench ? "—" : money(vs)}</span></td>
       <td class="num">${bt == null ? '<span class="flat">none</span>' : pct(bt, 1)}</td>
-      <td>${spark(pts.map((p, i) => [i, p[1]]), d.start)}</td>
+      <td>${trend}</td>
       <td class="num">${esc(b.invested)}</td></tr>`;
   }).join("");
 
@@ -485,11 +487,10 @@ async function tick() {
     if (d && d.live) render(d);
   } catch (e) { console.error(e); }
 }
-async function investTick() {
-  if (tab !== "invest") return;
-  try { renderInvest(await window.pywebview.api.investing()); } catch (e) { console.error(e); }
+async function investTick() {  // asks even while hidden, so today's trend has no gap; draws only when shown
+  try { const d = await window.pywebview.api.investing(); if (tab === "invest") renderInvest(d); } catch (e) { console.error(e); }
 }
-window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); setInterval(investTick, 10000); });
+window.addEventListener("pywebviewready", () => { tick(); investTick(); setInterval(tick, 1000); setInterval(investTick, 10000); });
 window.addEventListener("resize", () => investTick());
 window.addEventListener("resize", () => tick());
 </script>

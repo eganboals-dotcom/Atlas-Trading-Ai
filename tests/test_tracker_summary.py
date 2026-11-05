@@ -64,7 +64,7 @@ def test_the_window_gets_each_bot_with_its_backtest_and_spy() -> None:
     assert (d["prices_through"], d["start"], d["spy_backtest"], d["days"]) == ("2026-11-04", 100_000, 0.166, 2)
     assert [b["name"] for b in d["bots"]] == ["Earnings quality", "ETF rotation", "SPY"]  # best account first, then the market
     assert d["bots"][0]["since"] == "2026-11-03" and d["bots"][0]["backtest"]["per_year"] == 0.231
-    assert d["bots"][1]["since"] is None and d["bots"][1]["backtest"]["per_year"] is None  # never backtested, on purpose
+    assert d["bots"][1]["since"] is None and d["bots"][1]["backtest"]["per_year"] == 0.171  # v34, an estimate run after the freeze
     assert d["bots"][2]["value"] == pytest.approx(99_000) and d["bots"][2]["since"] == "2026-11-03"  # same money, same first day
 
 
@@ -88,6 +88,11 @@ def test_a_bot_with_no_days_still_has_its_money() -> None:
     assert (b["value"], b["spy"], b["invested"], b["since"]) == (100_000.0, 100_000.0, "70%", None)
     assert b["holds"] == "F 35.0%, GLD 35.0%"
     assert "not yet" in s.bot_lines([b])[6]
+
+
+def test_invested_counts_every_sleeve_not_just_the_newest() -> None:
+    text = "Book 2, from the close of 2026-11-06: groups growth, invested 100%. Replaces sleeve 2 of 4.\n\nCombined weights: A 40.0%, B 37.5%\n"
+    assert s.bot("Rotation", text, SPY)["invested"] == "78%"  # one sleeve at 100%, three still at 70%
 
 
 def test_a_quality_bot_lists_its_companies() -> None:

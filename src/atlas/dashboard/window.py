@@ -34,6 +34,7 @@ class Api:
         self._fetch = fetch  # tests pass a fake; the window reads .env on first use
         self._asked = -LIVE_EVERY_S
         self._live: dict[str, Any] = {}
+        self._today: list[tuple[str, dict[str, float]]] = []  # (latest trade time, each account) for every new estimate today
 
     def live(self) -> dict[str, Any] | None:
         live = data.load_live(self._dir)
@@ -49,7 +50,15 @@ class Api:
             d = data.load_json(self._dir.parent.parent / "reports" / "summary" / "bots.json")
         except (json.JSONDecodeError, OSError):  # mid-write; the next refresh succeeds
             return None
-        return mark(d, self._prices(sorted(d.get("closes", {})))) if d else None
+        if not d:
+            return None
+        m = mark(d, self._prices(sorted(d.get("closes", {}))))
+        if m["live"] and (not self._today or self._today[-1][0] != m["live_at"]):
+            if self._today and self._today[0][0][:10] != m["live_at"][:10]:
+                self._today = []  # a new trading day
+            # shortcut: today's path lives in this window only, so a window opened mid-day starts its path then; it opens at 5:40 am
+            self._today.append((m["live_at"], {b["name"]: b["now"] for b in m["bots"]}))
+        return {**m, "intraday": self._today if m["live"] else []}
 
     def _prices(self, symbols: list[str]) -> dict[str, Any]:
         """Latest IEX trades through the read-only market-data module, at most one request every LIVE_EVERY_S."""

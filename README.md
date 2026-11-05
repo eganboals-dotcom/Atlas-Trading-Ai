@@ -1074,9 +1074,17 @@ after 1,260 sessions, about 5 years: it must beat SPY, beat the list held equall
 a proven rule. The report is `artifacts/reports/rotation_track/tracker.md`.
 
 **ETF-only rotation (v32).** Frozen 2026-10-31 at the user's request ([configs/etf_rotation_track_v32.yaml](configs/etf_rotation_track_v32.yaml), `python scripts/trackers/v32_etf_rotation_track.py`, nightly). v29 showed that the
-choice of group did the work and that stock ranking did worse than chance, so this keeps v27's group choice and risk budget and drops stocks and ranking: a kept group holds all its ETFs equally. It has never been run
-on history, on purpose, because days already seen can't prove it. It scores from 2026-11-02 at 2 bps each way, in four sleeves as in v30, with the same kind of verdict after 1,260 sessions against SPY and its ETFs held equally.
+choice of group did the work and that stock ranking did worse than chance, so this keeps v27's group choice and risk budget and drops stocks and ranking: a kept group holds all its ETFs equally. It was frozen without
+a backtest, because days already seen can't prove it. It scores from 2026-11-02 at 2 bps each way, in four sleeves as in v30, with the same kind of verdict after 1,260 sessions against SPY and its ETFs held equally.
 It counts as one more rule tried.
+
+**The ETF-only rotation on history (v34).** An estimate asked for on 2026-11-05, after v32 was frozen, so it is not pre-registered and tests
+nothing (`python scripts/research/investing/v34_etf_rotation_history.py`, results in `artifacts/reports/swing/v34_etf_rotation_history.json`). The
+same frozen code picks a book every week, in four sleeves, at 2 bps each way, with cash earning BIL. From 2019-01-22 to 2026-01-29 it made +17.1% a
+year (Sharpe 0.85, worst fall 22.4%) against SPY's +16.4% (0.75, 33.8%) on the same days. Most of that lead is 2025, +44.0% against +17.7%, and
+January 2026, +17.7% against +1.8%, when gold and silver ran; from 2019 to 2024 it made about +10% a year against SPY's +16%. Holding all its ETFs
+equally made +15.9% with a Sharpe of 1.12, so on these years the rule would fail its own verdict against that yardstick. These are also the
+years its idea came from. v32 doesn't change, and only its days after 2026-11-02 count.
 
 **All the trackers on one page.** `python scripts/trackers/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
