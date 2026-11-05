@@ -88,13 +88,34 @@ def holdings(text: str) -> str:
     return f"equal weights: {names[1]}" if names else "nothing yet"
 
 
+def weights(text: str) -> dict[str, float]:
+    """What a tracker.md says the rule holds now, as shares of the account; the rest is cash."""
+    mix = re.search(r"^Combined weights: (.+)$", text, re.M)
+    if mix:
+        return {s: float(w) / 100 for s, w in re.findall(r"(\S+) ([\d.]+)%", mix[1])}
+    names = re.search(r"^Book \d+, .*held:\n\n(.+)$", text, re.M)
+    held = names[1].split(", ") if names else []
+    return {s: 1 / len(held) for s in held}
+
+
 def bot(label: str, text: str, spy: pl.DataFrame) -> dict:
     """A rule as an account of START dollars of pretend money, net of the tracker's costs."""
     row = table_row(text, label)
     invested = re.search(r"invested (\d+%)", text)
     moved = spy_return(spy, row["first"], row["last"]) if row else None
     return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START, invested=invested[1] if invested else "100%",
-                holds=holdings(text), since=row["first"] if row else None)
+                holds=holdings(text), since=row["first"] if row else None, weights=weights(text))
+
+
+def closes(symbols: list[str], day: date) -> dict[str, float]:
+    """Each symbol's close on day, or the last before it, from the trackers' bars."""
+    out = {}
+    for s in symbols:
+        path = next((f / f"{s}.parquet" for f in BARS if (f / f"{s}.parquet").exists()), None)
+        c = pl.read_parquet(path).filter(pl.col("date") <= day).sort("date")["close"] if path else []
+        if len(c):
+            out[s] = float(c[-1])
+    return out
 
 
 def bots(spy: pl.DataFrame) -> list[dict]:
@@ -111,11 +132,23 @@ def bot_lines(accounts: list[dict]) -> list[str]:
     return [*lines, "", *[f"- {b['name']} holds {b['holds']}" for b in accounts], ""]
 
 
-def bots_json(accounts: list[dict], newest: date, today: date) -> str:
-    """The bots for the leaderboard window, each with its backtest return a year."""
+def bots_json(accounts: list[dict], spy: pl.DataFrame, today: date, history: dict | None = None, prices: dict | None = None) -> str:
+    """The bots for the leaderboard window: each with its backtest return a year, SPY as one more account from the
+    same first day, every day's accounts so far (history grows by a day each run), and the closes they're marked from."""
+    newest = spy["date"].max()
     rows = [{**b, "since": b["since"] and b["since"].isoformat(), "backtest": BACKTEST.get(b["name"], dict(per_year=None, note=""))}
             for b in sorted(accounts, key=lambda b: -b["value"])]
-    return json.dumps(dict(written=today.isoformat(), prices_through=newest.isoformat(), start=START, spy_backtest=BACKTEST_SPY, bots=rows), indent=1)
+    first = min((b["since"] for b in accounts if b["since"]), default=None)
+    history = dict(history or {})
+    days = spy.filter(pl.col("date").is_between(first, newest)).height if first else 0
+    if first:
+        market = START * (1 + (spy_return(spy, first, newest) or 0.0))
+        rows.append(dict(name="SPY", role="benchmark", value=market, spy=market, invested="100%", holds="SPY", since=first.isoformat(),
+                         weights={"SPY": 1.0}, backtest=dict(per_year=BACKTEST_SPY, note="the market itself, for comparison")))
+        start = spy.filter(pl.col("date") < first)["date"].max()  # every account is START at the close before its first day
+        history |= {start.isoformat(): {r["name"]: START for r in rows}, newest.isoformat(): {r["name"]: r["value"] for r in rows}}
+    return json.dumps(dict(written=today.isoformat(), prices_through=newest.isoformat(), start=START, spy_backtest=BACKTEST_SPY, days=days, bots=rows,
+                           history=dict(sorted(history.items())), closes=prices or {}), indent=1)
 
 
 def run_problems(text: str) -> list[str]:
@@ -190,7 +223,9 @@ def main() -> None:
     text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), accounts)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text, encoding="utf-8")
-    BOTS_JSON.write_text(bots_json(accounts, spy["date"].max(), date.today()), encoding="utf-8")
+    history = json.loads(BOTS_JSON.read_text(encoding="utf-8")).get("history") if BOTS_JSON.exists() else None
+    held = sorted({s for b in accounts for s in b["weights"]} | {"SPY"})
+    BOTS_JSON.write_text(bots_json(accounts, spy, date.today(), history, closes(held, spy["date"].max())), encoding="utf-8")
     print(text)
 
 

@@ -29,11 +29,13 @@
   .tab:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
   /* investing bots */
-  .invest { height: calc(100vh - 34px); overflow: auto; padding: 18px; }
-  .invest th:nth-child(2), .invest td:nth-child(2) { text-align: right; }
-  .invest .holds { color: var(--muted); font-size: 11.5px; margin-top: 3px; white-space: normal; max-width: 460px; line-height: 1.45; }
-  .invest .lede { color: var(--muted); max-width: 980px; line-height: 1.55; margin: 16px 0 6px; }
-  .notes { margin: 0; padding: 0 0 0 18px; color: var(--muted); line-height: 1.6; max-width: 980px; }
+  .hold { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .hold .head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }
+  .hold .head .right { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 11.5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .hchip { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); }
+  .about { padding: 10px 14px; color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+  .about p { margin: 0 0 6px; }
 
   /* top bar */
   .top { display: flex; align-items: center; gap: 18px; padding: 0 18px; border-bottom: 1px solid var(--line);
@@ -137,19 +139,51 @@
   <button class="tab on" id="tabPaper" role="tab" aria-selected="true">Paper trading</button>
   <button class="tab" id="tabInvest" role="tab" aria-selected="false">Investing bots</button>
 </nav>
-<div id="invest" class="invest" style="display:none">
-  <div class="panel">
-    <h2>Investing bots <span class="right" id="investAsOf"></span></h2>
-    <table>
-      <thead><tr><th>Bot</th><th>Account</th><th>Same money in SPY</th><th>Ahead of SPY</th><th>Return so far</th>
-        <th>Backtest a year</th><th>Invested</th><th>Scored from</th></tr></thead>
-      <tbody id="investRows"><tr><td colspan="8" class="empty">No summary yet: the nightly research writes it.</td></tr></tbody>
-    </table>
+<div id="invest" class="app" style="display:none">
+  <div class="top">
+    <div class="brand"><div class="logo"></div>ATLAS</div>
+    <span id="iStatus" class="chip"><span class="dot"></span><span id="iStatusText">—</span></span>
+    <span class="chip">PRETEND MONEY · DAILY RULES</span>
+    <div class="spacer"></div>
+    <div class="clock" id="iAsOf"></div>
   </div>
-  <p class="lede">Each rule runs as a bot with pretend money, held across days, after the tracker's costs; nothing here is a real
-    account or advice. "Backtest a year" is the rule's return a year on history from 2019 to January 2026. Backtests flatter,
-    and only the new days count: each verdict comes after about 5 years of them.</p>
-  <ul class="notes" id="investNotes"></ul>
+  <div>
+    <div class="hero">
+      <div class="stat big"><div class="label">Leader</div><div class="value num" id="iLead">—</div><div class="sub" id="iLeadSub"></div></div>
+      <div class="stat"><div class="label">Leader vs SPY</div><div class="value num" id="iVs">—</div><div class="sub">same money, same days</div></div>
+      <div class="stat"><div class="label">SPY</div><div class="value num" id="iSpy">—</div><div class="sub num" id="iSpySub"></div></div>
+      <div class="stat"><div class="label">Today</div><div class="value num" id="iToday">—</div><div class="sub" id="iTodaySub"></div></div>
+      <div class="stat"><div class="label">Days scored</div><div class="value num" id="iDays">—</div><div class="sub">verdicts after about 1,260</div></div>
+      <div class="stat"><div class="label">Leader's backtest</div><div class="value num" id="iBt">—</div><div class="sub" id="iBtSub"></div></div>
+    </div>
+    <div id="iBanner" class="banner"></div>
+  </div>
+  <div class="main">
+    <div class="col">
+      <div class="panel board" style="flex:1">
+        <h2>Investing bots <span class="right">ranked by account · each started with $100,000, SPY too</span></h2>
+        <table>
+          <thead><tr><th style="width:48px">#</th><th>Bot</th><th>Account</th><th>Today</th><th>Total</th><th>vs SPY</th>
+            <th>Backtest a year</th><th>Trend</th><th>Invested</th></tr></thead>
+          <tbody id="iRows"><tr><td colspan="9" class="empty">No summary yet: the nightly research writes it.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="panel chart">
+        <h2>Account — every day since the start <span class="legend" id="iLegend"></span></h2>
+        <div class="body"><canvas id="iChart"></canvas></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="panel" style="flex:1">
+        <h2>Holdings today <span class="right" id="iHoldNote"></span></h2>
+        <div class="feed" id="iHold"></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="sim">PRETEND MONEY — NOTHING HERE IS A REAL ACCOUNT OR ADVICE</span>
+    <span class="spacer"></span><span id="iFoot"></span>
+  </div>
 </div>
 <div id="paperView">
 <div id="wait" class="wait">Waiting for the session to start…</div>
@@ -225,12 +259,17 @@ function spark(curve, start) {
 }
 
 function drawChart(accounts) {
-  const c = document.getElementById("chart"), box = c.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  plot("chart", accounts.filter(a => a.equity_curve && a.equity_curve.length > 1).map(a => ({
+    pts: a.equity_curve.map(p => [p[0], p[1] - a.start_capital]), col: colorOf[a.account] || "#7a8596", bench: a.role === "benchmark" })),
+    t => etTime(t).slice(0, 5));
+}
+
+// Each series is {pts: [[x, gain]], col, bench}; label(x) names a point on the x axis.
+function plot(id, series, label) {
+  const c = document.getElementById(id), box = c.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
   c.width = (box.width - 20) * dpr; c.height = (box.height - 16) * dpr; c.style.height = (box.height - 16) + "px";
   const g = c.getContext("2d"); g.scale(dpr, dpr);
   const W = c.width / dpr, H = c.height / dpr, padL = 64, padB = 18;
-  const series = accounts.filter(a => a.equity_curve && a.equity_curve.length > 1)
-    .map(a => ({ a, pts: a.equity_curve.map(p => [p[0], p[1] - a.start_capital]) }));
   if (!series.length) { g.fillStyle = "#4b5566"; g.font = "12px Segoe UI"; g.fillText("Waiting for data…", padL, H / 2); return; }
   let t0 = Infinity, t1 = -Infinity, lo = 0, hi = 0;
   series.forEach(s => s.pts.forEach(([t, v]) => { t0 = Math.min(t0, t); t1 = Math.max(t1, t); lo = Math.min(lo, v); hi = Math.max(hi, v); }));
@@ -241,11 +280,10 @@ function drawChart(accounts) {
   for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4, yy = Y(v);
     g.beginPath(); g.moveTo(padL, yy); g.lineTo(W - 8, yy); g.stroke(); g.fillText(money(v), 4, yy + 3); }
   g.strokeStyle = "#2a3342"; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(padL, Y(0)); g.lineTo(W - 8, Y(0)); g.stroke(); g.setLineDash([]);
-  [t0, (t0 + t1) / 2, t1].forEach((t, i) => { const s = etTime(t).slice(0, 5); g.fillText(s, Math.min(X(t) - (i ? 14 : 0), W - 40), H - 4); });
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => { const s = label(t); g.fillText(s, Math.min(X(t) - (i ? 14 : 0), W - 40), H - 4); });
   series.forEach(s => {
-    const col = colorOf[s.a.account] || "#7a8596";
-    g.strokeStyle = col; g.lineWidth = s.a.role === "benchmark" ? 1.2 : 1.8; g.globalAlpha = s.a.role === "benchmark" ? .55 : 1;
-    if (s.a.role === "benchmark") g.setLineDash([4, 4]);
+    g.strokeStyle = s.col; g.lineWidth = s.bench ? 1.2 : 1.8; g.globalAlpha = s.bench ? .55 : 1;
+    if (s.bench) g.setLineDash([4, 4]);
     g.beginPath(); s.pts.forEach(([t, v], i) => i ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v))); g.stroke();
     g.setLineDash([]); g.globalAlpha = 1;
   });
@@ -350,30 +388,88 @@ function render(d) {
 
 const sign = x => x > 0 ? "up" : x < 0 ? "down" : "flat";
 
+const iColor = {};
+const iColorOf = b => iColor[b.name] || (iColor[b.name] = b.role === "benchmark" ? "#7a8596" : COLORS[Object.keys(iColor).length % COLORS.length]);
+
+// Every recorded day's account, plus today's estimate while trades from a later day are coming in.
+function daysOf(d, b) {
+  const pts = Object.entries(d.history).filter(([, v]) => v[b.name] != null).map(([day, v]) => [day, v[b.name]]);
+  return d.live ? [...pts, ["now", b.now]] : pts;
+}
+
 function renderInvest(d) {
   if (!d || !d.bots) return;
-  document.getElementById("investAsOf").textContent = `prices through ${d.prices_through} · written ${d.written}`;
-  document.getElementById("investRows").innerHTML = d.bots.map(b => {
-    const ahead = b.value - b.spy, ret = b.value / d.start - 1, bt = b.backtest.per_year;
-    return `<tr class="bot">
-      <td><div class="name">${esc(b.name)}</div><div class="holds">${esc(b.holds)}</div></td>
-      <td class="num">${plainMoney(b.value)}</td>
-      <td class="num">${plainMoney(b.spy)}</td>
-      <td class="num"><span class="pnl ${sign(ahead)}">${money(ahead)}</span></td>
-      <td class="num ${sign(ret)}">${pct(ret)}</td>
+  const bots = [...d.bots].sort((a, b) => b.now - a.now), spy = bots.find(b => b.role === "benchmark");
+  const ranked = bots.filter(b => b.role !== "benchmark"), lead = ranked[0];
+  const days = Object.keys(d.history), xs = d.live ? [...days, "now"] : days;
+
+  const st = document.getElementById("iStatus"), stt = document.getElementById("iStatusText"), banner = document.getElementById("iBanner");
+  st.className = "chip " + (d.live ? "live" : d.live_error ? "warn" : "");
+  stt.textContent = d.live ? "LIVE ESTIMATE" : d.live_error ? "NO LIVE PRICES" : "CLOSED";
+  if (d.live_error) { banner.className = "banner warn"; banner.textContent = "Live prices unavailable, showing the last close: " + d.live_error; }
+  else banner.className = "banner";
+  document.getElementById("iAsOf").innerHTML = d.live ? `latest trade <b>${etTime(Date.parse(d.live_at) * 1e6)}</b> ET`
+    : `prices through <b>${esc(d.prices_through)}</b>`;
+
+  if (lead) {
+    document.getElementById("iLead").textContent = plainMoney(lead.now);
+    document.getElementById("iLeadSub").textContent = `${lead.name} · ${pct(lead.now / d.start - 1)} since the start`;
+    const vs = document.getElementById("iVs"), gap = spy ? lead.now - spy.now : null;
+    vs.textContent = money(gap); vs.className = "value num " + sign(gap);
+    const bt = document.getElementById("iBt");
+    bt.textContent = lead.backtest.per_year == null ? "none" : pct(lead.backtest.per_year, 1);
+    document.getElementById("iBtSub").textContent = lead.backtest.per_year == null ? "never run on history" : `a year, 2019–2026; SPY ${pct(d.spy_backtest, 1)}`;
+  }
+  if (spy) {
+    document.getElementById("iSpy").textContent = plainMoney(spy.now);
+    document.getElementById("iSpySub").textContent = pct(spy.now / d.start - 1) + " since the start";
+  }
+  const moved = ranked.reduce((s, b) => s + b.now - b.value, 0), td = document.getElementById("iToday");
+  td.textContent = d.live ? money(moved) : "—"; td.className = "value num " + sign(moved);
+  document.getElementById("iTodaySub").textContent = d.live ? "all bots, since the last close" : "market closed or no new trades";
+  document.getElementById("iDays").textContent = d.days ?? "—";
+
+  let rank = 0;
+  document.getElementById("iRows").innerHTML = bots.map(b => {
+    const bench = b.role === "benchmark", r = bench ? '<span class="rank">B</span>' : `<span class="rank ${++rank <= 3 ? "r" + rank : ""}">${rank}</span>`;
+    const today = b.now - b.value, tot = b.now - d.start, vs = spy ? b.now - spy.now : null, bt = b.backtest.per_year;
+    const pts = daysOf(d, b);
+    return `<tr class="${bench ? "bench" : "bot"}">
+      <td>${r}</td>
+      <td><div class="name"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${iColorOf(b)};margin-right:8px"></span>${esc(b.name)}</div>
+          <div class="model">${b.since ? "since " + esc(b.since) : "not scored yet"}</div></td>
+      <td class="num">${plainMoney(b.now)}</td>
+      <td class="num"><div class="pnl ${d.live ? sign(today) : "flat"}">${d.live ? money(today) : "—"}</div><div class="ret flat">${d.live ? pct(today / b.value) : ""}</div></td>
+      <td class="num"><div class="pnl ${sign(tot)}">${money(tot)}</div><div class="ret flat">${pct(tot / d.start)}</div></td>
+      <td class="num"><span class="pnl ${bench ? "flat" : sign(vs)}">${bench ? "—" : money(vs)}</span></td>
       <td class="num">${bt == null ? '<span class="flat">none</span>' : pct(bt, 1)}</td>
-      <td class="num">${esc(b.invested)}</td>
-      <td class="num">${b.since ? esc(b.since) : "not yet"}</td></tr>`;
+      <td>${spark(pts.map((p, i) => [i, p[1]]), d.start)}</td>
+      <td class="num">${esc(b.invested)}</td></tr>`;
   }).join("");
-  document.getElementById("investNotes").innerHTML = [`SPY made ${pct(d.spy_backtest, 1)} a year over the same backtest years.`,
-    ...d.bots.map(b => `${b.name}: ${b.backtest.note}.`)].map(t => `<li>${esc(t)}</li>`).join("");
+
+  document.getElementById("iLegend").innerHTML = bots.map(b => `<span><i style="background:${iColorOf(b)}"></i>${esc(b.name)}</span>`).join("");
+  plot("iChart", bots.map(b => ({ pts: daysOf(d, b).map(([day, v]) => [xs.indexOf(day), v - d.start]), col: iColorOf(b), bench: b.role === "benchmark" }))
+    .filter(s => s.pts.length > 1), i => { const x = xs[Math.round(i)] || ""; return x === "now" ? "now" : x.slice(5); });
+
+  document.getElementById("iHoldNote").textContent = d.live ? "today's move" : "weights";
+  document.getElementById("iHold").innerHTML = bots.map(b => {
+    const ws = Object.entries(b.weights || {}).sort((x, y) => y[1] - x[1]);
+    return `<div class="hold"><div class="head"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${iColorOf(b)}"></span>${esc(b.name)}
+        <span class="right">${esc(b.invested)} invested · ${ws.length} held</span></div>
+      <div class="chips">${ws.map(([s, w]) => { const m = b.moves && b.moves[s];
+        return `<span class="hchip" title="${(w * 100).toFixed(1)}% of the account">${esc(s)} <span class="${m == null ? "flat" : sign(m)}">${m == null ? (w * 100).toFixed(1) + "%" : pct(m)}</span></span>`; }).join("")}</div></div>`;
+  }).join("") + `<div class="about"><p>Each rule runs as a bot with pretend money from its first scored day, after the tracker's costs, and SPY gets the same money on the same day.
+    The nightly research records each day's close; during the market the accounts are estimated from the latest IEX trades, until that night's close replaces the estimate.</p>
+    <p>"Backtest a year" is the rule's return a year from 2019 to January 2026, when SPY made ${pct(d.spy_backtest, 1)}. Backtests flatter, and only new days count: each verdict comes after about 5 years of them.</p>
+    ${bots.filter(b => b.backtest.note).map(b => `<p>${esc(b.name)}: ${esc(b.backtest.note)}.</p>`).join("")}</div>`;
+  document.getElementById("iFoot").textContent = `written ${d.written} · ${Object.keys(d.closes || {}).length} symbols marked`;
 }
 
 let tab = "paper";
 function show(t) {
   tab = t;
   document.getElementById("paperView").style.display = t === "paper" ? "" : "none";
-  document.getElementById("invest").style.display = t === "invest" ? "block" : "none";
+  document.getElementById("invest").style.display = t === "invest" ? "grid" : "none";
   [["tabPaper", "paper"], ["tabInvest", "invest"]].forEach(([id, k]) => {
     const el = document.getElementById(id); el.classList.toggle("on", k === t); el.setAttribute("aria-selected", k === t);
   });
@@ -390,9 +486,11 @@ async function tick() {
   } catch (e) { console.error(e); }
 }
 async function investTick() {
+  if (tab !== "invest") return;
   try { renderInvest(await window.pywebview.api.investing()); } catch (e) { console.error(e); }
 }
-window.addEventListener("pywebviewready", () => { tick(); investTick(); setInterval(tick, 1000); setInterval(investTick, 60000); });
+window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); setInterval(investTick, 10000); });
+window.addEventListener("resize", () => investTick());
 window.addEventListener("resize", () => tick());
 </script>
 </body>

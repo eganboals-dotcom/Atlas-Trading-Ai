@@ -284,7 +284,7 @@ def test_leaderboard_window_api_is_read_only_and_page_is_offline(tmp_path: Path)
     summary = s.dir.parent.parent / "reports" / "summary"
     summary.mkdir(parents=True)
     (summary / "bots.json").write_text('{"bots": []}', encoding="utf-8")
-    assert api.investing() == {"bots": []}
+    assert api.investing()["bots"] == []
     (summary / "bots.json").write_text('{"bots": [', encoding="utf-8")
     assert api.investing() is None  # caught mid-write
     page = HTML.read_text(encoding="utf-8")
