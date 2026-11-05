@@ -62,7 +62,7 @@ against Hold and SPY, and anything that needs a person to look.
 Logs: `artifacts/reports/swing_track/runs.log` and `paper_morning.log` beside it. Each tracker's rule and tests are in
 the v20 (Fed drift), v23 (earnings quality) and v27 (both rotations) sections below.
 
-**Read the numbers honestly.** Days this few say almost nothing; nothing before a tracker's verdict counts as evidence,
+**What the numbers mean.** Days this few say almost nothing; nothing before a tracker's verdict counts as evidence,
 and paper profit on the trading bots isn't evidence of an edge. In backtests, the best of these rules beat holding the
 market by a few points a year at most, and an edge that size takes years of new days to tell apart from luck.
 
@@ -96,11 +96,11 @@ needs. That is why the command adds PyTorch's package index. It also includes th
 affected tests are skipped when they are missing.
 
 No API keys or credentials are needed. Synthetic data is generated locally, and
-historical data is imported from files you supply (see "Historical data" below).
+historical data is imported from supplied files (see "Historical data" below).
 
 ## Run
 
-Run from the repository root.
+Every command runs from the repository root.
 
 ```bash
 # Validate the clean synthetic dataset
@@ -253,7 +253,7 @@ python -m atlas.cli evaluate --config configs/walkforward.yaml --run-id <run_id>
 * `evaluate --holdout` works only when the current configs and data reproduce the
   frozen design's fingerprint.
 * Every holdout access is written to `artifacts/holdout_ledger.jsonl`.
-* Evaluating a *different* design on the same holdout is refused unless you pass
+* Evaluating a *different* design on the same holdout is refused without
   `--allow-holdout-reuse`. Any reuse is recorded, and from then on the report warns that
   the holdout is no longer untouched.
 
@@ -419,16 +419,16 @@ Atlas reads prices from two GET endpoints on `data.alpaca.markets` and contains 
 that can place an order at Alpaca or anywhere else. Every order and fill is simulated by
 Atlas's internal paper broker.
 
-**One-time setup**
-1. Create a free Alpaca account and open its **paper trading** account. Generate the
-   paper account's API keys there; paper accounts get their own keys.
-2. Copy `.env.example` to `.env` (git-ignored) and fill in `APCA_API_KEY_ID` and
-   `APCA_API_SECRET_KEY`.
-3. Make sure the PC clock is synced (Windows: Settings → Time & language → Sync now).
+**What it needs first**
+1. A free Alpaca account with its **paper trading** account. The paper account's API keys come
+   from there; paper accounts get their own keys.
+2. A `.env` file (git-ignored), copied from `.env.example`, with `APCA_API_KEY_ID` and
+   `APCA_API_SECRET_KEY` filled in.
+3. A synced PC clock (Windows: Settings → Time & language → Sync now).
    Startup refuses a clock more than 3 s behind exchange time.
-4. Have an evolution checkpoint. The bots come from
-   `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`; create it with
-   `python -m atlas.cli evolve --config configs/evolution.yaml` if it is missing.
+4. An evolution checkpoint. The bots come from
+   `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`, which
+   `python -m atlas.cli evolve --config configs/evolution.yaml` creates if it is missing.
 
 **Each trading day** (start it any time before or during market hours): double-click
 `scripts/start_live_paper.cmd`. It runs the preflight, then the session, in its own
@@ -446,7 +446,7 @@ python -m atlas.cli paper-stop --config configs/paper_live.yaml      # clean, re
 When running Atlas through Claude Code, see [CLAUDE.md](CLAUDE.md): sessions last about 6.5
 hours, so they run in their own window or in the background.
 
-**What happens when you run it:**
+**What a run does:**
 * **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
   bots load.
 * **The leaderboard window opens.** It is a native dark trading-screen window
@@ -470,7 +470,7 @@ hours, so they run in their own window or in the background.
 * **Market-data recording.** Every quote and trade the session receives is saved to
   `data/raw/alpaca_iex_live/<date>.csv`. At the close the day is also written as a Parquet
   session in `data/processed/alpaca_iex_live/`, with a manifest, ready for training and
-  walk-forward testing with the existing tools. The data stays on your PC (`data/` is
+  walk-forward testing with the existing tools. The data stays on this PC (`data/` is
   git-ignored). A recording failure only switches recording off; trading continues. A
   full day is about 6 MB of CSV plus 1 MB of Parquet.
 * **The bots are in the repo.** The evolved bots' frozen parameters live in
@@ -486,7 +486,7 @@ hours, so they run in their own window or in the background.
   what it ended with, so its capital grows and shrinks with its own P&L. The ledger is
   `artifacts/paper/fund_ledger.json`. Changing the bot lineup requires `--reset-fund`,
   which archives the old ledger rather than deleting it. The benchmark gets a fresh
-  equal share each day. Atlas does not read your Alpaca balance; it only reads market
+  equal share each day. Atlas does not read the Alpaca account balance; it only reads market
   data.
 * **Trading hours.** The session waits for 09:30 ET, trades until 16:00 ET, then writes
   the daily report.
@@ -518,9 +518,9 @@ hours, so they run in their own window or in the background.
   about 62 s of CPU in total and 52 MB of memory, and averaged 89 requests a minute.
 
 **Stopping and restarting:**
-* Stop cleanly with Ctrl+C or `paper-stop`; use `paper-kill` only as an emergency halt.
-* Continue the same day with `--resume`.
-* Reopen the page any time with `python -m atlas.cli dashboard`.
+* Ctrl+C or `paper-stop` stops cleanly; `paper-kill` is only for an emergency halt.
+* `--resume` continues the same day.
+* `python -m atlas.cli dashboard` reopens the page any time.
 
 **Feed details** ([alpaca.py](src/atlas/feeds/alpaca.py)), checked against Alpaca's
 official docs on 2026-10-26:
@@ -704,14 +704,14 @@ were frozen on 2026-10-28 in [configs/swing_track.yaml](configs/swing_track.yaml
 momentum (plain, and with trend and volatility caps) on the 16 ETFs, 6-month momentum on both
 2015 stock lists, and the trend filter and volatility target on the first. From 2026-10-29 on,
 each run scores them against Hold on their own symbols. The first run records a fingerprint of
-the rules, and later runs refuse to continue if any rule changes. Run it after 4:20 pm ET by
-double-clicking `scripts/swing_track.cmd`, or:
+the rules, and later runs refuse to continue if any rule changes. It runs after 4:20 pm ET from
+`scripts/swing_track.cmd` (it starts with a double-click), or:
 
 ```bash
 python -m atlas.cli swing-track   # refetches daily bars (~1.5 min), writes artifacts/reports/swing_track/tracker.md
 ```
 
-Expect noise for months: a real edge needs about a year of days or more to stand out from luck.
+The first months are noise: a real edge needs about a year of days or more to stand out from luck.
 
 **News desk** ([src/atlas/news/](src/atlas/news/)). Readers turn headlines into notes: company,
 direction (−1 to +1), importance (0 to 1) and category. A briefing turns the notes into what is
@@ -719,7 +719,7 @@ known at each open (anything published before 09:15 counts), and bots trade only
 so readers can be swapped. Reader #1 (`keyword`) uses fixed rules: analyst up/downgrades and EPS
 beats/misses. Reader #2 (`local`) has a free AI model on this PC read each headline with company
 names hidden. It is served by [Ollama](https://ollama.com) and reached only on 127.0.0.1, so no
-headline leaves the computer and nothing is billed. Set it up once: install Ollama, then run
+headline leaves the computer and nothing is billed. It needs a one-time setup: Ollama, then
 `ollama pull gemma3:12b` (the `local_model` in [configs/news_desk.yaml](configs/news_desk.yaml); about
 8 GB, fits a 16 GB graphics card). Until Ollama is running, the reader is skipped and catches up on
 the next run. The `claude` reader (Claude Haiku 5.5, paid API credits, `ANTHROPIC_API_KEY` in `.env`,
@@ -899,7 +899,7 @@ their results, so this is a candidate for new days, not evidence.
 
 ## v16: late-day flow
 
-Follow a big move into the close, because leveraged ETFs must rebalance in its direction. Failed all four tests
+The rule follows a big move into the close, because leveraged ETFs must rebalance in its direction. It failed all four tests
 ([configs/late_day_flow_v16.yaml](configs/late_day_flow_v16.yaml)): -2.9 bps a trade on SPY, QQQ and IWM after costs (CI -5.0 to
 -0.8), no better than quiet days (-1.5 bps), -1.4 bps on stocks with their own leveraged ETFs since 2022 (CI -5.2 to +2.2),
 and -5.7 bps without its two best years. `python scripts/research/trading/v16_late_day_flow.py`.

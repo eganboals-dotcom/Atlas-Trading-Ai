@@ -35,8 +35,8 @@ than it did on the following months. On average its Sharpe ratio fell by 1.3, ro
 "ordinary". The worst case is training on only six months: Sharpe ratios above 3 in training that dropped to
 about 0.1-0.5 on new days.
 
-This is overfitting. Search through enough strategies and some will fit the past by luck; the more you
-search, the better the best one looks, and the less that number means.
+This is overfitting. Search through enough strategies and some will fit the past by luck; the more strategies a
+search tries, the better the best one looks, and the less that number means.
 
 ## 2. Trading costs eat short-term trading
 
@@ -101,7 +101,7 @@ quality, both kinds of earnings surprise, and low short interest. Three famous o
 None of these is "wrong" in general; each has decades of research behind it. They are just unreliable over
 any one stretch of years, which is exactly what makes them hard to trade.
 
-## 5. The data fights you
+## 5. The data fights back
 
 Some of the hardest problems weren't strategies at all; they were data that silently looked fine:
 
@@ -128,11 +128,11 @@ year** over Hold. Combining the three gave about half a point.
 ![Years to prove an edge](figures/6_years_to_prove.png)
 
 Is half a point real? The answer depends on two numbers: the edge, and how far the strategy's returns wander
-from the market's each year (its tracking error). A rough rule is that you need (2 x tracking error / edge)²
+from the market's each year (its tracking error). A rough rule is that an edge needs (2 x tracking error / edge)²
 years of data before the edge is two standard errors from zero. For Atlas's survivors that ranges from about
 **4 years** (the low-short-interest tilt, which barely strays from the market) to **800 years** (the
 filing-based earnings-surprise top 10, which strays a lot for a small edge). Most need decades. Seven years of unseen data
-can't settle any of them. Try it yourself in the [interactive models](interactive/luck_simulator.html).
+can't settle any of them. The [interactive models](interactive/luck_simulator.html) try other numbers.
 
 There is a further catch: once an effect is published, investors trade on it and it shrinks. A study of 97
 published stock-return predictors found returns about a quarter lower outside the original sample and about

@@ -124,7 +124,7 @@ def load_credentials(env_file: Path | None = Path(".env")) -> AlpacaCredentials:
     """Read market-data keys from the environment, or from a local .env file (git-ignored)."""
     values = read_env((KEY_ENV, SECRET_ENV), env_file)
     if not all(values.values()):
-        raise AlpacaAuthError(f"set {KEY_ENV} and {SECRET_ENV} (environment or .env) to your Alpaca paper-account "
+        raise AlpacaAuthError(f"set {KEY_ENV} and {SECRET_ENV} (environment or .env) to the Alpaca paper-account "
                               "market-data keys")
     return AlpacaCredentials(values[KEY_ENV], values[SECRET_ENV])
 

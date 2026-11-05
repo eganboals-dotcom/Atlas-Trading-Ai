@@ -1,6 +1,6 @@
 # Scripts
 
-Run everything from the repo root with `.venv/Scripts/python.exe`. Research only: no script places an order.
+Everything runs from the repo root with `.venv/Scripts/python.exe`. Research only: no script places an order.
 
 ## At the top of this folder
 

@@ -48,8 +48,8 @@ def _allowed(url: str, files: bool) -> bool:
 def user_agent(env_file: Path | None = Path(".env")) -> str:
     ua = read_env((UA_ENV,), env_file)[UA_ENV]
     if "@" not in ua:
-        raise PermissionError(f"set {UA_ENV} in .env (yourself) to a name and contact email, e.g. "
-                              f"'{UA_ENV}=Atlas research you@example.com'; the SEC requires one")
+        raise PermissionError(f"set {UA_ENV} in .env by hand to a name and contact email, e.g. "
+                              f"'{UA_ENV}=Atlas research name@example.com'; the SEC requires one")
     return ua
 
 
