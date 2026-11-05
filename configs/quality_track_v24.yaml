@@ -1,0 +1,42 @@
+# v24: forward tracker for earnings quality, the one rule to pass all five tests in v23. Run by scripts/trackers/v24_quality_track.py.
+#
+# FROZEN 2026-10-31, before any scored day. The first run records a fingerprint of everything under rule:, the 300 companies, the
+# filing settings of configs/filings_v23.yaml and the code that scores a company. Later runs refuse to continue if any of it changes.
+# A book stays as chosen once recorded. Research only: nothing here places an order, and the holdings are not advice.
+#
+# Rule: exactly as in v23. On the open of first_day, and every 63 sessions after, buy equal weights of the top fifth of eligible
+# companies by -(net income - operating cash flow) / average assets, from the latest fiscal year filed on or before the last close.
+# Hold them until the next rebalance, cost_bps each way, with cash earning cash_symbol. Banks and insurers aren't eligible, nor is a
+# company with no bar on that last close. Fewer than min_eligible eligible companies: all 300 equally.
+#
+# A company that stops trading stays in the record at its last close until the next rebalance, in the rule and in Hold, and the
+# report names it. A bankruptcy would be flattered by that, so its name has to be read by hand. Days from 2026-10-28 to 2026-10-30
+# are left out because they had already happened when this was frozen, so only days nobody has seen count.
+#
+# Side books, for the two doubts the v23 follow-up raised, tracked the same way:
+#   bottom: the bottom fifth, the control. It's part of the verdict.
+#   profitable: the same rule among companies with positive net income. It's no part of the verdict. A third of v23's holdings were
+#     loss-makers, where the list of survivors flatters most. Here, any that fail stay in the record, so this comparison is fair.
+#
+# THE VERDICT, written now, reached only once review_sessions sessions have been scored (about 5 years, v23's years to prove):
+#   pass: all three of a higher Sharpe than Hold with an annual return at least Hold's, more annual return than the bottom fifth,
+#     and a 95% block bootstrap interval of the daily gap to Hold that lies above zero.
+#   fail: anything else. It is dropped, and the rule isn't changed or restarted.
+# Nothing before then is a verdict. The 5 years assumes the backtest's 6.9-point edge. If the real edge is nearer 2 points, as the
+# profitable-only result suggests, 5 years can't confirm it, and this will read as a fail.
+rule:
+  universe_config: configs/swing_v12_news_eps_u300.yaml
+  first_day: "2026-11-02"
+  every: 63
+  top_share: 0.20
+  min_eligible: 50
+  cost_bps: 2.0
+  cash_symbol: BIL
+  review_sessions: 1260
+  bootstrap_samples: 5000
+  block: 21
+  seed: 2026
+bars_dir: data/processed/swing_track_u300  # refreshed each night by the 300-company tracker, which runs first
+spy_dir: data/processed/swing_track  # a yardstick in the report only, added 2026-10-31 before any scored day
+filings_dir: data/processed/quality_track
+out_dir: artifacts/reports/quality_track

@@ -1,0 +1,40 @@
+# v16: late-day flow, tested by scripts/research/trading/v16_late_day_flow.py on real 1-minute bars.
+#
+# Leveraged ETFs must trade in the direction of the day's move near the close, in proportion to it (Barbon, Beckmeyer,
+# Buraschi and Moerke, 2022). So a big move by mid-afternoon should run on into the close. This is a simple price-only
+# version: it can't see leveraged-ETF assets or option positions.
+#
+# PRE-REGISTERED 2026-10-30, written before this test was run. A failed test stays failed.
+#
+# Each day, for each symbol:
+#   move     = close of the 15:29 bar / previous day's last bar - 1
+#   big      = |move| above the 80th percentile of the previous 60 days' |move| (earlier days only)
+#   trade    = at the close of the 15:30 bar, in the direction of the move; out at the last bar of the day
+#   costs    = etf_cost_bps each way on ETFs, stock_cost_bps on single stocks
+#
+# It holds for 30 minutes a day, so it cannot beat Hold alone; the tests ask whether the trade itself earns money.
+# TEST 1 (ETFs): SPY, QQQ, IWM: the 95% confidence interval on the mean trade after costs is above zero.
+# TEST 2 (control): on the same ETFs, the mean trade on big days beats the same trade on quiet days.
+# TEST 3 (stocks with their own leveraged ETFs): from 2022-07-15, once those ETFs existed, AAPL, AMD, META, NVDA and TSLA:
+#   the 95% confidence interval on the mean trade after costs is above zero.
+# TEST 4 (not luck): on the ETFs, without the two best calendar years, the mean trade after costs is still above zero.
+#
+# Side results, which pass or fail nothing: the stocks before 2022-07-15, gross returns, each year.
+etfs: [SPY, QQQ, IWM]
+stocks: [AAPL, AMD, META, NVDA, TSLA]
+datasets:
+  alpaca_bars_1min: [SPY, QQQ]
+  alpaca_bars_1min_iwm: [IWM]
+  alpaca_bars_1min_aapl: [AAPL]
+  alpaca_bars_1min_amd: [AMD]
+  alpaca_bars_1min_meta: [META]
+  alpaca_bars_1min_nvda: [NVDA]
+  alpaca_bars_1min_tsla: [TSLA]
+single_stock_etf_start: "2022-07-15"
+lookback_days: 60
+big_pct: 80
+etf_cost_bps: 1.0
+stock_cost_bps: 2.0
+bootstrap_samples: 5000
+seed: 2026
+holdout_start: "2026-04-28"

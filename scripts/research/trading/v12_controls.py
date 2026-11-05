@@ -5,7 +5,7 @@ surprise), the speed comparison (filing-based surprise re-picked weekly), the co
 and for each rule the yearly edge over Hold, its tracking error and the years of data a 2-standard-error result
 would take. Needs the u300 data and headlines (see the config).
 
-    .venv/Scripts/python.exe scripts/v12_controls.py
+    .venv/Scripts/python.exe scripts/research/trading/v12_controls.py
 """
 
 from __future__ import annotations

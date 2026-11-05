@@ -5,7 +5,7 @@ the live paper sessions' daily reports (artifacts/paper/live_*/daily_report.json
 (data/processed/alpaca_iex_live, used only for spread statistics). Writes PNGs plus figures/data.json, the
 derived numbers behind every chart. Needs matplotlib: pip install -e .[report]
 
-    .venv/Scripts/python.exe scripts/build_report.py
+    .venv/Scripts/python.exe scripts/research/build_report.py
 """
 
 from __future__ import annotations

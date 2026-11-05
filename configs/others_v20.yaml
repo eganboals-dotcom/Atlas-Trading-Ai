@@ -1,0 +1,66 @@
+# v20: three strategies not yet tried here, tested by scripts/research/trading/v20_others.py.
+#
+# PRE-REGISTERED 2026-10-31, written before any of these was run. A failed test stays failed. Nothing is tuned.
+# Days from 2026-04-28 on are never read. Six rules run across v19 and v20, so one false pass has about a 1 in 4 chance.
+#
+# RULE D, the pre-FOMC drift (Lucca and Moench, 2015: +0.49% in the 24 hours before scheduled Fed decisions, 1994 to 2011;
+# Kurov, Wolfe and Gilbert, 2020, found it gone after 2015). On SPY 1-minute bars: buy at the 14:00 open the day before each
+# scheduled decision, sell at the 14:00 open on decision day, cost_bps_spy each way.
+#   TEST D1: the mean event return is above zero, with its 95% bootstrap interval above zero.
+#   TEST D2: it's above the mean of all other 14:00-to-14:00 windows.
+#   TEST D3: the mean is above zero in each half of the events.
+#   TEST D4: the mean is above zero without the three best events.
+#   Side result: SPY Hold plus 1x SPY in the event windows against Hold.
+#
+# RULE E, same-month seasonality (Heston and Sadka, 2008; Keloharju, Linnainmaa and Nyberg, 2016). On the 300 companies, at
+# each month's first open, score = the mean of the stock's returns in this calendar month in all earlier years, at least
+# season_min_years of them, using closes up to the day before. Hold the top fifth, equal weight, until the next month. 2 bps
+# each way, cash earning BIL, on the swing window. With data from 2016 there are only 3 to 10 earlier years, far fewer than
+# the papers had.
+#   TEST E1: beats Hold on Sharpe and annual return.
+#   CONTROL E2: the top fifth makes more than the bottom fifth.
+#   TEST E3 (not luck): beats Hold's Sharpe without its two best years against Hold.
+#   TEST E4 (both halves): beats Hold's Sharpe in each half of the window.
+#
+# RULE F, long-short trend following (Moskowitz, Ooi and Pedersen, 2012, limited to the 16 swing ETFs, which are mostly stock
+# funds, so far less diverse than their 58 futures). Every 21 days, using closes up to the day before: each ETF's weight is the
+# sign of its last 252-day return x trend_vol / (its annualized volatility over 60 days) / 16. 2 bps each way, borrow_pct a year
+# on shorts, cash earning BIL, on the swing window.
+#   TEST F1: Hold + half_size x the book beats Hold on Sharpe and annual return.
+#   TEST F2: the book alone makes more than cash.
+#   TEST F3 (not luck): the book makes more than cash without its two best years.
+#   TEST F4 (both halves): the book makes more than cash in each half of the window.
+#
+# A rule passes only if all four of its tests pass. Any pass is a candidate for a frozen forward tracker, tested only on days
+# after 2026-10-27, because the holdout is spent. It wouldn't be proof, and tracking it is the user's decision.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+etf_config: configs/swing.yaml
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+cost_bps: 2.0
+cost_bps_spy: 0.2
+borrow_pct: 0.5
+half_size: 0.5
+season_min_years: 3
+top_share: 0.20
+trend_days: 252
+trend_vol_days: 60
+trend_vol: 0.40
+every: 21
+bootstrap_samples: 5000
+seed: 2026
+decision_time_minute: 270  # 14:00 ET, minutes after 09:30
+# Scheduled decision days. 2016-2020 and 2023-2026 read from the Fed's pages; the last three of 2022 and all of 2021 from a
+# summary of its calendar page. 2020's cancelled March meeting and all unscheduled actions are left out.
+fomc:
+  - [2016-01-27, 2016-03-16, 2016-04-27, 2016-06-15, 2016-07-27, 2016-09-21, 2016-11-02, 2016-12-14]
+  - [2017-02-01, 2017-03-15, 2017-05-03, 2017-06-14, 2017-07-26, 2017-09-20, 2017-11-01, 2017-12-13]
+  - [2018-01-31, 2018-03-21, 2018-05-02, 2018-06-13, 2018-08-01, 2018-09-26, 2018-11-08, 2018-12-19]
+  - [2019-01-30, 2019-03-20, 2019-05-01, 2019-06-19, 2019-07-31, 2019-09-18, 2019-10-30, 2019-12-11]
+  - [2020-01-29, 2020-04-29, 2020-06-10, 2020-07-29, 2020-09-16, 2020-11-05, 2020-12-16]
+  - [2021-01-27, 2021-03-17, 2021-04-28, 2021-06-16, 2021-07-28, 2021-09-22, 2021-11-03, 2021-12-15]
+  - [2022-01-26, 2022-03-16, 2022-05-04, 2022-06-15, 2022-07-27, 2022-09-21, 2022-11-02, 2022-12-14]
+  - [2023-02-01, 2023-03-22, 2023-05-03, 2023-06-14, 2023-07-26, 2023-09-20, 2023-11-01, 2023-12-13]
+  - [2024-01-31, 2024-03-20, 2024-05-01, 2024-06-12, 2024-07-31, 2024-09-18, 2024-11-07, 2024-12-18]
+  - [2025-01-29, 2025-03-19, 2025-05-07, 2025-06-18, 2025-07-30, 2025-09-17, 2025-10-29, 2025-12-10]
+  - [2026-01-28, 2026-03-18]

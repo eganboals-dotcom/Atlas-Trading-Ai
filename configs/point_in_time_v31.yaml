@@ -1,0 +1,153 @@
+# v31: earnings quality and the rotation on a list with no survivor bias, tested by scripts/research/investing/v31_point_in_time.py.
+#
+# Why: nearly every result so far rests on 300 companies picked around today's market, and v25's list holds only companies alive today.
+# Companies that failed or were bought are missing, so a rule can look better than it was. This list holds who was really there.
+#
+# PRE-REGISTERED 2026-10-31, written before any bar of this list was downloaded. It's a new check of two rules already run, so it isn't a fresh
+# rule, and those rules' years are used years. A failed test stays failed. Nothing is tuned, and the frozen trackers don't change.
+#
+# Who existed: SEC Forms 3, 4 and 5 (the stored quarterly insider zips) name each filing's company number and ticker. Every listed company's
+# insiders file these, so each company's ticker in each quarter comes from what was filed at the time. Each quarter takes the ticker most
+# used that quarter, so a typo can't count. A company's last ticker's bars run from its first quarter seen until they break for more than
+# max_gap_days, or until another company that files past this one's last filing takes the ticker, which keeps out a reused ticker. If an earlier
+# ticker has no bars, the later ticker's history stands in, since Alpaca carries renames. Where two tickers of one company join, the earlier
+# prices are scaled so the join makes no return.
+#
+# Changed 2026-10-31, before the run and before any rule's return was seen. The draft ended bars 130 days after the last filing (tail_days). The
+# check showed that stopped healthy companies whose insiders went quiet (XRX, NCNO, NFE, BNGO), and marked some failed, a false total loss. It's
+# replaced by the two conditions above, and failed companies are reviewed by hand before the run. cut_at was added for the same reason: excluding
+# a bankrupt company would drop the very failure this list exists to catch, so it ends on its last day before the exit instead. That also drops
+# the new shares after the exit, which understates both the rule and the yardstick a little. not_failed holds companies whose bars end at a
+# rename or a new legal entity. A renamed company's next ticker now starts the day after its last bar, which closes holes of up to months.
+#
+# The pool, at each rebalance: the pool_size companies with a bar on the last close and the highest median daily dollar volume over 63
+# sessions, sessions with no bar counting as zero. It's a list made the way the 300 might have been made at the time. Foreign companies that
+# don't file these forms are missing, and so are banks that report only to their regulator, such as Signature Bank.
+#
+# Companies that stop: bars with no volume don't count. A company whose last real bar is more than 5 sessions before last_scored has
+# stopped. If its last close is at or below half its close 126 sessions earlier, it counts as failed and is a total loss the next session.
+# Otherwise it counts as bought, and it stays at its last close. A beaten-down company that was bought counts as failed, which is
+# harsh, and any company that fell slowly counts as bought, which is kind. The side result "all at the last close" shows the same with no losses.
+#
+# Rule K of v23 exactly, every 63 sessions from first_scored, 2 bps each way, cash earning BIL: the top fifth of the pool by earnings quality,
+# from filings filed before the rebalance, equal weights. Banks and insurers aren't eligible. Fewer than min_eligible: refused.
+# Yardstick: Hold on this pool, equal weights in all pool_size companies, banks included, reset at each rebalance.
+#
+# It must pass all of these to be called confirmed:
+# TEST 1 (the money): the top fifth beats the yardstick on Sharpe and annual return.
+# TEST 2 (control): the top fifth makes more than the bottom fifth.
+# TEST 3 (not luck): a higher Sharpe than the yardstick without its two best years against the yardstick.
+# TEST 4 (both halves): a higher Sharpe than the yardstick in each half.
+# TEST 5 (not just loss-makers): the rule among companies with positive net income also beats the yardstick on Sharpe and annual return.
+# TEST 6 (the market): the top fifth beats SPY, dividends included, on Sharpe and annual return.
+#
+# The rotation, v29's monthly rule at 10 bps with every setting unchanged, tested separately. Its list comes the same way as v27's, each January
+# from data through the prior year's last session, but from the top pool_size companies by dollar volume over 252 sessions on that
+# day, with 253 sessions of bars, instead of from the survivors. A company with no bar on a book's last close can't be picked.
+# TEST 7: it beats SPY on Sharpe and annual return.
+# TEST 8: it beats holding its list equally, reset each January, on Sharpe and annual return.
+#
+# Measured, which passes or fails nothing, and the plainest answer to why this exists: Hold on this pool against Hold on the 300, each year, over
+# the same days. The gap is the survivor bias in the yardstick. Also the same at "all at the last close", failed companies held and how
+# many stopped, and the rule and Hold at the first_scored window for pool_size_side, which is closer to a broad market.
+#
+# Before the run, a check prints the pool's size, how many stopped and failed, and the largest daily moves, and no rule's return. A company
+# whose bars are plainly wrong, for example a bankruptcy exit joined to its cancelled shares or a missed split, can go under exclude then,
+# with the reason, and never after. A bankruptcy exit goes under cut_at, with its last day before the exit, so the company still stops. Moves
+# before first_scored touch no scored return, so they're left alone. Bars after last_fetch aren't downloaded and filings after it aren't
+# read, so v20's promise holds.
+zips_dir: data/raw/sec_insider
+out_dir: data/processed/v31_pit
+report: artifacts/reports/swing/v31_point_in_time.json
+history_start: "2017-06-01"
+last_fetch: "2026-01-30"
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+max_gap_days: 10
+pool_size: 300
+pool_size_side: 1000
+every: 63
+top_share: 0.20
+min_eligible: 50
+volume_days: 63
+stop_sessions: 5
+fail_look_sessions: 126
+fail_share: 0.5
+quality_cost_bps: 2.0
+rotation_cost_bps: 10.0
+spy_dir: data/processed/alpaca_daily
+cash_dir: data/processed/swing_track_u300
+cash_symbol: BIL
+min_interval_s: 0.35
+block: 21
+bootstrap_samples: 5000
+seed: 2026
+exclude:
+  "4281": "HWM: the 2020-04-01 Arconic split shows as -89%, a spin-off Alpaca's bars don't adjust"
+  "1790982": "ARNC: the same bars as HWM before 2020-04-01, then the same false -89%"
+  "101829": "RTX: the 2020-04-03 Carrier and Otis spin-offs show as -71%"
+  "891103": "MTCH, formerly IAC: the 2020-07-01 separation shows as -67%"
+  "1800227": "IAC: the same bars and the same false -67%"
+  "4457": "UHAL: the 2022-11-10 share dividend shows as -90%"
+  "1935979": "BHVN new company: the old company's bars, then the 2022-10-04 spin-off as -95%"
+  "706688": "AAN: the 2020-12-01 separation shows as -93%"
+  "1664106": "LogicBio: the LOGC bars are ContextLogic's, since Alpaca carries renames"
+  "1636050": "Sio Gene Therapies: the AXON bars are Axon Enterprise's, not its own"
+  "82811": "Regal: the RBC bars before 2021-10 are RBC Bearings'"
+  "858339": "old Caesars: the CZR bars before 2020-07 are Eldorado's"
+  "1466258": "Trane: IR bars from 2020-02 to 2020-06 are Gardner Denver's"
+  "1474432": "Pure Storage: filed as P until 2019, so its column holds Pandora's bars"
+  "1494877": "Digital Realty's operating partnership: the same stock as Digital Realty"
+  "1747777": "Blue Owl Technology Finance: filed under OWL, so its column holds Blue Owl's bars"
+  "1833936": "GPS: the same stock as Gap, CIK 39911"
+  "1816937": "BOX: the same stock as Box, CIK 1372612"
+  "102741": "Valspar: bought in 2017, and the VAL bars after that are Valaris's"
+  "1426945": "ECHO: the same stock as EchoStar, CIK 1415404"
+  "1097609": "TMUS: the same stock as T-Mobile US, CIK 1283699"
+  # The columns below moved identically to another column on hundreds of days, so they hold that company's bars. The company kept is the one named.
+  "74154": "ONEOK Partners: the same bars as ONEOK"
+  "1387156": "American Express Credit: the same bars as American Express"
+  "105598": "Wachovia Preferred: the same bars as Wells Fargo"
+  "1094392": "Rudolph: the same bars as Onto, which it merged into"
+  "1096479": "old LendingTree: the same bars as LendingTree"
+  "1700329": "DFS Services: the same bars as Discover"
+  "863821": "old RH: the same bars as RH"
+  "1521373": "SHLM, FACP: filed as PM, so the same bars as Philip Morris"
+  "1207074": "Virtusa: filed as EXLS, so the same bars as ExlService"
+  "75488": "Pacific Gas and Electric: the same bars as PG&E"
+  "1942420": "FTAI Infrastructure: filed as FTAI, so the same bars as FTAI Aviation"
+  "826083": "old Dell: the same bars as Dell Technologies"
+  "1532390": "Alkaline Water: filed as WTR, so the same bars as Aqua America"
+  "1581160": "Hecla's second filer: the same bars as Hecla"
+  "1682265": "filed as RHI, so the same bars as Robert Half"
+  "899749": "old Healthcare Realty: the same bars as HTA, which took its name"
+  "1082114": "Liberty Sirius: the same bars as Liberty Media"
+  "1458891": "old Noble: the same bars as the new Noble"
+  "1490892": "CoreSite: the COR bars are Cencora's"
+  "21510": "old Coherent: the COHR bars are II-VI's"
+  "1574540": "Physicians Realty: the DOC bars are Healthpeak's"
+  "1137390": "filed as BNY, so the same bars as BNY Mellon"
+  "883902": "Cornerstone Building Brands: the CNR bars are Core Natural Resources'"
+  "30554": "old DuPont: the same bars as DowDuPont"
+  "105319": "Weight Watchers: the WTW bars before 2019-07 are Willis Towers Watson's"
+  "1351051": "Genesis Healthcare: the GEN bars are Gen Digital's"
+  "869614": "FWONK's second filer: the same bars as Liberty Media"
+not_failed:
+  "1772757": "DraftKings: moved to a new legal entity on 2022-05-09, which carries on as CIK 1883685"
+  "1383097": "Naked Brand: became Cenntro on 2022-01-13, so the bars end at a rename"
+cut_at:
+  "874499": ["2021-05-17", "Gulfport: the exit joins cancelled shares at 0.14 to new ones at 72.95"]
+  "1486159": ["2020-11-19", "Oasis, now Chord: the exit joins 0.11 to 21.59"]
+  "1839341": ["2024-01-23", "Core Scientific: the exit joins 0.08 to 3.44"]
+  "1255474": ["2020-09-01", "Whiting: the exit joins 0.56 to 19.36"]
+  "895419": ["2025-09-26", "Wolfspeed: the exit joins 1.21 to 22.10"]
+  "949039": ["2022-03-29", "Diamond Offshore: the exit joins 0.94 to 7.50"]
+  "1580864": ["2025-02-19", "Vroom: the exit joins 5.01 to 31.00"]
+  "20520": ["2020-04-23", "Frontier: FTR's last bar, then FYBR's new shares at 115 times the price"]
+  "945764": ["2020-07-28", "Denbury: DNR's last bar, then DEN's new shares at 80 times the price"]
+  "314808": ["2020-08-14", "Valaris: its last bar before new VAL shares in 2021"]
+  "895126": ["2020-06-26", "Chesapeake: its last bar before new CHK shares in 2021"]
+  "1603923": ["2019-05-10", "Weatherford: its last bar before new WFRD shares in 2021"]
+  "1609253": ["2020-07-15", "California Resources: its last bar before new CRC shares"]
+  "1498710": ["2024-11-15", "Spirit Airlines: its last bar before new FLYY shares in 2025"]
+  "1567892": ["2020-10-09", "Mallinckrodt: its last bar before new MNK shares in 2022"]

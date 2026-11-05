@@ -276,7 +276,7 @@ def _cmd_paper(args: argparse.Namespace) -> int:
     def on_ready(s: PaperSession) -> None:
         print(f"paper session {s.dir.name}: startup checks passed; feed={cfg.feed.kind}; "
               f"{len(s.accounts)} accounts; simulated orders only", file=sys.stderr)
-        mode = "terminal" if args.watch else cfg.dashboard.window
+        mode = "none" if args.no_window else "terminal" if args.watch else cfg.dashboard.window
         if mode == "app":
             from atlas.dashboard.window import open_app_window, window_available
 
@@ -1091,6 +1091,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--open-dashboard", action="store_true", help="open the live page in the browser")
     p.add_argument("--auto-resume", action="store_true", help="resume today's session if it already exists")
     p.add_argument("--watch", action="store_true", help="open the leaderboard in a new terminal window")
+    p.add_argument("--no-window", action="store_true", help="open no leaderboard (a scheduled task has no screen)")
     p.add_argument("--reset-fund", action="store_true", help="archive the fund ledger and split capital afresh")
     p.set_defaults(func=_cmd_paper)
 

@@ -1,0 +1,50 @@
+# v22: buying bottlenecks in growing sectors, a slow investing rule on the 300 companies, tested by scripts/research/investing/v22_bottleneck.py.
+#
+# The idea is the user's: when a sector grows faster than supply, the companies at the choke point should raise prices. No study
+# tests this exact rule, so it's a plain translation. The case against it: high profits attract new capacity (the "capital cycle"),
+# and companies growing their assets fastest have tended to earn less afterward (Titman, Wei and Xie 2004; Cooper, Gulen and
+# Schill 2008). Rule H asks whether waiting for no new supply helps.
+#
+# PRE-REGISTERED 2026-10-31, written before any of this was run. A failed test stays failed. Nothing is tuned.
+#
+# No human picks anything. On every rebalance, using filings filed before that day and closes up to the day before:
+#   Figures: each company's latest fiscal year and the year before it, as last filed by then. Annual figures only.
+#     Gross profit is as filed, or revenue minus cost of revenue. Banks and others with neither are not eligible.
+#   Sector: SEC industry codes sit on an address the project's safety test refuses, so sectors come from prices. Each stock goes to
+#     the one of etfs whose return above SPY's has the highest correlation with the stock's return above SPY's, over the last
+#     group_days. This is coarser than industry codes.
+#   A growing sector: it has at least min_group eligible stocks, and its total revenue growth is in the top third of such sectors.
+#   Rule G (a bottleneck): the stock is in a growing sector, its gross margin rose, and its revenue grew faster than its sector's.
+#   Rule H (no new supply): also passes G, and its assets grew less than its revenue.
+#   Portfolio: equal weights in all that pass, held until the next rebalance, every 63 trading days. With fewer than min_names
+#     passing, the book holds all 300 equally until the next rebalance.
+# Window and costs are those of every swing test: 2019-01-24 to 2026-01-29, 2 bps each way, cash earning BIL. Days from 2026-04-28
+# on are never read.
+#
+# Each rule must pass all of these:
+# TEST 1 (the money): beats Hold on Sharpe and annual return.
+# TEST 2 (control): makes more than the rest of the same growing sectors, held the same way.
+# TEST 3 (not luck): a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): a higher Sharpe than Hold in each half of the window.
+# TEST 5 (not just tech): without the stocks in the tech_groups sectors, on both sides, it still beats its own Hold on Sharpe and
+#   annual return. This window favored technology, and the 300 are survivors chosen around today's market, so a rule that merely
+#   owned tech would pass the first tests. Tech sectors can't count as growing here, so the next sectors take their place.
+#
+# A pass is a candidate for a frozen forward tracker, tested only on days after 2026-10-27, and it wouldn't be proof.
+# Side results, which pass or fail nothing: how many stocks, the share in tech sectors, turnover, each year, 5 bps, years to prove.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+etf_dir: data/processed/alpaca_daily
+fundamentals_dir: data/processed/sec_fundamentals
+first_scored: "2019-01-24"
+last_scored: "2026-01-29"
+etfs: [XLK, XLF, XLE, XLV, XLY, XLP, XLI, XLU, XLB, SMH]
+tech_groups: [XLK, SMH]
+market: SPY
+group_days: 252
+every: 63
+min_group: 5
+min_names: 5
+max_age_days: 550
+prior_year_days: [345, 385]
+cost_bps: 2.0
+side_cost_bps: 5.0

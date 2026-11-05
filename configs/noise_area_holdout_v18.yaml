@@ -1,0 +1,41 @@
+# v18: Hold plus the half-size Noise Area rule on SPY and QQQ, run once on the locked months by scripts/v18_holdout.py.
+#
+# The candidate came from scripts/v15_overlay.py, which was NOT pre-registered: SPY and QQQ were picked after seeing their
+# results, and the rule failed its own tests at 1 bp. This is its one check on days it has never seen.
+#
+# PRE-REGISTERED AND FROZEN 2026-10-31, before any intraday bar from these months was downloaded. A failed test stays failed.
+# Nothing is tuned. The rule, sizing and fills are exactly those of configs/noise_area_v15.yaml.
+#
+# THE BOOK: half SPY and half QQQ held all day (dividends included), plus half_size x the rule's return on the same split.
+# Nothing from the rule is held overnight. Costs are those measured before this test: cost_bps each way.
+#
+# THESE MONTHS ARE NOT PRISTINE. The ledger shows one earlier use, on 2026-10-28, by a different rule (dual momentum on 16
+# ETFs, including SPY and QQQ). That use looked at daily bars and printed Hold's result, and it shaped nothing here. This
+# run is the window's second use and is logged as such. The window can't be used again for this rule or a variant of it.
+#
+# TEST 1 (the money): the book beats Hold on both Sharpe and annual return, the project's pass rule.
+# TEST 2 (execution): the same, with every fill one minute late.
+# TEST 3 (both markets): the rule alone makes money after costs on SPY and on QQQ separately.
+# The candidate passes only if all three pass. What each result means, written down now:
+#   pass: it earns a frozen forward tracker. It still isn't proof, and paper trading stays the user's decision.
+#   fail: the candidate is dropped. No variant of it comes back to these months.
+#
+# HOW LITTLE SIX MONTHS CAN SHOW: a rule with no edge makes money in about half of all six-month spells, and a zero-correlation
+# overlay that makes money beats Hold on both measures, so test 1 alone passes about half the time by luck. Even if the
+# backtest's Sharpe of 1.26 were real, the rule would have only about a 1 in 5 chance of reaching the 95% line below.
+#
+# Side results, which pass or fail nothing: the rule alone, each month, correlation with Hold, the 1%-a-day target,
+# and how the rule ranks against 1,000 coin-flip copies of its trades (same trades and times, random direction).
+rule: "Hold + half-size Noise Area, SPY and QQQ"
+symbols: [SPY, QQQ]
+cost_bps: {SPY: 0.2, QQQ: 0.3}
+half_size: 0.5
+locked_first: "2026-04-28"
+locked_last: "2026-10-27"  # the same window as the first use in the ledger
+warmup_first: "2026-03-25"  # bars before the window, for the rule's 14-day lookback; they are not scored
+check_first: "2024-05-10"  # the check command scores old days and must reproduce the overlay's figures
+check_last: "2026-04-27"
+check_expected: {ann_return: 0.284, sharpe: 1.38}
+control_flips: 1000
+seed: 2026
+ledger: artifacts/reports/swing/holdout_ledger.jsonl

@@ -41,6 +41,9 @@ review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 ## Environment
 
 Windows, Python 3.12 venv at `.venv`. Always run from the repo root with `.venv/Scripts/python.exe`.
+`scripts/README.md` maps the scripts: launchers at the top (the Windows scheduled task points at them, so don't move them),
+frozen rules in `scripts/trackers/`, one-off tests in `scripts/research/`. Don't edit `scripts/research/trading/v15_noise_area.py`,
+`v18_holdout.py` or their two configs: their hashes are in the holdout ledger.
 
 ```bash
 .venv/Scripts/python.exe -m pytest            # full suite, about 25 s
@@ -57,7 +60,9 @@ A session runs from 09:30 to 16:00 ET, about 6.5 hours. That is far longer than 
    tool timeout:
    `.venv/Scripts/python.exe -m atlas.cli --log-level WARNING paper --config configs/paper_live.yaml --auto-resume`
    It waits for the open by itself and opens the live leaderboard window (a native, read-only app window).
-   Reopen it any time with `paper-window --config configs/paper_live.yaml`.
+   Reopen it any time with `paper-window --config configs/paper_live.yaml`. On weekdays the "Atlas daily
+   research" task starts the session itself at 5:35 am Pacific with no window (`nightly_wake.ps1 -Trade`), so
+   check for a running session before starting one.
 3. **Monitor.** This is read-only. Use `paper-status` for a one-shot leaderboard; `paper-watch` is the live,
    refreshing view, and is what the leaderboard window runs:
    `.venv/Scripts/python.exe -m atlas.cli paper-status --config configs/paper_live.yaml`

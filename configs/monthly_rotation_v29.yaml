@@ -1,0 +1,28 @@
+# v29: v27's rotation traded monthly instead of weekly, run by scripts/research/investing/v29_monthly_rotation.py.
+#
+# PRE-REGISTERED, with limits. Written before any monthly return was computed, but after v27's results on the same window, including that
+# costs took about 8 points a year and that holding the list made a higher Sharpe than rotating it. So the idea came from this window,
+# and even a full pass is only a lead. Only days after 2026-10-27 can prove it. This is the one variant tried: no other frequency,
+# lookback or list will be run, because each extra try makes the Deflated Sharpe bar harder to clear.
+#
+# The rule: v27's hindsight-free list and rule, every setting unchanged. Signals still use weekly closes. The only change is that the book
+# changes on the last week-end of each month, trading at the next open, instead of every week. The budget's shock check is read on that
+# session only, so a crash mid-month isn't acted on until the month ends.
+#
+# Tests (6). Beats means Sharpe above AND annual return at least, net of 10 bps each way, on v27's window. A failed test stays failed.
+#   T1 beats SPY
+#   T2 beats Hold on the 300
+#   T3 beats holding the list: every name on the year's list equally, reset each January, the plain alternative seen in v27's follow-up
+#   T4 not luck: Sharpe beats SPY's without its two best years against SPY
+#   T5 Sharpe beats SPY's in both halves
+#   T6 the ranking matters: annual return beats the 95th percentile of random_draws runs with the same groups, budget and weights each
+#      month and the assets picked at random from the same members
+#
+# Side results, which pass or fail nothing: 2 and 5 bps; turnover; each year; a 95% gap interval to SPY; 2018 against SPY, with the year's
+# list built the same way (the data starts in 2016 and a list needs a full prior year plus one session, so 2017 can't be run; 2018 was seen
+# only under FinRL's accounting on FinRL's list, and one year is a small sample); and the Deflated Sharpe of the daily gap to SPY at 25 and 100 rules tried, using v27's and v26's trial figures.
+side_cost_bps: [2, 5]
+before_first: 2018-01-24
+before_last: 2019-01-23
+before_list_years: [2018, 2019]
+report: artifacts/reports/swing/v29_monthly_rotation.json

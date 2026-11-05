@@ -2,7 +2,7 @@
 a few years, or just "companies that had earnings news"? Not part of the pre-registered test; written after its
 result was seen, to check it. Writes artifacts/reports/swing/v12_robustness_u300.json.
 
-    .venv/Scripts/python.exe scripts/v12_robustness.py
+    .venv/Scripts/python.exe scripts/research/trading/v12_robustness.py
 """
 
 from __future__ import annotations

@@ -173,4 +173,4 @@ The honest expectation: a year or two of forward data can catch a broken rule, b
 - **Universe:** the 300 most-traded US companies in January 2016, picked before the test years so the list
   isn't just "the companies that later won" (some survivorship remains: all still trade).
 
-Charts are rebuilt from Atlas's result files with `python scripts/build_report.py`.
+Charts are rebuilt from Atlas's result files with `python scripts/research/build_report.py`.

@@ -1,0 +1,33 @@
+# v21: forward tracker for the pre-FOMC drift, the one rule to pass all its tests in v20. Run by scripts/trackers/v21_fomc_track.py.
+#
+# FROZEN 2026-10-31, before any scored day. The first run records a fingerprint of everything under rule:, and later runs refuse to
+# continue if it changes. An event stays scored once scored: removing one is refused. Research only: nothing here places an order.
+#
+# Rule: buy SPY at the 14:00 ET open the session before each scheduled Fed decision, and sell at the 14:00 open on decision day,
+# cost_bps each way. Every other 14:00-to-14:00 window from first_day on is scored too, as the yardstick, leaving out the window
+# after a decision (it holds the reaction).
+#
+# Only new events count. 2026-10-28 and every earlier decision are left out, so the first event is 2026-12-09.
+#
+# THE VERDICT, written now, reached only once review_events events have been scored (about 5 years):
+#   pass: the mean is above zero with its 95% bootstrap interval above zero, and above the other windows' mean.
+#   fail: anything else. It is dropped, and the rule isn't changed or restarted.
+# Nothing before then is a verdict. Expect the running figure to swing by about 64 bps / sqrt(events), so it says little for years.
+#
+# Decision dates aren't part of the rule's fingerprint, because the Fed can move them, and it has only published them to 2027.
+# Add new years under decisions as the Fed publishes them. Dates read from the Fed's calendar page on 2026-10-31.
+rule:
+  symbol: SPY
+  decision_minute: 270  # 14:00 ET, minutes after 09:30
+  cost_bps: 0.2
+  first_day: "2026-11-02"
+  review_events: 40
+  bootstrap_samples: 5000
+  seed: 2026
+decisions:
+  - [2026-12-09]
+  - [2027-01-27, 2027-03-17, 2027-04-28, 2027-06-09, 2027-07-28, 2027-09-15, 2027-10-27, 2027-12-08]
+feed: sip
+min_interval_s: 0.35
+bars: data/processed/fomc_track/SPY.parquet
+out_dir: artifacts/reports/fomc_track

@@ -1,0 +1,49 @@
+# v30: forward tracker for the rotation. Run by scripts/trackers/v30_rotation_track.py.
+#
+# FROZEN 2026-10-31, before any scored day, at the user's request. The first run records a fingerprint of everything under rule:, the 300
+# companies, v27's rule settings, the code that builds a book and the code that splits it across sleeves. Later runs refuse to continue if
+# any of it changes. A book and a yearly list stay as chosen once recorded. Research only: nothing here places an order, and the holdings
+# are not advice.
+#
+# Why forward: v29 passed 5 of 6 tests at +30.7% a year, but its break attempts showed that result is mostly timing and two stocks. The same
+# rule made +17.5% to +32.9% depending on the week of the month, and +18.1% without NVDA and TSLA. Its stock ranking did worse than random
+# picks, and its deflated score was 0.55 at 25 rules. Only days after 2026-10-27 are unused. This is a lead being checked, not a proven rule.
+#
+# Rule: v27's rule and hindsight-free list, every setting unchanged, read from configs/finrl_rotation_v27.yaml. It's split into four equal
+# sleeves so that no single week's timing decides the result. All four start from the book of first_signal. After that, week-end k
+# replaces only the sleeve numbered k mod 4, so each sleeve changes every fourth week-end. A book comes from closes through the last
+# session of its week and trades at the next open. Sleeves are netted, so only the change in the combined weights pays costs. Each
+# January's list comes from data through the prior year's last session. The 300 stay the pool, and that survivor bias stays in the result,
+# though less on days after a list is set. This form has never been run on history, so this is one clean try.
+#
+# Additions a live record needs, which the backtest didn't: a company with no bar on a book's last close can't be picked for it. One already
+# held stays in the record at its last close until its sleeve changes, in the rule and in the list, and the report names it. A
+# bankruptcy would be flattered by that, so its name has to be read by hand. A session where under 90% of the 300 have bars isn't scored
+# until they do, so a failed download can't look like companies going away. If the ETF download fails, the next book waits, and scoring
+# stops at the session it should have traded after, so a stale book is never scored.
+#
+# Costs: 10 bps each way, as in v27 and v29, the draft's default. v28 measured about 5 bps at the open, before market impact and fees, so the
+# report shows 5 bps beside it, and that row is no part of the verdict. Cash earns BIL.
+#
+# THE VERDICT, written now, reached only once review_sessions sessions have been scored (about 5 years):
+#   pass: all three of beating SPY (a higher Sharpe and an annual return at least SPY's), beating the list held equally (the same, every
+#     name equally, reset each January, the plain alternative), and a 95% block bootstrap interval of the daily gap to SPY that lies above zero.
+#   fail: anything else. It is dropped, and the rule isn't changed or restarted.
+# Nothing before then is a verdict. A real edge of a few points a year may not clear that interval in 5 years, and that would read as a fail.
+rule:
+  universe_config: configs/swing_v12_news_eps_u300.yaml
+  history_start: "2016-01-04"
+  first_signal: "2026-10-30"
+  first_day: "2026-11-02"
+  sleeves: 4
+  cost_bps: 10.0
+  side_cost_bps: 5.0
+  cash_symbol: BIL
+  min_stock_bars: 0.90
+  review_sessions: 1260
+  bootstrap_samples: 5000
+  block: 21
+  seed: 2026
+bars_dir: data/processed/swing_track_u300  # the 300's bars and BIL, refreshed each night by the 300-company tracker, which runs first
+etf_dir: data/processed/rotation_track  # the ETFs the rule needs, refreshed here each night
+out_dir: artifacts/reports/rotation_track

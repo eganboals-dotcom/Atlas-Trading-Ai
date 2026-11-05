@@ -5,10 +5,13 @@
 # It never powers off a PC someone is using: it stays on if the mouse or keyboard was used in the last
 # -IdleMinutes, if anyone is signed in while the task runs in the background (no one signed in is the
 # normal case after the motherboard's alarm boots the PC), or if a live paper session is running.
+# With -Trade it also starts the day's paper session on weekdays, before the research so a slow run can't
+# delay the open, and waits for the session to end. It has no screen here: open_leaderboard.ps1 shows it.
 # Every step is appended to artifacts\reports\swing_track\runs.log.
 param(
     [ValidateSet("shutdown", "sleep", "none")] [string] $After = "shutdown",
-    [int] $IdleMinutes = 10
+    [int] $IdleMinutes = 10,
+    [switch] $Trade
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,8 +50,20 @@ try {
         Write-Log "started Ollama (process $($ollama.Id))"
         Start-Sleep -Seconds 15
     }
+    $session = $null
+    if ($Trade -and (Get-Date).DayOfWeek -notin "Saturday", "Sunday") {
+        $env:PYTHONUTF8 = "1"
+        $paperLog = Join-Path (Split-Path $log) "paper_morning.log"
+        $run = "`"$root\.venv\Scripts\python.exe`" -m atlas.cli --log-level WARNING paper --config configs\paper_live.yaml --auto-resume --no-window"
+        $session = Start-Process -FilePath cmd.exe -ArgumentList "/c `"$run >> `"$paperLog`" 2>&1`"" -WorkingDirectory $root -WindowStyle Hidden -PassThru
+        Write-Log "started the paper session (process $($session.Id)); its output is in $paperLog"
+    }
     & cmd.exe /c "`"$root\scripts\swing_track.cmd`" auto"
     Write-Log "research finished (exit $LASTEXITCODE)"
+    if ($session) {
+        Wait-Process -Id $session.Id -ErrorAction SilentlyContinue
+        Write-Log "paper session ended"
+    }
 } finally {
     if ($ollama) { Stop-Process -Id $ollama.Id -ErrorAction SilentlyContinue }
     [Atlas.Power]::SetThreadExecutionState([uint32]"0x80000000") | Out-Null

@@ -1,4 +1,4 @@
-# v13: the opening fade (the user's grandfather's rule), tested on real 1-minute bars by scripts/v13_open_fade.py.
+# v13: the opening fade (the user's grandfather's rule), tested on real 1-minute bars by scripts/research/trading/v13_open_fade.py.
 #
 # The idea, as he traded it: when the market is volatile in the first 30 minutes, take the other side, because
 # about 70% of the time it comes back to around its opening level by the end of the day.
