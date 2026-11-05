@@ -6,6 +6,8 @@ $task.Triggers[0].StartBoundary = "2026-11-02T05:35:00"
 $task.Settings.ExecutionTimeLimit = "PT12H"  # the task now lasts until the paper session ends
 $task.Settings.WakeToRun = $true
 if ($task.Actions[0].Arguments -notmatch "-Trade") { $task.Actions[0].Arguments += " -Trade" }
+# Sleep, not shutdown: the 5:35 trigger can wake a sleeping PC, but only the motherboard's alarm can start one that's off.
+$task.Actions[0].Arguments = $task.Actions[0].Arguments -replace "-After shutdown", "-After sleep"
 Set-ScheduledTask -InputObject $task | Out-Null
 $next = ($task | Get-ScheduledTaskInfo).NextRunTime
 Write-Host "Done. Next run: $next"

@@ -19,6 +19,7 @@ SPY = Path("data/processed/swing_track/SPY.parquet")
 LOG = REPORTS / "swing_track" / "runs.log"
 SWING = ("swing_track", "swing_track_news", "swing_track_fund", "swing_track_u300", "swing_track_signals", "swing_track_v12")
 TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation"}
+STAT_LINES = ("- Next decision", "- Events:", "- Other windows:")  # the FOMC report's figures, not problems
 LONG = 60  # the trackers themselves show annual figures only after this many days
 OUT = REPORTS / "summary" / "latest.md"
 BARS = (Path("data/processed/swing_track_u300"), Path("data/processed/rotation_track"))
@@ -113,7 +114,7 @@ def report_notes() -> list[str]:
     for folder in (*TABLES, "fomc_track"):
         path = REPORTS / folder / "tracker.md"
         if path.exists():
-            out += [f"{folder}: {line.removeprefix('- ')}" for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("- ") and not line.startswith("- Next decision")]
+            out += [f"{folder}: {line.removeprefix('- ')}" for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("- ") and not line.startswith(STAT_LINES)]
     return out
 
 

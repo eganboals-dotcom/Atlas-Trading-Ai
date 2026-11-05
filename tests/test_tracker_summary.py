@@ -88,6 +88,13 @@ def test_a_small_move_or_one_before_the_trackers_isnt_flagged() -> None:
     assert s.suspect_moves(bars([148.0, 43.0], [1e6, 3.2e6]), "X", date(2026, 11, 3)) == []
 
 
+def test_the_fomc_figures_are_not_flagged(tmp_path, monkeypatch) -> None:
+    (tmp_path / "fomc_track").mkdir()
+    (tmp_path / "fomc_track" / "tracker.md").write_text("- Events: 1, mean +5.0 bps, up on 100%\n\n- Other windows: 2, mean +67.3 bps\n\n- Next decision: 2026-12-09\n\n- bars missing for SPY\n", encoding="utf-8")
+    monkeypatch.setattr(s, "REPORTS", tmp_path)
+    assert s.report_notes() == ["fomc_track: bars missing for SPY"]
+
+
 def test_a_rule_can_beat_hold_and_lose_to_spy() -> None:
     rows = [dict(tracker="x", rule="r", days=2, first=date(2026, 11, 3), last=date(2026, 11, 3), ret=0.05, hold=0.01)]
     text = s.build(rows, SPY, [], [], [], date(2026, 11, 5))
