@@ -1,14 +1,15 @@
 # Project Atlas
 
-50-agent evolutionary trading AI with genetic optimization, reinforcement learning, and realistic market simulation.
+A research platform that tests trading and investing rules honestly, on days they never saw, and now tracks the
+survivors forward on real prices with pretend money.
 
-Atlas is a research platform for evolving and evaluating algorithmic trading agents with
-genetic selection, reinforcement learning, event-driven market simulation, and strict risk
-controls. Strategies are tested on historical data and live-data paper trading before any
-separately approved live deployment. **Profitability is not assumed; it must be demonstrated
-with robust out-of-sample evidence.**
+Atlas started as a 50-agent evolutionary trading AI, with genetic selection, reinforcement learning, event-driven
+market simulation and strict risk controls. Those short-term bots lost to trading costs, so the work moved to slower
+investing rules. A few passed pre-registered tests, and those are now frozen and scored each night on new market days.
+Nothing trades real money. **Profitability is not assumed; it must be demonstrated with robust out-of-sample evidence.**
 
-The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPECIFICATION.docx).
+The original build specification is in [docs/PROJECT_SPECIFICATION.md](docs/PROJECT_SPECIFICATION.md) (the Word original is
+[docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPECIFICATION.docx)).
 
 ## What it found
 
@@ -29,7 +30,43 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 6 — readiness review
+## Where it stands now
+
+**The question now is whether any rule beats the market on days nobody has seen yet.** Four rules that held up in
+backtests are frozen: their code and settings can't change, and each refuses to run if they do. They're scored from
+2026-11-02 on, after costs, and the verdict for each is written in its config before any result:
+
+| Tracker | The rule | Verdict after | Report |
+|---|---|---|---|
+| v21 Fed drift | Hold SPY in the hours before each Fed decision | 40 decisions, about 5 years | `artifacts/reports/fomc_track/tracker.md` |
+| v24 Earnings quality | The fifth of 300 large companies whose profit is best backed by cash, reset every 63 sessions | 1,260 sessions, about 5 years | `artifacts/reports/quality_track/tracker.md` |
+| v30 Rotation | Keep the strongest groups of stocks and ETFs (growth, real assets, defensive), in four weekly sleeves | 1,260 sessions | `artifacts/reports/rotation_track/tracker.md` |
+| v32 ETF rotation | The same group choice with ETFs only and no stock picking | 1,260 sessions | `artifacts/reports/etf_rotation_track/tracker.md` |
+
+Beside them, the swing trackers score other rules each night (the news desk, quality, momentum and trend rules), and
+the live paper session still runs the evolved trading bots against Flip and Hold every weekday.
+
+**One page for everything:** `artifacts/reports/summary/latest.md` (`python scripts/trackers/tracker_summary.py`). It shows each
+investing rule as a bot with $100,000 of pretend money next to the same money in SPY, what each bot holds, every rule
+against Hold and SPY, and anything that needs a person to look.
+
+**The daily routine** (Windows scheduled task "Atlas daily research", 5:35 am Pacific):
+
+1. The PC wakes from sleep, or is started by the motherboard's 5:30 alarm.
+2. On weekdays it starts the paper session, which waits for the 6:30 am open and ends at 1:00 pm. The leaderboard
+   window opens at 5:40 am and at sign-in.
+3. It runs the nightly research (`scripts/swing_track.cmd auto`): new prices, the news desk, every tracker, then
+   the summary page.
+4. When the session ends it puts the PC back to sleep, unless someone is using it.
+
+Logs: `artifacts/reports/swing_track/runs.log` and `paper_morning.log` beside it. Each tracker's rule and tests are in
+the v20 (Fed drift), v23 (earnings quality) and v27 (both rotations) sections below.
+
+**Read the numbers honestly.** Days this few say almost nothing; nothing before a tracker's verdict counts as evidence,
+and paper profit on the trading bots isn't evidence of an edge. In backtests, the best of these rules beat holding the
+market by a few points a year at most, and an edge that size takes years of new days to tell apart from luck.
+
+## Status
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -40,6 +77,7 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 | 5 | Live-data paper trading, risk manager, dashboard | Done |
 | 6 | Readiness review (no live trading) | **Done (awaiting review)**: verdict NOT READY |
 | 7–8 | Disabled broker adapter, live activation | Not started; each needs separate explicit approval |
+| Research | Shorter-term tests (v12–v20), slow investing rules (v22–v33), four frozen forward trackers | **Running**: first verdicts about 2031 |
 
 ## Setup
 
@@ -1384,11 +1422,15 @@ src/atlas/
   evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
   learning/        Gymnasium env, observation normalizer, PPO trainer, frozen policy agent, seed stability
   brokers/         broker interface only (no live adapter exists)
-  feeds/           Alpaca market-data feed (read-only; the only module allowed network access)
+  feeds/           the only network modules, all read-only: Alpaca prices and news, the local AI reader,
+                   the optional Claude reader, SEC filings, FINRA short interest
+  news/            the news desk: fetches headlines and has an AI read them
   paper/           paper config, live-feed interface + replay feed, paper broker, risk manager, session, report
   dashboard/       read-only Streamlit app and file loaders
   readiness.py     Phase 6 review: evidence, failure drills, gates, broker open items
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
+scripts/           launchers and the scheduled task's scripts; trackers/ (frozen rules); research/ (one-off tests),
+                   mapped in scripts/README.md
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)
 artifacts/         checkpoints/ reports/ (generated, git-ignored)

@@ -1,7 +1,7 @@
 # CLAUDE.md — operating Project Atlas
 
 Atlas is a research and **paper-trading** platform for evolved trading agents. The full spec is
-`docs/PROJECT_SPECIFICATION.docx`; the status and how-tos are in `README.md`; the latest readiness
+`docs/PROJECT_SPECIFICATION.md` (a text copy of the `.docx`); the status and how-tos are in `README.md`; the latest readiness
 review is `docs/READINESS_REVIEW.md` (verdict: NOT READY).
 
 ## Hard rules
