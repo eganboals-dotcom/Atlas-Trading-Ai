@@ -27,6 +27,16 @@ WATCHED_FROM = date(2026, 10, 27)  # the frozen trackers' bars; older moves can'
 BIG_MOVE = 0.45
 VOLUME_SURGE = 2.5  # a real crash this size trades far more than the day before; a spin-off or missed split doesn't
 START = 100_000.0  # each investing bot's pretend money
+BOTS_JSON = REPORTS / "summary" / "bots.json"  # the leaderboard window's investing tab reads this
+# Each rule's return a year on history, 2019-01-24 to 2026-01-29 after costs, from the README's v23, v29 and v31 sections.
+BACKTEST_SPY = 0.166
+BACKTEST = {
+    "Earnings quality": dict(per_year=0.231, note="v23 on 300 surviving large companies; +24.3% with the failed companies added (v31), "
+                                                  "+15.5% on newer companies (v25), where it failed"),
+    "Rotation": dict(per_year=0.307, note="v29, the monthly form; +17.5% to +34.1% depending on the trading week and +17.2% with broader "
+                                          "lists; the tracked four-sleeve form never ran on history"),
+    "ETF rotation": dict(per_year=None, note="never run on history, on purpose: days already seen can't prove it"),
+}
 
 
 def spy_return(spy: pl.DataFrame, first: date, last: date) -> float | None:
@@ -101,6 +111,13 @@ def bot_lines(accounts: list[dict]) -> list[str]:
     return [*lines, "", *[f"- {b['name']} holds {b['holds']}" for b in accounts], ""]
 
 
+def bots_json(accounts: list[dict], newest: date, today: date) -> str:
+    """The bots for the leaderboard window, each with its backtest return a year."""
+    rows = [{**b, "since": b["since"] and b["since"].isoformat(), "backtest": BACKTEST.get(b["name"], dict(per_year=None, note=""))}
+            for b in sorted(accounts, key=lambda b: -b["value"])]
+    return json.dumps(dict(written=today.isoformat(), prices_through=newest.isoformat(), start=START, spy_backtest=BACKTEST_SPY, bots=rows), indent=1)
+
+
 def run_problems(text: str) -> list[str]:
     """What the last nightly run in the log says went wrong."""
     last = text[text.rfind("=== "):] if "=== " in text else text
@@ -169,9 +186,11 @@ def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[
 def main() -> None:
     spy = pl.read_parquet(SPY).sort("date")
     rows = [r for f in SWING for r in swing_rows(REPORTS / f)] + table_rows()
-    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), bots(spy))
+    accounts = bots(spy)
+    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), accounts)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text, encoding="utf-8")
+    BOTS_JSON.write_text(bots_json(accounts, spy["date"].max(), date.today()), encoding="utf-8")
     print(text)
 
 

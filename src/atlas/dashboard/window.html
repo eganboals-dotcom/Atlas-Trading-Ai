@@ -18,7 +18,22 @@
     font-size: 13px; -webkit-font-smoothing: antialiased; overflow: hidden; }
   .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .up { color: var(--green); } .down { color: var(--red); } .flat { color: var(--muted); }
-  .app { display: grid; grid-template-rows: 52px auto 1fr 28px; height: 100vh; }
+  .app { display: grid; grid-template-rows: 52px auto 1fr 28px; height: calc(100vh - 34px); }
+
+  /* tabs */
+  .tabs { display: flex; gap: 4px; height: 34px; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); background: #05070a; }
+  .tab { appearance: none; border: 1px solid transparent; border-bottom: none; background: none; color: var(--muted); font: 600 11.5px var(--sans);
+    letter-spacing: .08em; text-transform: uppercase; padding: 8px 14px; border-radius: 8px 8px 0 0; cursor: pointer; }
+  .tab:hover { color: var(--text); }
+  .tab.on { color: var(--text); background: var(--panel); border-color: var(--line); }
+  .tab:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
+  /* investing bots */
+  .invest { height: calc(100vh - 34px); overflow: auto; padding: 18px; }
+  .invest th:nth-child(2), .invest td:nth-child(2) { text-align: right; }
+  .invest .holds { color: var(--muted); font-size: 11.5px; margin-top: 3px; white-space: normal; max-width: 460px; line-height: 1.45; }
+  .invest .lede { color: var(--muted); max-width: 980px; line-height: 1.55; margin: 16px 0 6px; }
+  .notes { margin: 0; padding: 0 0 0 18px; color: var(--muted); line-height: 1.6; max-width: 980px; }
 
   /* top bar */
   .top { display: flex; align-items: center; gap: 18px; padding: 0 18px; border-bottom: 1px solid var(--line);
@@ -114,10 +129,29 @@
     font-size: 11px; font-family: var(--mono); }
   .foot .sim { color: var(--muted); font-family: var(--sans); font-weight: 600; letter-spacing: .06em; }
   ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
-  .wait { display: grid; place-items: center; height: 100vh; color: var(--muted); font-size: 15px; letter-spacing: .04em; }
+  .wait { display: grid; place-items: center; height: calc(100vh - 34px); color: var(--muted); font-size: 15px; letter-spacing: .04em; }
 </style>
 </head>
 <body>
+<nav class="tabs" role="tablist">
+  <button class="tab on" id="tabPaper" role="tab" aria-selected="true">Paper trading</button>
+  <button class="tab" id="tabInvest" role="tab" aria-selected="false">Investing bots</button>
+</nav>
+<div id="invest" class="invest" style="display:none">
+  <div class="panel">
+    <h2>Investing bots <span class="right" id="investAsOf"></span></h2>
+    <table>
+      <thead><tr><th>Bot</th><th>Account</th><th>Same money in SPY</th><th>Ahead of SPY</th><th>Return so far</th>
+        <th>Backtest a year</th><th>Invested</th><th>Scored from</th></tr></thead>
+      <tbody id="investRows"><tr><td colspan="8" class="empty">No summary yet: the nightly research writes it.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="lede">Each rule runs as a bot with pretend money, held across days, after the tracker's costs; nothing here is a real
+    account or advice. "Backtest a year" is the rule's return a year on history from 2019 to January 2026. Backtests flatter,
+    and only the new days count: each verdict comes after about 5 years of them.</p>
+  <ul class="notes" id="investNotes"></ul>
+</div>
+<div id="paperView">
 <div id="wait" class="wait">Waiting for the session to start…</div>
 <div id="app" class="app" style="display:none">
   <div class="top">
@@ -165,6 +199,7 @@
     <span class="sim">SIMULATED ORDERS ONLY — NO ORDER IS SENT TO ANY BROKER</span>
     <span class="spacer"></span><span id="counters"></span><span id="age"></span>
   </div>
+</div>
 </div>
 <script>
 const COLORS = ["#1ee68f", "#5aa9ff", "#a78bfa", "#f5c84c", "#ff8a4c", "#ff4d6a", "#2dd4bf", "#e879f9", "#a3e635", "#d4a373"];
@@ -313,13 +348,51 @@ function render(d) {
   document.getElementById("age").textContent = `updated ${Math.round(d.age)}s ago`;
 }
 
+const sign = x => x > 0 ? "up" : x < 0 ? "down" : "flat";
+
+function renderInvest(d) {
+  if (!d || !d.bots) return;
+  document.getElementById("investAsOf").textContent = `prices through ${d.prices_through} · written ${d.written}`;
+  document.getElementById("investRows").innerHTML = d.bots.map(b => {
+    const ahead = b.value - b.spy, ret = b.value / d.start - 1, bt = b.backtest.per_year;
+    return `<tr class="bot">
+      <td><div class="name">${esc(b.name)}</div><div class="holds">${esc(b.holds)}</div></td>
+      <td class="num">${plainMoney(b.value)}</td>
+      <td class="num">${plainMoney(b.spy)}</td>
+      <td class="num"><span class="pnl ${sign(ahead)}">${money(ahead)}</span></td>
+      <td class="num ${sign(ret)}">${pct(ret)}</td>
+      <td class="num">${bt == null ? '<span class="flat">none</span>' : pct(bt, 1)}</td>
+      <td class="num">${esc(b.invested)}</td>
+      <td class="num">${b.since ? esc(b.since) : "not yet"}</td></tr>`;
+  }).join("");
+  document.getElementById("investNotes").innerHTML = [`SPY made ${pct(d.spy_backtest, 1)} a year over the same backtest years.`,
+    ...d.bots.map(b => `${b.name}: ${b.backtest.note}.`)].map(t => `<li>${esc(t)}</li>`).join("");
+}
+
+let tab = "paper";
+function show(t) {
+  tab = t;
+  document.getElementById("paperView").style.display = t === "paper" ? "" : "none";
+  document.getElementById("invest").style.display = t === "invest" ? "block" : "none";
+  [["tabPaper", "paper"], ["tabInvest", "invest"]].forEach(([id, k]) => {
+    const el = document.getElementById(id); el.classList.toggle("on", k === t); el.setAttribute("aria-selected", k === t);
+  });
+  if (window.pywebview) (t === "invest" ? investTick : tick)();
+}
+document.getElementById("tabPaper").addEventListener("click", () => show("paper"));
+document.getElementById("tabInvest").addEventListener("click", () => show("invest"));
+
 async function tick() {
+  if (tab !== "paper") return;  // a hidden canvas has no size to draw into
   try {
     const d = await window.pywebview.api.live();
     if (d && d.live) render(d);
   } catch (e) { console.error(e); }
 }
-window.addEventListener("pywebviewready", () => { tick(); setInterval(tick, 1000); });
+async function investTick() {
+  try { renderInvest(await window.pywebview.api.investing()); } catch (e) { console.error(e); }
+}
+window.addEventListener("pywebviewready", () => { tick(); investTick(); setInterval(tick, 1000); setInterval(investTick, 60000); });
 window.addEventListener("resize", () => tick());
 </script>
 </body>

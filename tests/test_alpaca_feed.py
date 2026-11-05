@@ -275,14 +275,21 @@ def test_leaderboard_window_api_is_read_only_and_page_is_offline(tmp_path: Path)
     s.run()
     api = Api(s.dir)
     public = [n for n, _ in inspect.getmembers(api, inspect.ismethod) if not n.startswith("_")]
-    assert public == ["live"]  # the page can only read the snapshot
+    assert public == ["investing", "live"]  # the page can only read the snapshot and the investing summary
     d = api.live()
     assert d["live"]["fund"]["bots"] == 4 and len(d["rows"]) == 5 and d["age"] >= 0
     assert d["live"]["quotes"].keys() == {"SPY", "QQQ"}
     assert Api(tmp_path / "missing").live() is None
+    assert api.investing() is None  # no summary written yet
+    summary = s.dir.parent.parent / "reports" / "summary"
+    summary.mkdir(parents=True)
+    (summary / "bots.json").write_text('{"bots": []}', encoding="utf-8")
+    assert api.investing() == {"bots": []}
+    (summary / "bots.json").write_text('{"bots": [', encoding="utf-8")
+    assert api.investing() is None  # caught mid-write
     page = HTML.read_text(encoding="utf-8")
     assert not re.search(r"https?://", page)  # no CDN, fonts, or any network resource
-    assert "pywebview.api.live" in page
+    assert "pywebview.api.live" in page and "pywebview.api.investing" in page
 
 
 def recording_session(tmp_path: Path, minutes: int = 3) -> PaperSession:

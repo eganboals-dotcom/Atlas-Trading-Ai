@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -56,6 +57,14 @@ def test_a_bot_grows_with_its_tracker_and_is_set_against_spy() -> None:
     b = s.bot("Earnings quality", TABLE, SPY)
     assert b["value"] == pytest.approx(101_500) and b["spy"] == pytest.approx(99_000) and b["invested"] == "100%" and b["since"] == date(2026, 11, 3)
     assert "| Earnings quality | $101,500 | $99,000 | +2,500 | 100% | 2026-11-03 |" in s.bot_lines([b])
+
+
+def test_the_window_gets_each_bot_with_its_backtest() -> None:
+    d = json.loads(s.bots_json([s.bot("Earnings quality", TABLE, SPY), s.bot("ETF rotation", "# nothing", SPY)], date(2026, 11, 4), date(2026, 11, 5)))
+    assert (d["prices_through"], d["start"], d["spy_backtest"]) == ("2026-11-04", 100_000, 0.166)
+    assert [b["name"] for b in d["bots"]] == ["Earnings quality", "ETF rotation"]  # best account first
+    assert d["bots"][0]["since"] == "2026-11-03" and d["bots"][0]["backtest"]["per_year"] == 0.231
+    assert d["bots"][1]["since"] is None and d["bots"][1]["backtest"]["per_year"] is None  # never backtested, on purpose
 
 
 def test_a_bot_with_no_days_still_has_its_money() -> None:

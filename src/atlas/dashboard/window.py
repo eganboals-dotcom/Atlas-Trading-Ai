@@ -2,12 +2,14 @@
 
 It renders ``window.html`` inside an Edge WebView2 window via pywebview. There is no web
 server and no localhost page: the page calls ``Api.live()`` through pywebview's
-JavaScript bridge, and that method only reads the session's ``live.json``. The window
-has no controls that affect trading.
+JavaScript bridge, and that method only reads the session's ``live.json``. A second tab
+shows the investing bots through ``Api.investing()``, which only reads the nightly summary's
+``bots.json``. The window has no controls that affect trading.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -32,6 +34,13 @@ class Api:
             return None
         age = (datetime.now(UTC) - datetime.fromisoformat(live["updated_wall"])).total_seconds()
         return {"live": live, "rows": data.leaderboard(live), "age": age}
+
+    def investing(self) -> dict[str, Any] | None:
+        """The investing bots, which the nightly summary writes next to the paper sessions' artifacts."""
+        try:
+            return data.load_json(self._dir.parent.parent / "reports" / "summary" / "bots.json")
+        except (json.JSONDecodeError, OSError):  # mid-write; the next refresh succeeds
+            return None
 
 
 def run_window(session_dir: Path) -> int:

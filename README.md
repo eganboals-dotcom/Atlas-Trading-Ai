@@ -48,7 +48,8 @@ the live paper session still runs the evolved trading bots against Flip and Hold
 
 **One page for everything:** `artifacts/reports/summary/latest.md` (`python scripts/trackers/tracker_summary.py`). It shows each
 investing rule as a bot with $100,000 of pretend money next to the same money in SPY, what each bot holds, every rule
-against Hold and SPY, and anything that needs a person to look.
+against Hold and SPY, and anything that needs a person to look. The leaderboard window shows the same bots on its second tab,
+Investing bots, with each rule's backtest return a year beside its account.
 
 **The daily routine** (Windows scheduled task "Atlas daily research", 5:35 am Pacific):
 
