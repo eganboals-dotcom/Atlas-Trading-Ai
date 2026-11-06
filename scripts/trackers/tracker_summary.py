@@ -28,7 +28,7 @@ BIG_MOVE = 0.45
 VOLUME_SURGE = 2.5  # a real crash this size trades far more than the day before; a spin-off or missed split doesn't
 START = 100_000.0  # each investing bot's pretend money
 BOTS_JSON = REPORTS / "summary" / "bots.json"  # the leaderboard window's investing tab reads this
-# Each rule's return a year on history, 2019-01-24 to 2026-01-29 after costs, from the README's v23, v29 and v31 sections.
+# Each rule's return a year on history, 2019-01-24 to 2026-01-29 after costs, from the v23, v29 and v31 sections of docs/HISTORY.md.
 BACKTEST_SPY = 0.166
 BACKTEST = {
     "Earnings quality": dict(per_year=0.231, note="v23 on 300 surviving large companies; +24.3% with the failed companies added (v31), "
