@@ -32,9 +32,8 @@ The original build specification is in [docs/PROJECT_SPECIFICATION.md](docs/PROJ
 
 ## Where it stands now
 
-**The question now is whether any rule beats the market on days nobody has seen yet.** Four rules that held up in
-backtests are frozen: their code and settings can't change, and each refuses to run if they do. They're scored from
-2026-11-02 on, after costs, and the verdict for each is written in its config before any result:
+**The question now is whether any rule beats the market on days nobody has seen yet.** Five rules are frozen: their code and settings can't change, and each refuses to run if they do. The first four held up
+in backtests and are scored from 2026-11-02 on; the fifth from 2026-11-06, after costs, and the verdict for each is written in its config before any result:
 
 | Tracker | The rule | Verdict after | Report |
 |---|---|---|---|
@@ -42,6 +41,7 @@ backtests are frozen: their code and settings can't change, and each refuses to 
 | v24 Earnings quality | The fifth of 300 large companies whose profit is best backed by cash, reset every 63 sessions | 1,260 sessions, about 5 years | `artifacts/reports/quality_track/tracker.md` |
 | v30 Rotation | Keep the strongest groups of stocks and ETFs (growth, real assets, defensive), in four weekly sleeves | 1,260 sessions | `artifacts/reports/rotation_track/tracker.md` |
 | v32 ETF rotation | The same group choice with ETFs only and no stock picking | 1,260 sessions | `artifacts/reports/etf_rotation_track/tracker.md` |
+| v36 ETFs held equally | The rotation's 13 ETFs in equal amounts, reset each quarter; it claims steadier returns than SPY, not more | 1,260 sessions | `artifacts/reports/etf_equal_track/tracker.md` |
 
 Beside them, the swing trackers score other rules each night (the news desk, quality, momentum and trend rules), and
 the live paper session still runs the evolved trading bots against Flip and Hold every weekday.
@@ -62,7 +62,7 @@ rule's backtest return a year, and during market hours an estimate from the late
 4. When the session ends it puts the PC back to sleep, unless someone is using it.
 
 Logs: `artifacts/reports/swing_track/runs.log` and `paper_morning.log` beside it. Each tracker's rule and tests are in
-the v20 (Fed drift), v23 (earnings quality) and v27 (both rotations) sections below.
+the v20 (Fed drift), v23 (earnings quality) and v27 (both rotations and v36) sections below.
 
 **What the numbers mean.** Days this few say almost nothing; nothing before a tracker's verdict counts as evidence,
 and paper profit on the trading bots isn't evidence of an edge. In backtests, the best of these rules beat holding the
@@ -1085,6 +1085,12 @@ year (Sharpe 0.85, worst fall 22.4%) against SPY's +16.4% (0.75, 33.8%) on the s
 January 2026, +17.7% against +1.8%, when gold and silver ran; from 2019 to 2024 it made about +10% a year against SPY's +16%. Holding all its ETFs
 equally made +15.9% with a Sharpe of 1.12, so on these years the rule would fail its own verdict against that yardstick. These are also the
 years its idea came from. v32 doesn't change, and only its days after 2026-11-02 count.
+
+**The rotation's ETFs held equally (v36).** That side result was frozen on 2026-11-05 as its own tracker, at the user's request
+([configs/etf_equal_track_v36.yaml](configs/etf_equal_track_v36.yaml), `python scripts/trackers/v36_etf_equal_track.py`, run each night after v32).
+Equal money in v32's 13 ETFs from the close of 2026-11-05, back to equal on the first session of each quarter, 2 bps each way. Its claim is
+steadier returns than SPY, not more return. The verdict, after 1,260 sessions: a higher Sharpe than SPY and a smaller worst fall, both. It
+was seen on history before it was frozen, so only its new days count, and it is one more rule tried.
 
 **Annual reports that barely changed (v35).** "Lazy Prices" (Cohen, Malloy and Nguyen, 2020) found that companies whose 10-K text changes a lot
 from the year before earn less afterwards. Pre-registered on 2026-11-05 before any 10-K was downloaded ([configs/lazy_prices_v35.yaml](configs/lazy_prices_v35.yaml),

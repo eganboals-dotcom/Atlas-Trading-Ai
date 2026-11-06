@@ -18,7 +18,7 @@ REPORTS = Path("artifacts/reports")
 SPY = Path("data/processed/swing_track/SPY.parquet")
 LOG = REPORTS / "swing_track" / "runs.log"
 SWING = ("swing_track", "swing_track_news", "swing_track_fund", "swing_track_u300", "swing_track_signals", "swing_track_v12")
-TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation"}
+TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation", "etf_equal_track": "ETFs held equally"}
 STAT_LINES = ("- Next decision", "- Events:", "- Other windows:")  # the FOMC report's figures, not problems
 LONG = 60  # the trackers themselves show annual figures only after this many days
 OUT = REPORTS / "summary" / "latest.md"
@@ -38,6 +38,8 @@ BACKTEST = {
     "ETF rotation": dict(per_year=0.171, note="v34, run after the rule was frozen, so an estimate and not a test: +16.4% for SPY on the same days, "
                                               "but about +10% a year to SPY's +16% before 2025's metals rally, and its ETFs held equally made +15.9% "
                                               "with steadier returns"),
+    "ETFs held equally": dict(per_year=0.159, note="v34's side result, seen before v36 was frozen, so an estimate and not a test: a Sharpe of 1.12 "
+                                                   "and a worst fall of 19.5%, against SPY's 0.75 and 33.8%, with gold's 2025 rally in it"),
 }
 
 

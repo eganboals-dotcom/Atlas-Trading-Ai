@@ -24,6 +24,7 @@ Frozen rules, run every night. Their rules never change. Each one refuses to run
 | `v24_quality_track.py` | Earnings quality |
 | `v30_rotation_track.py` | The stock and ETF rotation |
 | `v32_etf_rotation_track.py` | The ETF-only rotation |
+| `v36_etf_equal_track.py` | The ETF rotation's 13 ETFs held equally |
 | `tracker_summary.py` | One page across all of them, with the investing bots; also writes `bots.json` for the leaderboard's Investing bots tab |
 
 ## research/trading/
