@@ -60,6 +60,7 @@ One-off tests of slower ideas.
 | `v33_random_picks.py` | The rotation against chance | Ranking failed; choosing groups passed |
 | `v34_etf_rotation_history.py` | The ETF-only rotation on history, after it was frozen | An estimate: +17.1% a year vs SPY's +16.4%, mostly 2025 |
 | `v35_lazy_prices.py` | Annual reports that barely changed ("Lazy Prices") | Failed 3 of 6: right direction, too small, lost to SPY |
+| `v37_forecasters.py` | Eight price forecasters: naive, ARIMA, random forest, XGBoost, LSTM, TimesFM 2.5, TiRex-2 | All failed; the best passed 3 of 6, none beat SPY |
 
 `research/build_report.py` draws the charts for the write-up in `docs/report/`.
 

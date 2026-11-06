@@ -1008,7 +1008,9 @@ Sharpes comes from the rules run on this same window.
 | 1,000 (stands in for the walk-forward searches) | 0.39 | 0.83 |
 
 Earnings quality clears the bar only against cash, with few tries counted. Its gap to Hold doesn't clear it at any count, though correlated
-rules count for less than N says. So it stays a lead, and the forward tracker is what can settle it.
+rules count for less than N says. So it stays a lead, and the forward tracker is what can settle it. Since v26, at least 14 more rules
+have run on this window (v27, v29, v33's two, v34, v35 and v37's eight), so the fairest count is now nearer 40 than 25, between the rows
+above, and the bar is a little higher than v26 shows. v26 itself is left as it ran.
 
 ## v27: a copy of FinRL's Adaptive Rotation
 
@@ -1108,6 +1110,35 @@ page and its documents, nothing else. Every 63 sessions, the 300 companies are s
 The direction is the paper's: the least changed beat the most changed by 2.6 points a year, and picking within each sector did too. But the
 lead over Hold was 0.8 points a year, it vanished without 2021 and 2025, it didn't beat Hold in both halves of the window, and it lost to SPY. At that
 size it would take about 119 years of days to tell it from luck. It isn't tracked. Results in `artifacts/reports/swing/v35_lazy_prices.json`.
+
+**Eight price forecasters, from naive to foundation models (v37).** The AI-trading projects read on 2026-11-05 (TradingAgents, orallexa,
+bulbea, TimesFM, TiRex-2 and others) mostly rest on forecasting models, and those can be tested on history where the LLM agents can't.
+Pre-registered on 2026-11-05 before any forecast was seen ([configs/forecasters_v37.yaml](configs/forecasters_v37.yaml),
+`python scripts/research/investing/v37_forecasters.py run`). Every 5 sessions each model forecasts each of the 300 companies' next 5 sessions
+from closes before the rebalance, and the top fifth is held equally, 5 bps each way. The random forest, XGBoost and LSTM are pooled across
+companies and retrained each January on the 3 years before it (only about 2 years in 2019, since the data starts in 2016). TimesFM 2.5 and
+TiRex-2 run as downloaded, on the last 512 closes. Each ran once, untuned. All eight failed:
+
+| 2019-01-24 to 2026-01-29 | Tests passed | Return/yr | Sharpe | Worst fall | Bottom fifth | Rank corr. |
+|---|---|---|---|---|---|---|
+| Last week's return | 0 of 6 | +6.8% | 0.29 | 42.7% | +22.6% | -0.024 |
+| 12-1 month momentum | 3 of 6 | +16.9% | 0.71 | 35.0% | +16.8% | +0.016 |
+| ARIMA(1,0,0) | 0 of 6 | +15.2% | 0.66 | 37.1% | +17.7% | +0.011 |
+| Random forest | 2 of 6 | +18.5% | 0.72 | 47.1% | +11.1% | +0.016 |
+| XGBoost | 1 of 6 | +15.9% | 0.63 | 45.6% | +12.3% | +0.010 |
+| LSTM | 3 of 6 | +18.4% | 0.71 | 50.3% | +6.3% | +0.016 |
+| TimesFM 2.5 | 0 of 6 | +11.0% | 0.43 | 44.7% | +16.6% | -0.012 |
+| TiRex-2 | 0 of 6 | +13.1% | 0.51 | 46.2% | +18.3% | +0.002 |
+| Hold (the 300) | | +15.7% | 0.68 | 39.8% | | |
+| SPY | | +16.6% | 0.76 | 33.8% | | |
+
+None beat SPY, and none beat Hold in both halves of the window. The random forest and the LSTM ranked the companies in the right order (their
+bottom fifths made 11.1% and 6.3%), but their leads over Hold came from a few years and cost deeper falls, and at 10 bps a side they dropped
+to +14.8% and +14.2%. The two foundation models did worse than Hold, even though they may have seen these very prices in training. The
+clearest pattern was the wrong way round: last week's losers made +22.6% a year and its winners +6.8%, a rank correlation of -0.024 with a
+t-statistic of -2.1. That is short-term reversal, known since the early 1990s. It passes nothing here, since the rule bought the winners and
+can't be flipped after the fact; buying the losers would be its own pre-registered test, with about 78% of the holding turning over each week,
+so costs would decide it. Results in `artifacts/reports/swing/v37_forecasters.json`.
 
 **All the trackers on one page.** `python scripts/trackers/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column

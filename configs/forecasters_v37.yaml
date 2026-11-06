@@ -1,0 +1,59 @@
+# v37: eight price forecasters, from naive to foundation models, on the 300 companies, tested by scripts/research/investing/v37_forecasters.py.
+#
+# Why: asked for on 2026-11-05 after reading AI-trading repositories (TradingAgents, orallexa, FinCast-CLI, bulbea, TimesFM, TiRex-2 and
+# others). The LLM agents among them can't be tested on history: a model trained on text through 2025 has read how 2019-2025 went. What can
+# be tested are the forecasting models they use: ARIMA, random forests, gradient boosting, an LSTM and two foundation models. Two naive
+# forecasts come first, since anything fancy has to beat them.
+#
+# PRE-REGISTERED 2026-11-05, written before any model's forecast of a real price was seen. A failed test stays failed. Nothing is tuned:
+# each model runs once with the settings below. Daily returns are close to unpredictable, so every model failing wouldn't be a surprise.
+#
+# Every model, every week (every 5 sessions from first_scored), forecasts each company's return over the next 5 sessions, from closes up to
+# the session before the rebalance. The portfolio holds the top fifth by forecast, equal weights, until the next rebalance, at cost_bps each
+# way, cash earning BIL. Window: 2019-01-24 to 2026-01-29, as in v23 and v35. Days from 2026-04-28 on are never read.
+#   last_week: the return over the last 5 sessions (the forecast that next week repeats this one).
+#   momentum: the return from 252 to 21 sessions back (12-1 month momentum).
+#   ar1: ARIMA(1,0,0) on each company's last 252 daily log returns, fitted by least squares; the forecast is the sum of the next 5 steps.
+#   random_forest and xgboost: one model across all companies. Features, each ranked across companies to 0..1 on its date: log returns
+#     over 1, 5, 21, 63, 126 and 252 sessions; the standard deviation of daily log returns over 21 and 252 sessions; the close over the
+#     252-session high; mean dollar volume over 21 sessions over that over 252. Target: the next 5 sessions' log return, ranked the same way.
+#     Trained at the first rebalance of each calendar year on every weekly date of the 3 years before it whose target ended before that
+#     rebalance. Settings below.
+#   lstm: one LSTM across all companies on the last 60 daily log returns, each series divided by its own standard deviation; same target,
+#     same training schedule. Settings below.
+#   timesfm: Google's TimesFM 2.5 (200M, Apache-2.0 weights), the last 512 closes in, the point forecast 5 sessions ahead over the last close.
+#   tirex: NX-AI's TiRex-2 (Apache-2.0), the last 512 closes in, the median forecast 5 sessions ahead over the last close. It runs with
+#     torch's compiler off (TORCHDYNAMO_DISABLE=1), since this PC has no C++ compiler; the layers are the same, only slower.
+# The foundation models were trained on large public collections of series that may include stock prices from these years, which would
+# flatter them. That can't be checked from here.
+#
+# Each model must pass all of these, as in v35:
+# TEST 1 (the money): beats Hold on Sharpe and annual return.
+# TEST 2 (control): the top fifth makes more than the bottom fifth.
+# TEST 3 (not luck): a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): a higher Sharpe than Hold in each half of the window.
+# TEST 5 (not a sector bet): the top fifth of each sector, sectors built as in configs/bottleneck_v22.yaml, also beats Hold on Sharpe and
+#   annual return. Sectors with fewer than min_group companies are left out.
+# TEST 6 (the market): the top fifth beats SPY on Sharpe and annual return.
+#
+# Eight models run here, on a window many rules have used, so one passing by luck is quite possible. A pass is a candidate for a frozen
+# forward tracker, tested only on days after it is frozen, and wouldn't be proof. All 300 survived to 2026, which flatters every model.
+#
+# Side results, which pass or fail nothing: each week's rank correlation between forecast and the realized 5-session return (its mean and
+# t-statistic), each year, side_cost_bps, turnover.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+every: 5
+horizon: 5
+top_share: 0.20
+min_group: 5
+cost_bps: 5.0
+side_cost_bps: 10.0
+seed: 37
+train_years: 3
+context: 512
+models: [last_week, momentum, ar1, random_forest, xgboost, lstm, timesfm, tirex]
+random_forest: {n_estimators: 200, max_depth: 6, min_samples_leaf: 100}
+xgboost: {n_estimators: 300, max_depth: 4, learning_rate: 0.05, subsample: 0.8, colsample_bytree: 0.8}
+lstm: {window: 60, hidden: 32, epochs: 5, batch: 512, learning_rate: 0.001}
+timesfm_repo: google/timesfm-2.5-200m-pytorch
+tirex_repo: NX-AI/TiRex-2
