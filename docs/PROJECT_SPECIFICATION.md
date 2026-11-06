@@ -1,7 +1,7 @@
 # PROJECT ATLAS
 
 *A plain-text copy of [PROJECT_SPECIFICATION.docx](PROJECT_SPECIFICATION.docx), the original build spec from October 2026. For
-where the project stands now, see the [README](../README.md).*
+where the project stands now, see the [README](../README.md); how it got there is in [HISTORY.md](HISTORY.md).*
 
 50-Agent Evolutionary Trading AI
 

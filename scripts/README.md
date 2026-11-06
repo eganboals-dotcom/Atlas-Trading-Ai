@@ -29,11 +29,11 @@ Frozen rules, run every night. Their rules never change. Each one refuses to run
 
 ## research/trading/
 
-One-off tests of shorter-term ideas. Each ran once, and its result is in the README.
+One-off tests of shorter-term ideas. Each ran once, and its write-up is in [docs/HISTORY.md](../docs/HISTORY.md).
 
 | File | Test | Result |
 | --- | --- | --- |
-| `v12_controls.py`, `v12_robustness.py` | Controls and break attempts for the v12 rules | See README |
+| `v12_controls.py`, `v12_robustness.py` | Controls and break attempts for the v12 rules | See docs/HISTORY.md |
 | `v13_open_fade.py` | Fading the opening 30 minutes | Failed |
 | `v14_stocks_in_play.py` | Stocks-in-play breakout | Failed |
 | `v15_noise_area.py`, `v15_followup.py`, `v15_overlay.py`, `v15b_noise_area_breadth.py` | Noise Area breakout | Failed; the overlay was the one lead |
