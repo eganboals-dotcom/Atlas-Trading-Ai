@@ -1,14 +1,15 @@
 # Project Atlas
 
-50-agent evolutionary trading AI with genetic optimization, reinforcement learning, and realistic market simulation.
+A research platform that tests trading and investing rules honestly, on days they never saw, and now tracks the
+survivors forward on real prices with pretend money.
 
-Atlas is a research platform for evolving and evaluating algorithmic trading agents with
-genetic selection, reinforcement learning, event-driven market simulation, and strict risk
-controls. Strategies are tested on historical data and live-data paper trading before any
-separately approved live deployment. **Profitability is not assumed; it must be demonstrated
-with robust out-of-sample evidence.**
+Atlas started as a 50-agent evolutionary trading AI, with genetic selection, reinforcement learning, event-driven
+market simulation and strict risk controls. Those short-term bots lost to trading costs, so the work moved to slower
+investing rules. A few passed pre-registered tests, and those are now frozen and scored each night on new market days.
+Nothing trades real money. **Profitability is not assumed; it must be demonstrated with robust out-of-sample evidence.**
 
-The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPECIFICATION.docx).
+The original build specification is in [docs/PROJECT_SPECIFICATION.md](docs/PROJECT_SPECIFICATION.md) (the Word original is
+[docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPECIFICATION.docx)).
 
 ## What it found
 
@@ -29,7 +30,45 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 > **Safety:** this codebase contains no broker integration and no live-order code. Live
 > trading is out of scope until a separately approved Phase 8.
 
-## Status: Phase 6 — readiness review
+## Where it stands now
+
+**The question now is whether any rule beats the market on days nobody has seen yet.** Five rules are frozen: their code and settings can't change, and each refuses to run if they do. The first four held up
+in backtests and are scored from 2026-11-02 on; the fifth from 2026-11-06, after costs, and the verdict for each is written in its config before any result:
+
+| Tracker | The rule | Verdict after | Report |
+|---|---|---|---|
+| v21 Fed drift | Hold SPY in the hours before each Fed decision | 40 decisions, about 5 years | `artifacts/reports/fomc_track/tracker.md` |
+| v24 Earnings quality | The fifth of 300 large companies whose profit is best backed by cash, reset every 63 sessions | 1,260 sessions, about 5 years | `artifacts/reports/quality_track/tracker.md` |
+| v30 Rotation | Keep the strongest groups of stocks and ETFs (growth, real assets, defensive), in four weekly sleeves | 1,260 sessions | `artifacts/reports/rotation_track/tracker.md` |
+| v32 ETF rotation | The same group choice with ETFs only and no stock picking | 1,260 sessions | `artifacts/reports/etf_rotation_track/tracker.md` |
+| v36 ETFs held equally | The rotation's 13 ETFs in equal amounts, reset each quarter; it claims steadier returns than SPY, not more | 1,260 sessions | `artifacts/reports/etf_equal_track/tracker.md` |
+
+Beside them, the swing trackers score other rules each night (the news desk, quality, momentum and trend rules), and
+the live paper session still runs the evolved trading bots against Flip and Hold every weekday.
+
+**One page for everything:** `artifacts/reports/summary/latest.md` (`python scripts/trackers/tracker_summary.py`). It shows each
+investing rule as a bot with $100,000 of pretend money next to the same money in SPY, what each bot holds, every rule
+against Hold and SPY, and anything that needs a person to look. The leaderboard window shows the same bots on its second tab,
+Investing bots, ranked against SPY with the same money from the same day: a chart of every day since the start, each
+rule's backtest return a year, and during market hours an estimate from the latest IEX trades of what each bot holds.
+
+**The daily routine** (Windows scheduled task "Atlas daily research", 5:35 am Pacific):
+
+1. The PC wakes from sleep, or is started by the motherboard's 5:30 alarm.
+2. On weekdays it starts the paper session, which waits for the 6:30 am open and ends at 1:00 pm. The leaderboard
+   window opens at 5:40 am and at sign-in.
+3. It runs the nightly research (`scripts/swing_track.cmd auto`): new prices, the news desk, every tracker, then
+   the summary page.
+4. When the session ends it puts the PC back to sleep, unless someone is using it.
+
+Logs: `artifacts/reports/swing_track/runs.log` and `paper_morning.log` beside it. Each tracker's rule and tests are in
+the v20 (Fed drift), v23 (earnings quality) and v27 (both rotations and v36) sections below.
+
+**What the numbers mean.** Days this few say almost nothing; nothing before a tracker's verdict counts as evidence,
+and paper profit on the trading bots isn't evidence of an edge. In backtests, the best of these rules beat holding the
+market by a few points a year at most, and an edge that size takes years of new days to tell apart from luck.
+
+## Status
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -40,6 +79,7 @@ The full specification is in [docs/PROJECT_SPECIFICATION.docx](docs/PROJECT_SPEC
 | 5 | Live-data paper trading, risk manager, dashboard | Done |
 | 6 | Readiness review (no live trading) | **Done (awaiting review)**: verdict NOT READY |
 | 7–8 | Disabled broker adapter, live activation | Not started; each needs separate explicit approval |
+| Research | Shorter-term tests (v12–v20), slow investing rules (v22–v33), four frozen forward trackers | **Running**: first verdicts about 2031 |
 
 ## Setup
 
@@ -58,11 +98,11 @@ needs. That is why the command adds PyTorch's package index. It also includes th
 affected tests are skipped when they are missing.
 
 No API keys or credentials are needed. Synthetic data is generated locally, and
-historical data is imported from files you supply (see "Historical data" below).
+historical data is imported from supplied files (see "Historical data" below).
 
 ## Run
 
-Run from the repository root.
+Every command runs from the repository root.
 
 ```bash
 # Validate the clean synthetic dataset
@@ -215,7 +255,7 @@ python -m atlas.cli evaluate --config configs/walkforward.yaml --run-id <run_id>
 * `evaluate --holdout` works only when the current configs and data reproduce the
   frozen design's fingerprint.
 * Every holdout access is written to `artifacts/holdout_ledger.jsonl`.
-* Evaluating a *different* design on the same holdout is refused unless you pass
+* Evaluating a *different* design on the same holdout is refused without
   `--allow-holdout-reuse`. Any reuse is recorded, and from then on the report warns that
   the holdout is no longer untouched.
 
@@ -381,16 +421,16 @@ Atlas reads prices from two GET endpoints on `data.alpaca.markets` and contains 
 that can place an order at Alpaca or anywhere else. Every order and fill is simulated by
 Atlas's internal paper broker.
 
-**One-time setup**
-1. Create a free Alpaca account and open its **paper trading** account. Generate the
-   paper account's API keys there; paper accounts get their own keys.
-2. Copy `.env.example` to `.env` (git-ignored) and fill in `APCA_API_KEY_ID` and
-   `APCA_API_SECRET_KEY`.
-3. Make sure the PC clock is synced (Windows: Settings → Time & language → Sync now).
+**What it needs first**
+1. A free Alpaca account with its **paper trading** account. The paper account's API keys come
+   from there; paper accounts get their own keys.
+2. A `.env` file (git-ignored), copied from `.env.example`, with `APCA_API_KEY_ID` and
+   `APCA_API_SECRET_KEY` filled in.
+3. A synced PC clock (Windows: Settings → Time & language → Sync now).
    Startup refuses a clock more than 3 s behind exchange time.
-4. Have an evolution checkpoint. The bots come from
-   `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`; create it with
-   `python -m atlas.cli evolve --config configs/evolution.yaml` if it is missing.
+4. An evolution checkpoint. The bots come from
+   `artifacts/checkpoints/synthetic_baseline_v1/gen_005.json`, which
+   `python -m atlas.cli evolve --config configs/evolution.yaml` creates if it is missing.
 
 **Each trading day** (start it any time before or during market hours): double-click
 `scripts/start_live_paper.cmd`. It runs the preflight, then the session, in its own
@@ -408,7 +448,7 @@ python -m atlas.cli paper-stop --config configs/paper_live.yaml      # clean, re
 When running Atlas through Claude Code, see [CLAUDE.md](CLAUDE.md): sessions last about 6.5
 hours, so they run in their own window or in the background.
 
-**What happens when you run it:**
+**What a run does:**
 * **Startup checks.** The keys work, today is a weekday, the clock is in sync, and the
   bots load.
 * **The leaderboard window opens.** It is a native dark trading-screen window
@@ -432,7 +472,7 @@ hours, so they run in their own window or in the background.
 * **Market-data recording.** Every quote and trade the session receives is saved to
   `data/raw/alpaca_iex_live/<date>.csv`. At the close the day is also written as a Parquet
   session in `data/processed/alpaca_iex_live/`, with a manifest, ready for training and
-  walk-forward testing with the existing tools. The data stays on your PC (`data/` is
+  walk-forward testing with the existing tools. The data stays on this PC (`data/` is
   git-ignored). A recording failure only switches recording off; trading continues. A
   full day is about 6 MB of CSV plus 1 MB of Parquet.
 * **The bots are in the repo.** The evolved bots' frozen parameters live in
@@ -448,7 +488,7 @@ hours, so they run in their own window or in the background.
   what it ended with, so its capital grows and shrinks with its own P&L. The ledger is
   `artifacts/paper/fund_ledger.json`. Changing the bot lineup requires `--reset-fund`,
   which archives the old ledger rather than deleting it. The benchmark gets a fresh
-  equal share each day. Atlas does not read your Alpaca balance; it only reads market
+  equal share each day. Atlas does not read the Alpaca account balance; it only reads market
   data.
 * **Trading hours.** The session waits for 09:30 ET, trades until 16:00 ET, then writes
   the daily report.
@@ -480,9 +520,9 @@ hours, so they run in their own window or in the background.
   about 62 s of CPU in total and 52 MB of memory, and averaged 89 requests a minute.
 
 **Stopping and restarting:**
-* Stop cleanly with Ctrl+C or `paper-stop`; use `paper-kill` only as an emergency halt.
-* Continue the same day with `--resume`.
-* Reopen the page any time with `python -m atlas.cli dashboard`.
+* Ctrl+C or `paper-stop` stops cleanly; `paper-kill` is only for an emergency halt.
+* `--resume` continues the same day.
+* `python -m atlas.cli dashboard` reopens the page any time.
 
 **Feed details** ([alpaca.py](src/atlas/feeds/alpaca.py)), checked against Alpaca's
 official docs on 2026-10-26:
@@ -666,14 +706,14 @@ were frozen on 2026-10-28 in [configs/swing_track.yaml](configs/swing_track.yaml
 momentum (plain, and with trend and volatility caps) on the 16 ETFs, 6-month momentum on both
 2015 stock lists, and the trend filter and volatility target on the first. From 2026-10-29 on,
 each run scores them against Hold on their own symbols. The first run records a fingerprint of
-the rules, and later runs refuse to continue if any rule changes. Run it after 4:20 pm ET by
-double-clicking `scripts/swing_track.cmd`, or:
+the rules, and later runs refuse to continue if any rule changes. It runs after 4:20 pm ET from
+`scripts/swing_track.cmd` (it starts with a double-click), or:
 
 ```bash
 python -m atlas.cli swing-track   # refetches daily bars (~1.5 min), writes artifacts/reports/swing_track/tracker.md
 ```
 
-Expect noise for months: a real edge needs about a year of days or more to stand out from luck.
+The first months are noise: a real edge needs about a year of days or more to stand out from luck.
 
 **News desk** ([src/atlas/news/](src/atlas/news/)). Readers turn headlines into notes: company,
 direction (−1 to +1), importance (0 to 1) and category. A briefing turns the notes into what is
@@ -681,7 +721,7 @@ known at each open (anything published before 09:15 counts), and bots trade only
 so readers can be swapped. Reader #1 (`keyword`) uses fixed rules: analyst up/downgrades and EPS
 beats/misses. Reader #2 (`local`) has a free AI model on this PC read each headline with company
 names hidden. It is served by [Ollama](https://ollama.com) and reached only on 127.0.0.1, so no
-headline leaves the computer and nothing is billed. Set it up once: install Ollama, then run
+headline leaves the computer and nothing is billed. It needs a one-time setup: Ollama, then
 `ollama pull gemma3:12b` (the `local_model` in [configs/news_desk.yaml](configs/news_desk.yaml); about
 8 GB, fits a 16 GB graphics card). Until Ollama is running, the reader is skipped and catches up on
 the next run. The `claude` reader (Claude Haiku 5.5, paid API credits, `ANTHROPIC_API_KEY` in `.env`,
@@ -861,7 +901,7 @@ their results, so this is a candidate for new days, not evidence.
 
 ## v16: late-day flow
 
-Follow a big move into the close, because leveraged ETFs must rebalance in its direction. Failed all four tests
+The rule follows a big move into the close, because leveraged ETFs must rebalance in its direction. It failed all four tests
 ([configs/late_day_flow_v16.yaml](configs/late_day_flow_v16.yaml)): -2.9 bps a trade on SPY, QQQ and IWM after costs (CI -5.0 to
 -0.8), no better than quiet days (-1.5 bps), -1.4 bps on stocks with their own leveraged ETFs since 2022 (CI -5.2 to +2.2),
 and -5.7 bps without its two best years. `python scripts/research/trading/v16_late_day_flow.py`.
@@ -1034,9 +1074,40 @@ after 1,260 sessions, about 5 years: it must beat SPY, beat the list held equall
 a proven rule. The report is `artifacts/reports/rotation_track/tracker.md`.
 
 **ETF-only rotation (v32).** Frozen 2026-10-31 at the user's request ([configs/etf_rotation_track_v32.yaml](configs/etf_rotation_track_v32.yaml), `python scripts/trackers/v32_etf_rotation_track.py`, nightly). v29 showed that the
-choice of group did the work and that stock ranking did worse than chance, so this keeps v27's group choice and risk budget and drops stocks and ranking: a kept group holds all its ETFs equally. It has never been run
-on history, on purpose, because days already seen can't prove it. It scores from 2026-11-02 at 2 bps each way, in four sleeves as in v30, with the same kind of verdict after 1,260 sessions against SPY and its ETFs held equally.
+choice of group did the work and that stock ranking did worse than chance, so this keeps v27's group choice and risk budget and drops stocks and ranking: a kept group holds all its ETFs equally. It was frozen without
+a backtest, because days already seen can't prove it. It scores from 2026-11-02 at 2 bps each way, in four sleeves as in v30, with the same kind of verdict after 1,260 sessions against SPY and its ETFs held equally.
 It counts as one more rule tried.
+
+**The ETF-only rotation on history (v34).** An estimate asked for on 2026-11-05, after v32 was frozen, so it is not pre-registered and tests
+nothing (`python scripts/research/investing/v34_etf_rotation_history.py`, results in `artifacts/reports/swing/v34_etf_rotation_history.json`). The
+same frozen code picks a book every week, in four sleeves, at 2 bps each way, with cash earning BIL. From 2019-01-22 to 2026-01-29 it made +17.1% a
+year (Sharpe 0.85, worst fall 22.4%) against SPY's +16.4% (0.75, 33.8%) on the same days. Most of that lead is 2025, +44.0% against +17.7%, and
+January 2026, +17.7% against +1.8%, when gold and silver ran; from 2019 to 2024 it made about +10% a year against SPY's +16%. Holding all its ETFs
+equally made +15.9% with a Sharpe of 1.12, so on these years the rule would fail its own verdict against that yardstick. These are also the
+years its idea came from. v32 doesn't change, and only its days after 2026-11-02 count.
+
+**The rotation's ETFs held equally (v36).** That side result was frozen on 2026-11-05 as its own tracker, at the user's request
+([configs/etf_equal_track_v36.yaml](configs/etf_equal_track_v36.yaml), `python scripts/trackers/v36_etf_equal_track.py`, run each night after v32).
+Equal money in v32's 13 ETFs from the close of 2026-11-05, back to equal on the first session of each quarter, 2 bps each way. Its claim is
+steadier returns than SPY, not more return. The verdict, after 1,260 sessions: a higher Sharpe than SPY and a smaller worst fall, both. It
+was seen on history before it was frozen, so only its new days count, and it is one more rule tried.
+
+**Annual reports that barely changed (v35).** "Lazy Prices" (Cohen, Malloy and Nguyen, 2020) found that companies whose 10-K text changes a lot
+from the year before earn less afterwards. Pre-registered on 2026-11-05 before any 10-K was downloaded ([configs/lazy_prices_v35.yaml](configs/lazy_prices_v35.yaml),
+`python scripts/research/investing/v35_lazy_prices.py fetch`, then `check` and `run`). For this, the SEC module was allowed to read a filing's index
+page and its documents, nothing else. Every 63 sessions, the 300 companies are scored by the cosine similarity of the word counts of their latest
+10-K and the year before's, 2,705 reports in all, and the least changed fifth is held equally, 2 bps each way. It failed 3 of 6:
+
+| | Return/yr | Sharpe | Worst fall |
+|---|---|---|---|
+| Least changed fifth | +16.4% | 0.69 | 42.8% |
+| Most changed fifth | +13.8% | 0.59 | 41.6% |
+| Hold (the 300) | +15.7% | 0.68 | 39.8% |
+| SPY | +16.6% | 0.76 | 33.8% |
+
+The direction is the paper's: the least changed beat the most changed by 2.6 points a year, and picking within each sector did too. But the
+lead over Hold was 0.8 points a year, it vanished without 2021 and 2025, it didn't beat Hold in both halves of the window, and it lost to SPY. At that
+size it would take about 119 years of days to tell it from luck. It isn't tracked. Results in `artifacts/reports/swing/v35_lazy_prices.json`.
 
 **All the trackers on one page.** `python scripts/trackers/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
@@ -1384,11 +1455,15 @@ src/atlas/
   evaluation/      metrics, splits, holdout guard, cost scenarios, walk-forward, reports
   learning/        Gymnasium env, observation normalizer, PPO trainer, frozen policy agent, seed stability
   brokers/         broker interface only (no live adapter exists)
-  feeds/           Alpaca market-data feed (read-only; the only module allowed network access)
+  feeds/           the only network modules, all read-only: Alpaca prices and news, the local AI reader,
+                   the optional Claude reader, SEC filings, FINRA short interest
+  news/            the news desk: fetches headlines and has an AI read them
   paper/           paper config, live-feed interface + replay feed, paper broker, risk manager, session, report
   dashboard/       read-only Streamlit app and file loaders
   readiness.py     Phase 6 review: evidence, failure drills, gates, broker open items
   evolution/       evaluation (parallel), fitness gates, selection, reproduction, archives, runner
+scripts/           launchers and the scheduled task's scripts; trackers/ (frozen rules); research/ (one-off tests),
+                   mapped in scripts/README.md
 tests/             pytest suites
 data/              raw/ processed/ manifests/ (licensed data is never committed)
 artifacts/         checkpoints/ reports/ (generated, git-ignored)

@@ -1,0 +1,49 @@
+# v35: companies whose annual report barely changed, on the 300 companies, tested by scripts/research/investing/v35_lazy_prices.py.
+#
+# Why: Cohen, Malloy and Nguyen ("Lazy Prices", Journal of Finance, 2020) found that firms whose 10-K text changes a lot from the year
+# before earned less over the following months, and firms whose text barely changes earned more. Their reading: changes often carry bad
+# news (new risks, lawsuits, a new way of describing the business), and few investors read these documents closely, so prices catch up
+# slowly. It is a slow rule that needs no AI reader and trades a few times a year, and the SEC data behind it is free.
+#
+# PRE-REGISTERED 2026-11-05, written before any 10-K was downloaded. A failed test stays failed. Nothing is tuned. It was published in
+# 2020, and published effects tend to shrink after that, so a failure here wouldn't be a surprise.
+#
+# The text: each company's 10-K documents (forms 10-K and 10-K405; amendments aren't read), found from the accession numbers in the SEC
+# company files already used by v23. From each document the inline-XBRL header (<ix:header>...</ix:header>), <script> and <style> blocks
+# and every tag are removed, entities are decoded, and the rest is lowercased. Words are runs of min_letters or more letters a-z.
+#
+# The score, on every rebalance, every 63 trading days: from 10-Ks filed before that day, the latest one, if filed within max_age_days, and
+# the company's 10-K filed prior_days before it. The score is the cosine similarity of the two documents' word counts. Higher is better:
+# the least changed. A company with no such pair isn't eligible.
+# Portfolio: equal weights in the top fifth of eligible companies, held until the next rebalance. Fewer than min_eligible eligible
+# companies: all 300 equally. Window and costs are those of v23: 2019-01-24 to 2026-01-29, 2 bps each way, cash earning BIL.
+# Filings after last_scored aren't read, and days from 2026-04-28 on are never read.
+#
+# It must pass all of these:
+# TEST 1 (the money): beats Hold on Sharpe and annual return.
+# TEST 2 (control): the top fifth makes more than the bottom fifth, the most changed.
+# TEST 3 (not luck): a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): a higher Sharpe than Hold in each half of the window.
+# TEST 5 (not a sector bet): the top fifth of each sector, sectors built as in configs/bottleneck_v22.yaml, also beats Hold on Sharpe
+#   and annual return. Sectors with fewer than min_group eligible companies are left out.
+# TEST 6 (the market): the top fifth beats SPY on Sharpe and annual return.
+#
+# This window has been used by many rules, and 34 tests have run here, so a false pass is quite possible. A pass is a candidate for a
+# frozen forward tracker, tested only on days after it is frozen, and wouldn't be proof. All 300 survived to 2026. Failing companies
+# likely rewrote their reports most, so the missing ones would mostly have hurt the bottom fifth: TEST 2 is harder here, not easier.
+#
+# Side results, which pass or fail nothing: each year, 5 bps, how many companies are eligible, turnover, years to prove.
+swing_config: configs/swing_v12_news_eps_u300.yaml
+text_dir: data/raw/sec_10k  # one gzipped text per filing; git-ignored like all of data/
+first_filed: "2017-01-01"
+last_scored: "2026-01-29"
+forms: ["10-K", "10-K405"]
+every: 63
+top_share: 0.20
+min_eligible: 50
+min_group: 5
+max_age_days: 450
+prior_days: [300, 430]
+min_letters: 2
+cost_bps: 2.0
+side_cost_bps: 5.0

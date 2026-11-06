@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -58,12 +59,40 @@ def test_a_bot_grows_with_its_tracker_and_is_set_against_spy() -> None:
     assert "| Earnings quality | $101,500 | $99,000 | +2,500 | 100% | 2026-11-03 |" in s.bot_lines([b])
 
 
+def test_the_window_gets_each_bot_with_its_backtest_and_spy() -> None:
+    d = json.loads(s.bots_json([s.bot("Earnings quality", TABLE, SPY), s.bot("ETF rotation", "# nothing", SPY)], SPY, date(2026, 11, 5)))
+    assert (d["prices_through"], d["start"], d["spy_backtest"], d["days"]) == ("2026-11-04", 100_000, 0.166, 2)
+    assert [b["name"] for b in d["bots"]] == ["Earnings quality", "ETF rotation", "SPY"]  # best account first, then the market
+    assert d["bots"][0]["since"] == "2026-11-03" and d["bots"][0]["backtest"]["per_year"] == 0.231
+    assert d["bots"][1]["since"] is None and d["bots"][1]["backtest"]["per_year"] == 0.171  # v34, an estimate run after the freeze
+    assert d["bots"][2]["value"] == pytest.approx(99_000) and d["bots"][2]["since"] == "2026-11-03"  # same money, same first day
+
+
+def test_history_keeps_every_day_and_adds_the_newest() -> None:
+    old = {"2026-11-02": {"Earnings quality": 100_000, "SPY": 100_000}, "2026-11-03": {"Earnings quality": 99_000, "SPY": 110_000}}
+    d = json.loads(s.bots_json([s.bot("Earnings quality", TABLE, SPY)], SPY, date(2026, 11, 5), old))
+    assert list(d["history"]) == ["2026-11-02", "2026-11-03", "2026-11-04"]
+    assert d["history"]["2026-11-03"]["SPY"] == 110_000  # an old day is kept as it was
+    assert d["history"]["2026-11-04"] == {"Earnings quality": pytest.approx(101_500), "SPY": pytest.approx(99_000)}
+
+
+def test_weights_come_from_the_mix_or_the_equal_list() -> None:
+    assert s.weights("Combined weights: F 35.0%, GLD 35.0%\n") == {"F": 0.35, "GLD": 0.35}
+    assert s.weights("Book 1, from filings through 2026-10-30, 187 eligible, 2 held:\n\nABBV, ADBE\n") == {"ABBV": 0.5, "ADBE": 0.5}
+    assert s.weights("# nothing yet") == {}
+
+
 def test_a_bot_with_no_days_still_has_its_money() -> None:
     text = "# Rotation\n\nBook 1, from the close of 2026-10-30: groups real, invested 70%. Replaces sleeve 1 of 4.\n\nCombined weights: F 35.0%, GLD 35.0%\n"
     b = s.bot("Rotation", text, SPY)
     assert (b["value"], b["spy"], b["invested"], b["since"]) == (100_000.0, 100_000.0, "70%", None)
     assert b["holds"] == "F 35.0%, GLD 35.0%"
     assert "not yet" in s.bot_lines([b])[6]
+
+
+def test_invested_counts_every_sleeve_not_just_the_newest() -> None:
+    text = "Book 2, from the close of 2026-11-06: groups growth, invested 100%. Replaces sleeve 2 of 4.\n\nCombined weights: A 40.0%, B 37.5%\n"
+    assert s.bot("Rotation", text, SPY)["invested"] == "78%"  # one sleeve at 100%, three still at 70%
 
 
 def test_a_quality_bot_lists_its_companies() -> None:

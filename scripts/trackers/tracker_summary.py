@@ -18,7 +18,7 @@ REPORTS = Path("artifacts/reports")
 SPY = Path("data/processed/swing_track/SPY.parquet")
 LOG = REPORTS / "swing_track" / "runs.log"
 SWING = ("swing_track", "swing_track_news", "swing_track_fund", "swing_track_u300", "swing_track_signals", "swing_track_v12")
-TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation"}
+TABLES = {"quality_track": "Earnings quality", "rotation_track": "Rotation", "etf_rotation_track": "ETF rotation", "etf_equal_track": "ETFs held equally"}
 STAT_LINES = ("- Next decision", "- Events:", "- Other windows:")  # the FOMC report's figures, not problems
 LONG = 60  # the trackers themselves show annual figures only after this many days
 OUT = REPORTS / "summary" / "latest.md"
@@ -27,6 +27,20 @@ WATCHED_FROM = date(2026, 10, 27)  # the frozen trackers' bars; older moves can'
 BIG_MOVE = 0.45
 VOLUME_SURGE = 2.5  # a real crash this size trades far more than the day before; a spin-off or missed split doesn't
 START = 100_000.0  # each investing bot's pretend money
+BOTS_JSON = REPORTS / "summary" / "bots.json"  # the leaderboard window's investing tab reads this
+# Each rule's return a year on history, 2019-01-24 to 2026-01-29 after costs, from the README's v23, v29 and v31 sections.
+BACKTEST_SPY = 0.166
+BACKTEST = {
+    "Earnings quality": dict(per_year=0.231, note="v23 on 300 surviving large companies; +24.3% with the failed companies added (v31), "
+                                                  "+15.5% on newer companies (v25), where it failed"),
+    "Rotation": dict(per_year=0.307, note="v29, the monthly form; +17.5% to +34.1% depending on the trading week and +17.2% with broader "
+                                          "lists; the tracked four-sleeve form never ran on history"),
+    "ETF rotation": dict(per_year=0.171, note="v34, run after the rule was frozen, so an estimate and not a test: +16.4% for SPY on the same days, "
+                                              "but about +10% a year to SPY's +16% before 2025's metals rally, and its ETFs held equally made +15.9% "
+                                              "with steadier returns"),
+    "ETFs held equally": dict(per_year=0.159, note="v34's side result, seen before v36 was frozen, so an estimate and not a test: a Sharpe of 1.12 "
+                                                   "and a worst fall of 19.5%, against SPY's 0.75 and 33.8%, with gold's 2025 rally in it"),
+}
 
 
 def spy_return(spy: pl.DataFrame, first: date, last: date) -> float | None:
@@ -78,13 +92,34 @@ def holdings(text: str) -> str:
     return f"equal weights: {names[1]}" if names else "nothing yet"
 
 
+def weights(text: str) -> dict[str, float]:
+    """What a tracker.md says the rule holds now, as shares of the account; the rest is cash."""
+    mix = re.search(r"^Combined weights: (.+)$", text, re.M)
+    if mix:
+        return {s: float(w) / 100 for s, w in re.findall(r"(\S+) ([\d.]+)%", mix[1])}
+    names = re.search(r"^Book \d+, .*held:\n\n(.+)$", text, re.M)
+    held = names[1].split(", ") if names else []
+    return {s: 1 / len(held) for s in held}
+
+
 def bot(label: str, text: str, spy: pl.DataFrame) -> dict:
     """A rule as an account of START dollars of pretend money, net of the tracker's costs."""
     row = table_row(text, label)
-    invested = re.search(r"invested (\d+%)", text)
+    held = weights(text)  # every sleeve together; the text's "invested N%" is only the newest sleeve's budget
     moved = spy_return(spy, row["first"], row["last"]) if row else None
-    return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START, invested=invested[1] if invested else "100%",
-                holds=holdings(text), since=row["first"] if row else None)
+    return dict(name=label, value=START * (1 + row["ret"]) if row else START, spy=START * (1 + moved) if moved is not None else START,
+                invested=f"{min(sum(held.values()), 1.0):.0%}" if held else "100%", holds=holdings(text), since=row["first"] if row else None, weights=held)
+
+
+def closes(symbols: list[str], day: date) -> dict[str, float]:
+    """Each symbol's close on day, or the last before it, from the trackers' bars."""
+    out = {}
+    for s in symbols:
+        path = next((f / f"{s}.parquet" for f in BARS if (f / f"{s}.parquet").exists()), None)
+        c = pl.read_parquet(path).filter(pl.col("date") <= day).sort("date")["close"] if path else []
+        if len(c):
+            out[s] = float(c[-1])
+    return out
 
 
 def bots(spy: pl.DataFrame) -> list[dict]:
@@ -99,6 +134,25 @@ def bot_lines(accounts: list[dict]) -> list[str]:
     for b in sorted(accounts, key=lambda b: -b["value"]):
         lines.append(f"| {b['name']} | ${b['value']:,.0f} | ${b['spy']:,.0f} | {b['value'] - b['spy']:+,.0f} | {b['invested']} | {b['since'] or 'not yet'} |")
     return [*lines, "", *[f"- {b['name']} holds {b['holds']}" for b in accounts], ""]
+
+
+def bots_json(accounts: list[dict], spy: pl.DataFrame, today: date, history: dict | None = None, prices: dict | None = None) -> str:
+    """The bots for the leaderboard window: each with its backtest return a year, SPY as one more account from the
+    same first day, every day's accounts so far (history grows by a day each run), and the closes they're marked from."""
+    newest = spy["date"].max()
+    rows = [{**b, "since": b["since"] and b["since"].isoformat(), "backtest": BACKTEST.get(b["name"], dict(per_year=None, note=""))}
+            for b in sorted(accounts, key=lambda b: -b["value"])]
+    first = min((b["since"] for b in accounts if b["since"]), default=None)
+    history = dict(history or {})
+    days = spy.filter(pl.col("date").is_between(first, newest)).height if first else 0
+    if first:
+        market = START * (1 + (spy_return(spy, first, newest) or 0.0))
+        rows.append(dict(name="SPY", role="benchmark", value=market, spy=market, invested="100%", holds="SPY", since=first.isoformat(),
+                         weights={"SPY": 1.0}, backtest=dict(per_year=BACKTEST_SPY, note="the market itself, for comparison")))
+        start = spy.filter(pl.col("date") < first)["date"].max()  # every account is START at the close before its first day
+        history |= {start.isoformat(): {r["name"]: START for r in rows}, newest.isoformat(): {r["name"]: r["value"] for r in rows}}
+    return json.dumps(dict(written=today.isoformat(), prices_through=newest.isoformat(), start=START, spy_backtest=BACKTEST_SPY, days=days, bots=rows,
+                           history=dict(sorted(history.items())), closes=prices or {}), indent=1)
 
 
 def run_problems(text: str) -> list[str]:
@@ -169,9 +223,13 @@ def build(rows: list[dict], spy: pl.DataFrame, problems: list[str], notes: list[
 def main() -> None:
     spy = pl.read_parquet(SPY).sort("date")
     rows = [r for f in SWING for r in swing_rows(REPORTS / f)] + table_rows()
-    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), bots(spy))
+    accounts = bots(spy)
+    text = build(rows, spy, run_problems(LOG.read_text(encoding="utf-8", errors="replace")) if LOG.exists() else [], [*bar_warnings(), *report_notes()], verdicts(), date.today(), accounts)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(text, encoding="utf-8")
+    history = json.loads(BOTS_JSON.read_text(encoding="utf-8")).get("history") if BOTS_JSON.exists() else None
+    held = sorted({s for b in accounts for s in b["weights"]} | {"SPY"})
+    BOTS_JSON.write_text(bots_json(accounts, spy, date.today(), history, closes(held, spy["date"].max())), encoding="utf-8")
     print(text)
 
 

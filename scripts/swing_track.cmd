@@ -12,7 +12,8 @@ REM Hold since 2026-10-29.
 REM Last, the pre-FOMC drift tracker (configs\fomc_track_v21.yaml; SPY minute bars, under a minute) and the
 REM earnings-quality tracker (configs\quality_track_v24.yaml; the 300-company bars above, and SEC filings each quarter) and the
 REM rotation tracker (configs\rotation_track_v30.yaml; the 300-company bars above, and its ETFs, under a minute) and the
-REM ETF-only rotation (configs\etf_rotation_track_v32.yaml; the same ETFs). Then one page across all of them.
+REM ETF-only rotation (configs\etf_rotation_track_v32.yaml; the same ETFs) and its ETFs held equally
+REM (configs\etf_equal_track_v36.yaml; the same ETFs). Then one page across all of them.
 REM "swing_track.cmd auto" is the unattended form (for a scheduled task): no pause, output appended to
 REM artifacts\reports\swing_track\runs.log.
 setlocal
@@ -38,6 +39,7 @@ if /i "%~1"=="auto" (
   "%PY%" scripts\trackers\v24_quality_track.py >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" scripts\trackers\v30_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" scripts\trackers\v32_etf_rotation_track.py >> artifacts\reports\swing_track\runs.log 2>&1
+  "%PY%" scripts\trackers\v36_etf_equal_track.py >> artifacts\reports\swing_track\runs.log 2>&1
   "%PY%" scripts\trackers\tracker_summary.py >> artifacts\reports\swing_track\runs.log 2>&1
   exit /b %ERRORLEVEL%
 )
@@ -52,6 +54,7 @@ if /i "%~1"=="auto" (
 "%PY%" scripts\trackers\v24_quality_track.py
 "%PY%" scripts\trackers\v30_rotation_track.py
 "%PY%" scripts\trackers\v32_etf_rotation_track.py
+"%PY%" scripts\trackers\v36_etf_equal_track.py
 "%PY%" scripts\trackers\tracker_summary.py
 echo.
 echo Reports: artifacts\reports\swing_track\tracker.md, artifacts\reports\swing_track_news\tracker.md

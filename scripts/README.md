@@ -1,6 +1,6 @@
 # Scripts
 
-Run everything from the repo root with `.venv/Scripts/python.exe`. Research only: no script places an order.
+Everything runs from the repo root with `.venv/Scripts/python.exe`. Research only: no script places an order.
 
 ## At the top of this folder
 
@@ -24,7 +24,8 @@ Frozen rules, run every night. Their rules never change. Each one refuses to run
 | `v24_quality_track.py` | Earnings quality |
 | `v30_rotation_track.py` | The stock and ETF rotation |
 | `v32_etf_rotation_track.py` | The ETF-only rotation |
-| `tracker_summary.py` | One page across all of them, with the investing bots |
+| `v36_etf_equal_track.py` | The ETF rotation's 13 ETFs held equally |
+| `tracker_summary.py` | One page across all of them, with the investing bots; also writes `bots.json` for the leaderboard's Investing bots tab |
 
 ## research/trading/
 
@@ -57,6 +58,8 @@ One-off tests of slower ideas.
 | `v29_monthly_rotation.py`, `v29_followup.py` | The rotation, monthly | Passed 5 of 6; it became v30 |
 | `v31_point_in_time.py` | The list with the failed companies in it | Earnings quality 4 of 6; rotation 2 of 2 |
 | `v33_random_picks.py` | The rotation against chance | Ranking failed; choosing groups passed |
+| `v34_etf_rotation_history.py` | The ETF-only rotation on history, after it was frozen | An estimate: +17.1% a year vs SPY's +16.4%, mostly 2025 |
+| `v35_lazy_prices.py` | Annual reports that barely changed ("Lazy Prices") | Failed 3 of 6: right direction, too small, lost to SPY |
 
 `research/build_report.py` draws the charts for the write-up in `docs/report/`.
 

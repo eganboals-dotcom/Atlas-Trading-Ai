@@ -27,7 +27,7 @@ def claude_classifier(model: str, env_file: Path | None = Path(".env"), max_toke
     """A function that sends one batch of anonymized headlines to Claude and returns its notes."""
     key = read_env((KEY_ENV,), env_file)[KEY_ENV]
     if not key:
-        raise PermissionError(f"set {KEY_ENV} in .env (yourself) to use the AI news reader")
+        raise PermissionError(f"set {KEY_ENV} in .env by hand to use the AI news reader")
     import anthropic
 
     client = anthropic.Anthropic(api_key=key, max_retries=4, timeout=120.0)

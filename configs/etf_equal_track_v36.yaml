@@ -1,0 +1,28 @@
+# v36: forward tracker for the ETF rotation's 13 ETFs held equally. Run by scripts/trackers/v36_etf_equal_track.py.
+#
+# FROZEN 2026-11-05, before any scored day, at the user's request. The first run records a fingerprint of everything under rule: and the code
+# that scores it. Later runs refuse to continue if any of it changes. Research only: nothing here places an order, and the holdings are not advice.
+#
+# Why: in v34's run of the ETF rotation on 2019-2026, holding its ETFs equally, with no picking, made +15.9% a year with a Sharpe of 1.12 and
+# a worst fall of 19.5%, against SPY's +16.4%, 0.75 and 33.8%. That came out after the fact, as a side result of an estimate, so only days
+# after freezing can test it. The claim is steadier returns than SPY, not more return. Bonds and gold are a third of it, and those years
+# included gold's 2025 rally and bonds' 2022 fall, so the next years may look quite different.
+#
+# Rule: equal money in each of the 13 ETFs below, the same list v32 picks from, bought at the close of first_signal and held. On the first
+# session of each quarter the holdings go back to equal at the prior close. Costs are 2 bps each way on what is traded. Cash earns nothing
+# here, since the rule is always fully invested; BIL is used only as the risk-free rate in Sharpe.
+#
+# THE VERDICT, written now, reached only once review_sessions sessions have been scored (about 5 years):
+#   pass: both of a higher Sharpe than SPY and a smaller worst fall than SPY, over those sessions.
+#   fail: anything else. It is dropped, and the rule isn't changed or restarted.
+# It is a modest bar: a higher Sharpe over 5 years can still be luck, and this is one more rule tried. Nothing before then is a verdict.
+rule:
+  etfs: [XLK, SMH, XLE, XLB, GLD, SLV, TLT, IEF, XLU, XLV, IAU, SHY, UUP]
+  first_signal: "2026-11-05"
+  first_day: "2026-11-06"
+  cost_bps: 2.0
+  cash_symbol: BIL
+  review_sessions: 1260
+etf_dir: data/processed/rotation_track  # refreshed each night by the rotation tracker, which runs first
+cash_dir: data/processed/swing_track_u300  # refreshed each night by the 300-company tracker
+out_dir: artifacts/reports/etf_equal_track
