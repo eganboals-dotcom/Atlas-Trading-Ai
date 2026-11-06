@@ -1,0 +1,38 @@
+# v38: buying last week's losers, on v31's list with the failed companies in it, tested by scripts/research/investing/v38_reversal.py.
+#
+# Why: in v37, on the 300 companies that all survived to 2026, the fifth that fell most over the last 5 sessions made +22.6% a year, Sharpe
+# 0.79, against SPY's 0.76. That's short-term reversal (Jegadeesh 1990, Lehmann 1990). But a list of survivors flatters buying losers most of
+# all: the losers that kept falling to nothing aren't on it. v31's list holds who was really trading each quarter, failed companies included,
+# each a total loss the session after its last bar.
+#
+# PRE-REGISTERED 2026-11-05, before this rule's return on this list was seen. It isn't fresh: the idea came from v37's result on the same
+# years, so a pass here is only a candidate for a frozen forward tracker scored on new days, never proof. A failed test stays failed. Nothing
+# is tuned.
+#
+# The pool, every 5 sessions from v31's first_scored: v31's 300 companies with a bar on the last close and the highest median dollar volume
+# over 63 sessions (pool_at in v31). Each company's score is its return from the close 6 sessions before the rebalance to the close the
+# session before, and only companies with a real bar on both of those closes count. Fewer than min_eligible: refused.
+# The rule: the fifth with the lowest score, equal weights, held 5 sessions, cost_bps each way, cash earning BIL.
+# Yardstick: Hold on this pool, equal weights in the whole pool, reset at each rebalance, at the same cost.
+#
+# It must pass all of these:
+# TEST 1 (the money): the losers beat Hold on Sharpe and annual return.
+# TEST 2 (control): the losers make more than the winners, the fifth with the highest score.
+# TEST 3 (not luck): a higher Sharpe than Hold without its two best years against Hold.
+# TEST 4 (both halves): a higher Sharpe than Hold in each half of the window.
+# TEST 5 (not a sector bet): the losers of each sector, sectors built as in configs/bottleneck_v22.yaml from the pool's own prices, also beat
+#   Hold on Sharpe and annual return. Sectors with fewer than min_group eligible companies are left out.
+# TEST 6 (the market): the losers beat SPY, dividends included, on Sharpe and annual return.
+# TEST 7 (costs): at side_cost_bps each way the losers still beat Hold on Sharpe and annual return. About four fifths of the holding changes
+#   each week, so costs could decide it.
+#
+# Side results, which pass or fail nothing: each year; turnover; the same rule with failed companies held at their last close instead of a
+# total loss (v31's "all at the last close"), which shows how much the failures cost; and how often a failed company was held.
+v31_config: configs/point_in_time_v31.yaml
+every: 5
+look: 5
+top_share: 0.20
+min_group: 5
+min_eligible: 200
+cost_bps: 5.0
+side_cost_bps: 10.0

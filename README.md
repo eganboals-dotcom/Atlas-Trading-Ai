@@ -1140,6 +1140,26 @@ t-statistic of -2.1. That is short-term reversal, known since the early 1990s. I
 can't be flipped after the fact; buying the losers would be its own pre-registered test, with about 78% of the holding turning over each week,
 so costs would decide it. Results in `artifacts/reports/swing/v37_forecasters.json`.
 
+**Buying last week's losers, with the failed companies in (v38).** That test, pre-registered on 2026-11-05 before its return on this list was
+seen ([configs/reversal_v38.yaml](configs/reversal_v38.yaml), `python scripts/research/investing/v38_reversal.py run`). Every 5 sessions, v31's
+pool of the 300 companies with the most dollar volume at the time, failed companies included, is ranked by its last 5 sessions' return, and
+the fifth that fell most is held equally, 5 bps each way. It failed 4 of 7:
+
+| 2019-01-24 to 2026-01-29 | Return/yr | Sharpe | Worst fall |
+|---|---|---|---|
+| Last week's losers | +21.2% | 0.67 | 47.9% |
+| The same at 10 bps a side | +16.5% | 0.55 | 48.4% |
+| Last week's winners | +4.8% | 0.21 | 46.3% |
+| Losers within each sector | +17.8% | 0.63 | 44.4% |
+| Hold on this pool | +15.6% | 0.64 | 37.3% |
+| SPY | +16.6% | 0.76 | 33.8% |
+
+The reversal is real in direction: losers beat winners by 16 points a year, and had a higher Sharpe than Hold in both halves of the window. The failed companies
+didn't cause it, since none was held into its failure. But most of the extra return is extra risk: the losers swung about half again as much
+as Hold, so the Sharpe barely moved. Without 2020 and 2023, two rebound years, the lead over Hold is gone. Within each sector it lost to Hold,
+it lost to SPY, and with about 78% of the holding replaced each week, 10 bps a side takes it below Hold. It isn't tracked. Results in
+`artifacts/reports/swing/v38_reversal.json`.
+
 **All the trackers on one page.** `python scripts/trackers/tracker_summary.py`, the last nightly step, writes `artifacts/reports/summary/latest.md`: every rule against Hold and SPY over its own days, each verdict's
 status, and anything that needs a person, such as an error in the last run, a tracker behind the market data, or a company that stopped trading. It only reads the trackers' reports, so no frozen rule changes. SPY's column
 is a yardstick there and no part of any verdict. It matters because Hold is a list of survivors: a rule can beat Hold and still lose to the market. It also flags any one-day move of 45% or more in the trackers' bars since
