@@ -73,16 +73,8 @@ def cmd_run() -> None:
     s = {k: f.stats(x, rf) for k, x in r.items()} | dict(spy=f.stats(spy, rf), losers_at_side_cost=f.stats(returns(m, days, b["losers"], cfg["side_cost_bps"]), rf),
                                                      losers_failed_at_last_close=f.stats(returns(raw, days, b["losers"], cfg["cost_bps"]), rf))
     years = np.array([d.year for d in m.p.dates[m.v0: m.end]])
-    half = np.arange(len(rf)) < len(rf) // 2
-    x, h = r["losers"], r["hold"]
-    grow = lambda a, y: round(float((1 + a[years == y]).prod() - 1) * 100, 1)  # noqa: E731
-    by_year = {int(y): dict(rule=grow(x, y), hold=grow(h, y), spy=grow(spy, y)) for y in sorted(set(years))}
-    best = sorted(by_year, key=lambda y: -(by_year[y]["rule"] - by_year[y]["hold"]))[:2]
-    keep = ~np.isin(years, best)
-    sharper = lambda i: f.stats(x[i], rf[i])["sharpe"] > f.stats(h[i], rf[i])["sharpe"]  # noqa: E731
-    tests = dict(test1=f.beats(s["losers"], s["hold"]), test2=bool(s["losers"]["ann_return"] > s["winners"]["ann_return"]), test3=bool(sharper(keep)),
-                 test4=bool(sharper(half) and sharper(~half)), test5=f.beats(s["sector"], s["hold"]), test6=f.beats(s["losers"], s["spy"]),
-                 test7=f.beats(s["losers_at_side_cost"], s["hold"]))
+    six, by_year, best = f.tests_against_hold(r["losers"], r["hold"], spy, r["winners"], r["sector"], rf, years)  # the winners are test 2's control
+    tests = {**six, "test7": f.beats(s["losers_at_side_cost"], s["hold"])}
     fails = {j: e for j, e, failed in m.stopped if failed}
     held = sum(1 for t, names in zip(days, b["losers"]) for j in names if j in fails and t <= fails[j] < t + cfg["every"])
     res = dict(config=str(CONFIG), config_sha256=hashlib.sha256(CONFIG.read_bytes()).hexdigest(), window=f"{m.p.dates[m.v0]}..{m.p.dates[m.end - 1]}",

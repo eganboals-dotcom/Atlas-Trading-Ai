@@ -116,6 +116,22 @@ def beats(a: dict, b: dict) -> bool:
     return bool(a["sharpe"] > b["sharpe"] and a["ann_return"] >= b["ann_return"])
 
 
+def tests_against_hold(r: np.ndarray, hold: np.ndarray, spy: np.ndarray, bottom: np.ndarray, sector: np.ndarray, rf: np.ndarray,
+                       years: np.ndarray) -> tuple[dict, dict, list[int]]:
+    """The six tests v37 and v38 share, from daily returns, with each year and the two best years against Hold. Tests 1 to 6: beats
+    Hold; beats the bottom (or control) fifth; a higher Sharpe than Hold without its two best years; and in each half; the sector
+    version beats Hold; beats SPY. v31 and v35 keep their own copies, as they ran."""
+    s, sh = stats(r, rf), stats(hold, rf)
+    grow = lambda a, y: round(float((1 + a[years == y]).prod() - 1) * 100, 1)  # noqa: E731
+    by_year = {int(y): dict(rule=grow(r, y), hold=grow(hold, y), spy=grow(spy, y)) for y in sorted(set(years))}
+    best = sorted(by_year, key=lambda y: -(by_year[y]["rule"] - by_year[y]["hold"]))[:2]
+    keep, half = ~np.isin(years, best), np.arange(len(r)) < len(r) // 2
+    sharper = lambda i: stats(r[i], rf[i])["sharpe"] > stats(hold[i], rf[i])["sharpe"]  # noqa: E731
+    tests = dict(test1=beats(s, sh), test2=bool(s["ann_return"] > stats(bottom, rf)["ann_return"]), test3=bool(sharper(keep)),
+                 test4=bool(sharper(half) and sharper(~half)), test5=beats(stats(sector, rf), sh), test6=beats(s, stats(spy, rf)))
+    return tests, by_year, best
+
+
 def cmd_run() -> None:
     swing = load_config(Path(cfg["swing_config"]), SwingConfig)
     m = pairs.market(cfg["swing_config"])

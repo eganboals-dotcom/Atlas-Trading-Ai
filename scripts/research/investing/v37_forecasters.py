@@ -1,6 +1,9 @@
 """Eight price forecasters on the 300 companies (see configs/forecasters_v37.yaml, which holds the pre-registered tests), on the unseen days.
 run forecasts every week with each model (cached in artifacts/reports/swing/v37_forecasts/, so a stopped run resumes), then scores them and
-writes artifacts/reports/swing/v37_forecasters.json. The foundation models' weights come from Hugging Face on first use.
+writes artifacts/reports/swing/v37_forecasters.json. A model whose forecasts are cached needs nothing more. Computing them again needs
+the packages the run used (pip install timesfm==3.0.2 tirex-2==0.4.0 xgboost==3.4.1 scikit-learn==1.9.1, uninstalled after it) and,
+for TimesFM and TiRex, their weights from Hugging Face, which isn't one of Atlas's five network modules: the script stays offline
+unless HF_HUB_OFFLINE=0 is set for that one run.
 
     .venv/Scripts/python.exe scripts/research/investing/v37_forecasters.py run
 """
@@ -11,6 +14,7 @@ import os
 
 os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")  # TiRex-2 compiles a layer, and this PC has no C++ compiler; the config says so
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_OFFLINE", "1")  # no download unless someone sets HF_HUB_OFFLINE=0 on purpose
 
 import hashlib  # noqa: E402
 import json  # noqa: E402
@@ -31,6 +35,7 @@ from atlas.swing.families import HOLD, exposures  # noqa: E402
 
 CONFIG = Path("configs/forecasters_v37.yaml")
 cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+SHA = hashlib.sha256(CONFIG.read_bytes()).hexdigest()
 OUT = Path("artifacts/reports/swing/v37_forecasters.json")
 CACHE = Path("artifacts/reports/swing/v37_forecasts")
 H = cfg["horizon"]
@@ -165,7 +170,7 @@ def foundation(kind: str):
 
 def forecasts(kind: str, p, logp: np.ndarray, dollars: np.ndarray, dates: list[int]) -> np.ndarray:
     """(rebalances, companies) forecasts of one model, cached."""
-    path = CACHE / f"{kind}.npy"
+    path = CACHE / f"{kind}_{SHA[:8]}.npy"  # a changed config can't reuse another config's forecasts
     if path.exists():
         return np.load(path)
     if kind in ("random_forest", "xgboost", "lstm"):
@@ -201,9 +206,8 @@ def cmd_run() -> None:
     groups = [bottleneck.sectors(p.close, etf, mkt, t) for t in dates]
     h = simulate(p, exposures(p, *HOLD), v0, end, cfg["cost_bps"], m.cash).returns
     years = np.array([d.year for d in p.dates[v0:end]])
-    half = np.arange(len(h)) < len(h) // 2
     sh, ss = v23.stats(h, rf), v23.stats(spy, rf)
-    res: dict = dict(config=str(CONFIG), config_sha256=hashlib.sha256(CONFIG.read_bytes()).hexdigest(), window=f"{p.dates[v0]}..{p.dates[end - 1]}",
+    res: dict = dict(config=str(CONFIG), config_sha256=SHA, window=f"{p.dates[v0]}..{p.dates[end - 1]}",
                      rebalances=len(dates), hold=sh, spy=ss)
     for kind in cfg["models"]:
         f = forecasts(kind, p, logp, dollars, dates)
@@ -214,15 +218,10 @@ def cmd_run() -> None:
                 x[side][t: t + cfg["every"]] = 0.0
                 x[side][t: t + cfg["every"], picks] = n / len(picks)
         ret = lambda side, c=cfg["cost_bps"]: run(p, x[side], x[side], v0, end, c, None, m.cash).returns  # noqa: E731
-        r = ret("top")
-        s, bot, sect = v23.stats(r, rf), v23.stats(ret("bottom"), rf), v23.stats(ret("sector"), rf)
-        yearly = {int(y): {k: round(float((1 + a[years == y]).prod() - 1) * 100, 1) for k, a in (("rule", r), ("hold", h), ("spy", spy))} for y in sorted(set(years))}
-        best = sorted(yearly, key=lambda y: -(yearly[y]["rule"] - yearly[y]["hold"]))[:2]
-        keep = ~np.isin(years, best)
-        sharper = lambda i: v23.stats(r[i], rf[i])["sharpe"] > v23.stats(h[i], rf[i])["sharpe"]  # noqa: E731
+        r, bottom, sector = ret("top"), ret("bottom"), ret("sector")
+        s, bot, sect = v23.stats(r, rf), v23.stats(bottom, rf), v23.stats(sector, rf)
+        tests, yearly, best = v23.tests_against_hold(r, h, spy, bottom, sector, rf, years)
         ic = np.array([np.corrcoef(rank(f[k]), target(logp, t))[0, 1] for k, t in enumerate(dates) if t + H - 1 < end])
-        tests = dict(test1=v23.beats(s, sh), test2=bool(s["ann_return"] > bot["ann_return"]), test3=bool(sharper(keep)),
-                     test4=bool(sharper(half) and sharper(~half)), test5=v23.beats(sect, sh), test6=v23.beats(s, ss))
         res[kind] = dict(tests=tests, passed=all(tests.values()), rule=s, bottom_fifth=bot, by_sector=sect,
                          at_side_cost=v23.stats(ret("top", cfg["side_cost_bps"]), rf), by_year=yearly, best_years=best,
                          rank_correlation=dict(mean=round(float(ic.mean()), 4), t=round(float(ic.mean() / ic.std() * len(ic) ** 0.5), 2)),
